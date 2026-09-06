@@ -116,7 +116,7 @@ test("buildPluginAggregate skips plugins where extract returns undefined", () =>
 //     packages (createMindMap from @gui-chat-plugin/mindmap, etc.)
 //     are registered in BUILT_IN_SERVER_BINDINGS without a local
 //     meta.ts because they aren't co-located in this source tree.
-const EXTERNAL_PACKAGE_TOOL_NAMES = new Set(["createMindMap", "putQuestions", "present3D", "mapControl"]);
+const EXTERNAL_PACKAGE_TOOL_NAMES = new Set(["createMindMap", "putQuestions", "mapControl"]);
 
 test("every built-in BUILT_IN_SERVER_BINDINGS entry has a matching toolName in BUILT_IN_PLUGIN_METAS", () => {
   const metaToolNames: ReadonlySet<string> = new Set(BUILT_IN_PLUGIN_METAS.map((meta) => meta.toolName));

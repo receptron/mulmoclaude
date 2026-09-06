@@ -6,7 +6,7 @@
 // for multi-entry plugins like scheduler). The codegen barrel below
 // (`_generated/registrations.ts`) discovers them by scanning
 // `src/plugins/<name>/index.ts`. External-package plugins (mindmap /
-// quiz / present3d) live in `_extras.ts` because they aren't
+// quiz / googleMap) live in `_extras.ts` because they aren't
 // co-located in this source tree.
 //
 // **Auto-generated**. To add a built-in plugin: drop a new

@@ -9,7 +9,7 @@
 //      is toolName-only). The codegen omits them from
 //      `_generated/server-bindings.ts`; we wire the bindings here
 //      against the host record directly.
-//   2. **External npm-distributed plugin** — mindmap, quiz, present3d
+//   2. **External npm-distributed plugin** — mindmap, quiz, googleMap
 //      live in node_modules; they don't have a `src/plugins/<name>/`
 //      directory the codegen can scan, so the registration AND the
 //      binding both come from this file.
@@ -25,7 +25,6 @@ import { API_ROUTES } from "../config/apiRoutes";
 
 import { TOOL_DEFINITION as createMindMapDef } from "@gui-chat-plugin/mindmap";
 import { TOOL_DEFINITION as putQuestionsDef } from "@mulmochat-plugin/quiz";
-import { TOOL_DEFINITION as present3DDef } from "@gui-chat-plugin/present3d";
 import { TOOL_DEFINITION as mapControlDef } from "@gui-chat-plugin/google-map";
 
 import generateImageDef from "./generateImage/definition";
@@ -33,7 +32,6 @@ import editImagesDef from "./editImages/definition";
 
 import MindMapPlugin from "@gui-chat-plugin/mindmap/vue";
 import QuizPlugin from "@mulmochat-plugin/quiz/vue";
-import Present3DPlugin from "@gui-chat-plugin/present3d/vue";
 import GoogleMapPlugin from "@gui-chat-plugin/google-map/vue";
 
 /** Externally-distributed plugin registrations. The codegen barrel
@@ -43,20 +41,18 @@ import GoogleMapPlugin from "@gui-chat-plugin/google-map/vue";
 export const EXTERNAL_PLUGIN_REGISTRATIONS: readonly PluginRegistration[] = [
   { toolName: TOOL_NAMES.createMindMap, entry: MindMapPlugin.plugin },
   { toolName: TOOL_NAMES.putQuestions, entry: QuizPlugin.plugin },
-  { toolName: TOOL_NAMES.present3D, entry: Present3DPlugin.plugin },
   { toolName: TOOL_NAMES.mapControl, entry: GoogleMapPlugin.plugin },
 ];
 
 /** MCP bindings that don't follow the standard
  *  `mcpEndpoint(meta)` resolution: image plugins reach into the
  *  host-owned `/api/image/*` routes; external npm plugins use
- *  legacy `/api/plugins/{mindmap,quiz,present3d,googleMap}` paths
+ *  legacy `/api/plugins/{mindmap,quiz,googleMap}` paths
  *  from `HOST_API_ROUTES.plugins`. */
 export const EXTRA_SERVER_BINDINGS: readonly ServerPluginBinding[] = [
   { def: generateImageDef, endpoint: API_ROUTES.image.generate },
   { def: editImagesDef, endpoint: API_ROUTES.image.edit },
   { def: createMindMapDef, endpoint: API_ROUTES.plugins.mindmap },
   { def: putQuestionsDef, endpoint: API_ROUTES.plugins.quiz },
-  { def: present3DDef, endpoint: API_ROUTES.plugins.present3d },
   { def: mapControlDef, endpoint: API_ROUTES.plugins.googleMap },
 ];

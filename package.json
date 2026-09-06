@@ -99,7 +99,6 @@
     "@gui-chat-plugin/camera": "^2.0.0",
     "@gui-chat-plugin/google-map": "^2.0.0",
     "@gui-chat-plugin/mindmap": "^2.0.0",
-    "@gui-chat-plugin/present3d": "^2.0.0",
     "@marp-team/marp-core": "^4.4.0",
     "@mulmobridge/client": "^1.0.2",
     "@mulmocast/beat-editor": "^1.1.1",

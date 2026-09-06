@@ -194,7 +194,7 @@ export const ROLES: [Role, ...Role[]] = [
       TOOL_NAMES.generateImage,
       TOOL_NAMES.editImages,
       TOOL_NAMES.openCanvas,
-      TOOL_NAMES.present3D,
+      TOOL_NAMES.presentShapeScript,
       TOOL_NAMES.presentHtml,
       TOOL_NAMES.presentSVG,
     ],

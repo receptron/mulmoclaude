@@ -16,6 +16,7 @@ import { META as presentFormMeta } from "../presentForm/meta";
 import { META as presentHtmlMeta } from "../presentHtml/meta";
 import { META as presentMulmoScriptMeta } from "../presentMulmoScript/meta";
 import { META as presentSVGMeta } from "../presentSVG/meta";
+import { META as presentShapeScriptMeta } from "../presentShapeScript/meta";
 import { META as schedulerAutomationsMeta } from "../scheduler/automationsMeta";
 import { META as spreadsheetMeta } from "../spreadsheet/meta";
 import { META as wikiMeta } from "../wiki/meta";
@@ -36,6 +37,7 @@ export const GENERATED_PLUGIN_METAS = [
   presentHtmlMeta,
   presentMulmoScriptMeta,
   presentSVGMeta,
+  presentShapeScriptMeta,
   schedulerAutomationsMeta,
   spreadsheetMeta,
   wikiMeta,

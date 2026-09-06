@@ -130,7 +130,7 @@ import { requireSameOrigin } from "./api/csrfGuard.js";
 import { bearerAuth } from "./api/auth/bearerAuth.js";
 import { isViewDataPath } from "./api/auth/viewToken.js";
 import { deleteTokenFile, generateAndWriteToken, getCurrentToken } from "./api/auth/token.js";
-import { boundPortOf, publishServerPort } from "./workspace/serverPort.js";
+import { boundPortOf, publishServerPort, setBoundPort } from "./workspace/serverPort.js";
 import { log } from "./system/logger/index.js";
 import { logBackgroundError } from "./utils/logBackgroundError.js";
 import { isNonEmptyString } from "./utils/types.js";
@@ -1453,6 +1453,9 @@ process.on("SIGTERM", () => {
     // What the listener actually got — `port` is only the request, and under
     // `PORT=0` it stays 0 while the OS picks the real one.
     const boundPort = boundPortOf(httpServer.address(), port);
+    // In-process readers need it too, not just the file: the agent route hands
+    // this to the MCP broker as its `BASE_URL` (#3055).
+    setBoundPort(boundPort);
     try {
       await publishServerPort(boundPort);
     } catch (err) {

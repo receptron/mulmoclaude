@@ -569,7 +569,19 @@ export function latestToolResult(chatSessionId: string, toolName: string): ToolR
 
 export async function pushToolResult(chatSessionId: string, result: unknown): Promise<PushToolResultOutcome> {
   const session = store.get(chatSessionId);
-  if (!session) return { kind: "skipped", reason: "unknown session" };
+  if (!session) {
+    // The MCP bridge does not read the `ok` flag we return, so a dropped push
+    // is otherwise invisible: the tool call still reports success to the LLM
+    // and the user simply sees no view (#3055). The realistic cause is a
+    // result arriving at a DIFFERENT server than the one running the session —
+    // two instances against one workspace, the second one walked off a busy
+    // port — so name the session rather than just counting the drop.
+    log.warn("session-store", "tool result dropped — no such session in this server's store (is a second instance running?)", {
+      chatSessionId,
+      toolName: hasStringProp(result, "toolName") ? result.toolName : "unknown",
+    });
+    return { kind: "skipped", reason: "unknown session" };
+  }
 
   rememberLatestToolResult(session, result);
   await enqueueJsonlAppend(

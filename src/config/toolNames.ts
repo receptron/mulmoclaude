@@ -39,7 +39,7 @@ const HOST_TOOL_NAMES = {
   // presentHtml migrated — see `src/plugins/presentHtml/meta.ts`.
   // presentChart migrated to META — see `src/plugins/chart/meta.ts`.
   // presentForm migrated — see `src/plugins/presentForm/meta.ts`.
-  present3D: "present3D",
+  // presentShapeScript migrated — see `src/plugins/presentShapeScript/meta.ts`.
 
   // Creation / generation
   createMindMap: "createMindMap",
@@ -51,7 +51,7 @@ const HOST_TOOL_NAMES = {
   putQuestions: "putQuestions",
   // mapControl — Google Map render + Places + Directions, supplied by
   // `@gui-chat-plugin/google-map`. Wired through `src/plugins/_extras.ts`
-  // (external-package binding pattern, same as mindmap / present3d).
+  // (external-package binding pattern, same as mindmap / quiz).
   mapControl: "mapControl",
   weather: "weather",
 

@@ -15,6 +15,7 @@ import presentFormDef from "../presentForm/definition";
 import presentHtmlDef from "../presentHtml/definition";
 import presentMulmoScriptDef from "../presentMulmoScript/definition";
 import presentSVGDef from "../presentSVG/definition";
+import presentShapeScriptDef from "../presentShapeScript/definition";
 import schedulerAutomationsDef from "../scheduler/automationsDefinition";
 import spreadsheetDef from "../spreadsheet/definition";
 import { META as accountingMeta } from "../accounting/meta";
@@ -28,6 +29,7 @@ import { META as presentFormMeta } from "../presentForm/meta";
 import { META as presentHtmlMeta } from "../presentHtml/meta";
 import { META as presentMulmoScriptMeta } from "../presentMulmoScript/meta";
 import { META as presentSVGMeta } from "../presentSVG/meta";
+import { META as presentShapeScriptMeta } from "../presentShapeScript/meta";
 import { META as schedulerAutomationsMeta } from "../scheduler/automationsMeta";
 import { META as spreadsheetMeta } from "../spreadsheet/meta";
 
@@ -46,6 +48,7 @@ export const GENERATED_SERVER_BINDINGS: readonly ServerPluginBinding[] = [
   { def: presentHtmlDef, endpoint: mcpEndpoint(presentHtmlMeta) },
   { def: presentMulmoScriptDef, endpoint: mcpEndpoint(presentMulmoScriptMeta) },
   { def: presentSVGDef, endpoint: mcpEndpoint(presentSVGMeta) },
+  { def: presentShapeScriptDef, endpoint: mcpEndpoint(presentShapeScriptMeta) },
   { def: schedulerAutomationsDef, endpoint: mcpEndpoint(schedulerAutomationsMeta) },
   { def: spreadsheetDef, endpoint: mcpEndpoint(spreadsheetMeta) },
 ];

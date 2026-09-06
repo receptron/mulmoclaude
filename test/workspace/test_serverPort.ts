@@ -16,7 +16,7 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:net";
-import { boundPortOf, formatServerPort, publishServerPort } from "../../server/workspace/serverPort.js";
+import { boundPortOf, formatServerPort, getBoundPort, publishServerPort, setBoundPort } from "../../server/workspace/serverPort.js";
 import { parsePublishedPort } from "../../scripts/lib/devServerPort.js";
 
 let workspace: string;
@@ -138,5 +138,22 @@ describe("boundPortOf", () => {
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+// #3055: the bound port has an IN-PROCESS reader too. The agent route hands it
+// to the MCP broker as its `BASE_URL`, so a second instance that walked off a
+// busy default used to send its broker to the FIRST instance — where the
+// stateless plugin dispatch succeeds and the session-scoped tool-result push is
+// dropped, leaving every plugin view blank with nothing in the log.
+describe("bound port, in-process", () => {
+  it("reports the port that was set, not the one that was requested", () => {
+    setBoundPort(3002);
+    assert.equal(getBoundPort(), 3002);
+  });
+
+  it("survives being set to an ephemeral port", () => {
+    setBoundPort(54321);
+    assert.equal(getBoundPort(), 54321);
   });
 });

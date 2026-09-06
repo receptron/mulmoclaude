@@ -72,14 +72,17 @@ import {
 // (by snakajima)
 // import { NOTIFICATION_KINDS } from "../../../src/types/notification.js";
 // import { publishNotification } from "../../events/notifications.js";
-import { env } from "../../system/env.js";
+import { getBoundPort } from "../../workspace/serverPort.js";
 import type { Attachment } from "@mulmobridge/protocol";
 import type { StartChatParams as ChatServiceStartChatParams } from "@mulmobridge/chat-service";
 import { isImagePath, loadImageBase64 } from "../../utils/files/image-store.js";
 import { isAttachmentPath, loadAttachmentBase64, inferMimeFromExtension, saveAttachment } from "../../utils/files/attachment-store.js";
 
 const router = Router();
-const PORT = env.port;
+// The port the server actually BOUND, read per-call rather than frozen at
+// module load: a second instance walks forward off a busy default, and the
+// broker we spawn addresses this port (#3055). `env.port` would send it to
+// whichever instance owns the requested port instead.
 
 // Short, safe preview of tool args for logs. Full payload may contain
 // base64 images or large blobs, so we cap it. The goal is to make a
@@ -1096,7 +1099,7 @@ async function runAgentStreamWithFailover(args: FailoverStreamArgs, eventCtx: Ev
       role,
       workspacePath,
       sessionId: chatSessionId,
-      port: PORT,
+      port: getBoundPort(),
       claudeSessionId: currentClaudeSessionId,
       abortSignal,
       attachments,

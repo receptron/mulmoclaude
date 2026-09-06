@@ -16,7 +16,7 @@
 // `apiNamespace` + `mcpDispatch`) flow through
 // `_generated/server-bindings.ts`; cross-namespace bindings (image
 // plugins reaching the host's `/api/image/*` routes) and external
-// npm plugins (mindmap / quiz / present3d) live in `_extras.ts`.
+// npm plugins (mindmap / quiz / googleMap) live in `_extras.ts`.
 // Adding a standard plugin requires no edit here.
 
 import { ServerPluginBinding } from "./server-bindings-types";

@@ -8,6 +8,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Added
+
+#### `@mulmoclaude/shapescript-plugin@1.0.0` — `presentShapeScript`: 3D visualizations from ShapeScript
+
+The 3D tool is now an in-tree package instead of the npm-installed
+`@gui-chat-plugin/present3d`. The ShapeScript parser, evaluator and Three.js renderer
+(CSG via `three-bvh-csg`) were copied from the upstream MIT source and ported to this
+repository's strict TypeScript settings (`noUncheckedIndexedAccess` +
+`exactOptionalPropertyTypes`), which the upstream configs do not enable.
+
+**The tool is renamed `present3D` → `presentShapeScript`**, and its endpoint moves from the
+legacy `/api/present3d` extras path to the standard META-owned `/api/shapescript`. The Artist
+role's `availablePlugins` follows the rename. Anything holding the old tool name — a saved
+session's tool results, an external caller posting to `/api/present3d` — no longer resolves.
+
+Why copy rather than keep importing: the plugin's UI and language surface are ours to evolve
+now (the role prompt still told the model "ShapeScript only accepts literal numbers", which the
+2.0 parser has not been true of for some time), and an in-tree package builds and typechecks
+under the same gates as the rest of the repo.
+
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.7.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@1.0.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+
 ---
 
 ## [1.15.1] - 2026-09-03

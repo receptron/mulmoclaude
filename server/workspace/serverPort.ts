@@ -16,7 +16,33 @@
 // sees either the old contents or the new ones and never a state in between.
 import type { AddressInfo } from "node:net";
 import { writeFileAtomic } from "../utils/files/index.js";
+import { env } from "../system/env.js";
 import { WORKSPACE_PATHS } from "./paths.js";
+
+// The port the listener actually got, remembered in-process (#3055).
+//
+// `env.port` is what the server was ASKED for; it walks forward off a busy
+// default (`Port 3001 busy → using 3002 instead`) and is `0` under `PORT=0`.
+// Every in-process consumer that hands the port to a CHILD — the MCP broker
+// gets it as `BASE_URL` — has to use the bound one, or the child addresses a
+// different server. When two instances run against one workspace and share a
+// `MULMOCLAUDE_AUTH_TOKEN`, that misdirection authenticates cleanly: the
+// stateless plugin dispatch succeeds on the wrong server while the
+// session-scoped `/api/internal/tool-result` push lands where the session does
+// not exist and is dropped, so no plugin view ever renders on the second
+// instance.
+let boundPort: number | null = null;
+
+/** Called once, from the listen callback, with `boundPortOf(...)`. */
+export function setBoundPort(port: number): void {
+  boundPort = port;
+}
+
+/** The bound port, falling back to the requested one before `listen` resolves
+ *  (module-load-time readers, tests, and any non-serving entry point). */
+export function getBoundPort(): number {
+  return boundPort ?? env.port;
+}
 
 /** Trailing newline so `cat .server-port` reads cleanly in a shell hook. */
 export function formatServerPort(port: number): string {

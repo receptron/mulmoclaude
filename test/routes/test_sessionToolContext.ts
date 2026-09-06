@@ -69,10 +69,10 @@ describe("sessionToolContext (#2754)", () => {
   it("gives each wired tool its own result, and never another tool's", async () => {
     session("s1");
     await pushToolResult("s1", { toolName: TOOL_NAMES.putQuestions, message: "q", data: { quiz: 1 } });
-    await pushToolResult("s1", { toolName: TOOL_NAMES.present3D, message: "3d", data: { scene: 2 } });
+    await pushToolResult("s1", { toolName: TOOL_NAMES.presentShapeScript, message: "3d", data: { scene: 2 } });
     const req = reqWith({ session: "s1" });
     assert.deepEqual(sessionToolContext(req, TOOL_NAMES.putQuestions).currentResult?.data, { quiz: 1 });
-    assert.deepEqual(sessionToolContext(req, TOOL_NAMES.present3D).currentResult?.data, { scene: 2 });
+    assert.deepEqual(sessionToolContext(req, TOOL_NAMES.presentShapeScript).currentResult?.data, { scene: 2 });
     assert.equal(sessionToolContext(req, TOOL_NAMES.mapControl).currentResult, undefined, "an untouched tool stays on the empty context");
     assert.equal(sessionToolContext(req, TOOL_NAMES.createMindMap).currentResult, undefined);
   });

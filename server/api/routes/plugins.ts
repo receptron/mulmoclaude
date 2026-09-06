@@ -14,7 +14,7 @@ import type { PresentCollectionArgs } from "../../../src/plugins/presentCollecti
 import { loadCollection, validateCollectionRecords } from "../../workspace/collections/index.js";
 import { defangForPrompt } from "@mulmoclaude/core/collection";
 import { executeOpenCanvas } from "../../../src/plugins/canvas/definition.js";
-import { executePresent3D } from "@gui-chat-plugin/present3d";
+import { executePresentShapeScript } from "@mulmoclaude/shapescript-plugin";
 import { executeMapControl } from "@gui-chat-plugin/google-map";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, serverError } from "../../utils/httpError.js";
@@ -50,7 +50,7 @@ interface PluginErrorResponse {
 //
 // Logging policy (#779): a single entry/success/error log here covers
 // every route that adopts this wrapper (mindmap / quiz / form /
-// canvas / present3d / presentSpreadsheet). Without it, plugin
+// canvas / shapescript / presentSpreadsheet). Without it, plugin
 // errors used to land as a generic 500 response with no server-log
 // trace — exactly the silent-failure pattern the audit is closing.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -385,10 +385,13 @@ bindRoute(
   }),
 );
 
-// present3d — 3D visualization
-router.post(
-  API_ROUTES.plugins.present3d,
-  wrapPluginExecute<Parameters<typeof executePresent3D>[1]>((req) => executePresent3D(sessionToolContext(req, TOOL_NAMES.present3D), req.body)),
+// presentShapeScript — 3D visualization from ShapeScript source
+bindRoute(
+  router,
+  API_ROUTES.shapescript.create,
+  wrapPluginExecute<Parameters<typeof executePresentShapeScript>[1]>((req) =>
+    executePresentShapeScript(sessionToolContext(req, TOOL_NAMES.presentShapeScript), req.body),
+  ),
 );
 
 // mapControl — Google Map (showLocation / Places / Directions etc.)
