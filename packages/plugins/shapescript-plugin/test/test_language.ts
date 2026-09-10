@@ -323,7 +323,9 @@ describe("upstream conventions", () => {
     withMesh("cylinder { size 1 3 }", (mesh) => near(extent(mesh).toArray(), [1, 3, 1], 1e-3));
     withMesh("cone { size 2 1 }", (mesh) => near(extent(mesh).toArray(), [2, 1, 2], 1e-3));
     withMesh("circle", (mesh) => near(extent(mesh).toArray(), [1, 1, 0], 1e-3));
-    withMesh("torus", (mesh) => near(extent(mesh).toArray().slice(0, 2), [1.4, 1.4], 1e-3));
+    withMesh("torus", (mesh) => near(extent(mesh).toArray().slice(0, 2), [1, 1], 1e-3));
+    withMesh("torus {\n size 2\n innerRadius 0.25\n}", (mesh) => near(extent(mesh).toArray(), [2, 2, 0.5], 1e-3));
+    assert.throws(() => astToThreeJS(parseShapeScript("torus {\n size 1\n innerRadius 0.5\n}")), /no radius left/);
   });
   it("reads orientation as roll yaw pitch in half-turns, applied Z then Y then X", () => {
     // 0.5 half-turns = 90°: the 2-long side swings from X onto Z.
@@ -342,6 +344,10 @@ describe("upstream conventions", () => {
       disposeObject3D(group);
     }
     assert.throws(() => astToThreeJS(parseShapeScript("cube { orientation 0.5 0 0 0 }")), /axis/);
+    // An axis is a direction: huge or tiny components must not overflow or underflow it away.
+    for (const magnitude of ["1e200", "1e-200"]) {
+      withMesh(`cube { orientation 0.5 0 ${magnitude} 0 size 2 1 1 }`, (mesh) => near(extent(mesh).toArray(), [1, 1, 2], 1e-6));
+    }
     assert.throws(() => astToThreeJS(parseShapeScript("cube { orientation 1 2 3 4 5 }")), /rotation/);
   });
   it("rotates clockwise for positive angles, like Euclid, and `rotate` is relative in half-turns", () => {
@@ -362,8 +368,14 @@ describe("upstream conventions", () => {
       mesh.geometry.computeBoundingBox();
       near([mesh.geometry.boundingBox!.min.x, mesh.geometry.boundingBox!.max.x], [5, 6]);
     });
-    // `scale` scales the frame.
+    // `scale` scales the frame; a lone value is uniform and evaluated ONCE,
+    // so `scale rnd` draws one number, not one per axis.
     withMesh("extrude path { scale 2 point 0 0 point 1 0 point 1 1 point 0 1 point 0 0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 4) < 1e-6));
+    withMesh("extrude path { scale rnd point 0 0 point 1 0 point 1 1 point 0 1 point 0 0 }", (mesh) => {
+      mesh.geometry.computeBoundingBox();
+      const box = mesh.geometry.boundingBox!;
+      near([box.max.x, box.max.y], [upstreamRnd(0), upstreamRnd(0)]);
+    });
   });
   it("treats `curve` as a Bézier control point, with implicit midpoints between consecutive controls", () => {
     // The octagon-of-controls idiom from the upstream docs draws a unit circle.

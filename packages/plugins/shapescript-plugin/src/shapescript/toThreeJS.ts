@@ -463,14 +463,8 @@ export class Converter {
         return new THREE.ConeGeometry(radius, height, this.detailLevel);
       }
 
-      case "torus": {
-        // A plugin extension (upstream has no torus); `size` is the outer
-        // diameter so it follows the same rule as the primitives above.
-        const outerRadius = node.properties.outerRadius ? this.evaluateNumber(node.properties.outerRadius) : size[0] / 2;
-        const innerRadius = node.properties.innerRadius ? this.evaluateNumber(node.properties.innerRadius) : outerRadius * 0.4;
-        this.requireExtent("torus", [outerRadius, innerRadius]);
-        return new THREE.TorusGeometry(outerRadius, innerRadius, Math.max(3, Math.floor(this.detailLevel / 2)), this.detailLevel);
-      }
+      case "torus":
+        return this.createTorus(node, size);
 
       case "circle": {
         const radius = (size[0] || 1) / 2;
@@ -492,6 +486,22 @@ export class Converter {
       default:
         throw new Error(`Unknown primitive: ${node.primitive}`);
     }
+  }
+
+  /** A plugin extension (upstream has no torus). `size` is the OVERALL
+   *  diameter, tube included, so it follows the same rule as the other curved
+   *  primitives: the ring radius is what is left once the tube is subtracted.
+   *  `outerRadius` (ring) and `innerRadius` (tube) override the derivation. */
+  private createTorus(node: ShapeNode, size: Vector3): THREE.BufferGeometry {
+    const TUBE_TO_RING = 0.4;
+    const overall = size[0] / 2;
+    const explicitTube = node.properties.innerRadius ? this.evaluateNumber(node.properties.innerRadius) : undefined;
+    const explicitRing = node.properties.outerRadius ? this.evaluateNumber(node.properties.outerRadius) : undefined;
+    const ringRadius = explicitRing ?? (explicitTube === undefined ? overall / (1 + TUBE_TO_RING) : overall - explicitTube);
+    const tubeRadius = explicitTube ?? ringRadius * TUBE_TO_RING;
+    if (ringRadius <= 0) throw new Error("`torus` tube is as wide as the whole shape — its ring has no radius left");
+    this.requireExtent("torus", [ringRadius, tubeRadius]);
+    return new THREE.TorusGeometry(ringRadius, tubeRadius, Math.max(3, Math.floor(this.detailLevel / 2)), this.detailLevel);
   }
 
   private materialColor(property: ShapeProperties["color"]): THREE.Color {
@@ -869,9 +879,12 @@ export class Converter {
     const components = this.rotationComponents(value);
     if (components.length === 4) {
       const [angle = 0, x = 0, y = 0, z = 0] = components;
-      const axis = new THREE.Vector3(x, y, z);
-      if (axis.lengthSq() === 0) throw new Error("Rotation axis must not be zero");
-      return new THREE.Quaternion().setFromAxisAngle(axis.normalize(), -angle * Math.PI);
+      // Scale by the largest component first: `lengthSq` of `1e200` overflows
+      // to infinity and `normalize` would collapse a valid axis to zero.
+      const largest = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+      if (largest === 0) throw new Error("Rotation axis must not be zero");
+      const axis = new THREE.Vector3(x / largest, y / largest, z / largest).normalize();
+      return new THREE.Quaternion().setFromAxisAngle(axis, -angle * Math.PI);
     }
     const [roll = 0, yaw = 0, pitch = 0] = components;
     return new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch * Math.PI, -yaw * Math.PI, -roll * Math.PI, "ZYX"));
@@ -1043,9 +1056,11 @@ export class Converter {
         case "translate":
           move(new THREE.Matrix4().makeTranslation(this.evaluateNumber(command.x), this.evaluateNumber(command.y), 0));
           break;
-        case "scale":
-          move(new THREE.Matrix4().makeScale(this.evaluateNumber(command.x), this.evaluateNumber(command.y), 1));
+        case "scale": {
+          const x = this.evaluateNumber(command.x);
+          move(new THREE.Matrix4().makeScale(x, command.y === undefined ? x : this.evaluateNumber(command.y), 1));
           break;
+        }
         case "for":
           this.runPathLoop(command, processCommand);
           break;

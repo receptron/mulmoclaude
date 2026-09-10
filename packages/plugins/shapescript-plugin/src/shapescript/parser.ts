@@ -1355,13 +1355,14 @@ export class Parser {
     return { type, x, y };
   }
 
-  /** `translate x [y]` / `scale x [y]` inside a path. A lone `scale s` is
-   *  uniform; a lone `translate x` moves along X only. */
+  /** `translate x [y]` / `scale x [y]` inside a path. A lone `translate x`
+   *  moves along X only; a lone `scale s` is uniform, recorded by leaving `y`
+   *  out rather than by copying the expression (which would evaluate it twice). */
   private parsePathVector(type: "translate" | "scale"): TranslateCommand | ScaleCommand {
     this.advance();
     const x = this.parsePathValue();
-    const fallback: Expression = type === "scale" ? x : { type: "number", value: 0 };
-    const y: Expression = this.startsValue() ? this.parsePathValue() : fallback;
+    if (type === "scale") return this.startsValue() ? { type, x, y: this.parsePathValue() } : { type, x };
+    const y: Expression = this.startsValue() ? this.parsePathValue() : { type: "number", value: 0 };
     return { type, x, y };
   }
 

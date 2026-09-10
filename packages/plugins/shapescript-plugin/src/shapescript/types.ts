@@ -286,10 +286,12 @@ export interface TranslateCommand {
   y: number | Expression;
 }
 
+/** `scale x [y]` inside a path. `y` absent means uniform: the one expression
+ *  is evaluated once and reused, so `scale rnd` cannot draw two values. */
 export interface ScaleCommand {
   type: "scale";
   x: number | Expression;
-  y: number | Expression;
+  y?: number | Expression;
 }
 
 export interface DetailPathCommand {

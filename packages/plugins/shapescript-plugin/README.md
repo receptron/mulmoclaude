@@ -67,7 +67,9 @@ USDZ units are metres, so `size 1` is one metre in AR.
 - **Variables & expressions**: `define`, arithmetic / comparison / boolean operators, parentheses
 - **Control flow**: `for … in … to … step`, `if` / `else`, `switch` / `case`
 - **Built-ins**: `round floor ceil abs sign sqrt pow min max`, `sin cos tan asin acos atan atan2`
-  (radians), `dot cross length normalize sum`, `rnd`, `seed N`
+  (radians), `dot cross length normalize sum`, `rnd`
+- **Commands**: `detail N`, `seed N` (both scoped to the enclosing block), `color`, and the relative
+  `rotate` / `translate` / `scale`
 
 A function call takes **no space** before its parenthesis: `sin(x)` is a call, `sin (x)` is not.
 
