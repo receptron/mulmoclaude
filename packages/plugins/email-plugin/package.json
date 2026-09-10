@@ -39,7 +39,7 @@
   "dependencies": {
     "imapflow": "^1.6.5",
     "mailparser": "^3.9.20",
-    "nodemailer": "^9.0.6"
+    "nodemailer": "^9.1.1"
   },
   "homepage": "https://github.com/receptron/mulmoclaude/tree/main/packages/plugins/email-plugin#readme",
   "repository": {
