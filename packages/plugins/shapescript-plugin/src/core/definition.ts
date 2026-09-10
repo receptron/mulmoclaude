@@ -79,8 +79,14 @@ for i in 1 to 8 {
 ### Primitives & Properties:
 
 Shapes: cube, sphere, cylinder, cone, torus, circle, square, polygon (sides 3–256)
-Properties: position X Y Z, rotation X Y Z, size X Y Z
+Properties: position X Y Z, orientation ROLL YAW PITCH (alias: rotation), size X Y Z
 Materials: color R G B (0-1), opacity (0-1)
+
+UNITS (same as upstream ShapeScript — https://shapescript.info/mac/):
+- size is the DIAMETER of sphere/cylinder/cone/circle/polygon/torus (a bare sphere fits the unit cube); for cube/square it is the edge length.
+- orientation / rotate use HALF-TURNS in roll (Z), yaw (Y), pitch (X) order: 0.5 = 90°, 1 = 180°. Positive is clockwise. A lone value is a roll: orientation 0.25 = 45° about Z. Angle-axis also works: orientation 0.5 0 1 0.
+- rotate / translate / scale as commands are relative and accumulate; orientation as a command is absolute.
+- Trig FUNCTIONS (sin, cos, …) still take radians. Convert with pi: a half-turn value h is h * pi radians.
 
 ### CSG Operations:
 union, difference, intersection, xor, stencil
@@ -91,10 +97,16 @@ difference {
     cube { size 1.5 }
 }
 
+### Paths:
+path { point X Y … } — coordinates are ABSOLUTE in the path's frame. Close a path by repeating the first point.
+- curve X Y is a quadratic Bézier CONTROL point: the outline passes through the point commands on either side, not through it. Two curves in a row get an implicit on-curve midpoint, so eight curves in an octagon draw a circle.
+- rotate (half-turns) / translate / scale inside a path move the frame for later points:
+  path { for 0 to 8 { curve 0 1 rotate 1 / 8 } }  // semicircle
+
 ### Builders:
-- extrude: extrude { polygon { sides 3 } } or extrude path { point 0 0 point 1 0 point 0 1 }
+- extrude: extrude { polygon { sides 3 } } or extrude path { point 0 0 point 1 0 point 0 1 point 0 0 } (size Z = depth, default 1)
 - fill: fill { square } or fill path { ... }
-- lathe: lathe path { point 1 0 curve 0 2 1 -1 } (revolves about Y)
+- lathe: lathe path { point 0 0 point 1 0 curve 1.5 1 point 1 2 point 0 2 } (revolves the XY profile about Y)
 - loft: loft { square translate 0 0 2 circle } (closed planar sections joined with caps)
 - hull: hull { cube { position -1 0 0 } cube { position 1 0 0 } } (convex envelope)
 - stencil preserves the first shape and paints its surface with later shapes' materials.
@@ -109,13 +121,13 @@ Loft sections must each have one perimeter and enclose an area; extrude/fill pri
 - Custom shapes with options:
 define post { option height 2 cylinder { size 0.2 height } }
 post { height 3 }
+- Random numbers: rnd (0–1) and seed N (scoped to the enclosing block, same generator as upstream)
 
 ### Compatibility:
-This plugin implements the documented modeling subset, not all upstream ShapeScript syntax.
-Function calls use name(...); trig functions and rotation/orientation properties use radians.
-Relative rotate/orientation commands and path rotate use turns (1 = 360 degrees).
-Path point/curve coordinates are relative steps. Curves accept optional control-point offsets.
-Imports, textures, text/fonts, arbitrary objects, and general user-defined functions are not supported.
+This plugin implements the documented modeling subset, not all upstream ShapeScript syntax; units and
+path semantics follow upstream, so a script written against the upstream docs renders the same here.
+Function calls use name(...). Imports, textures, text/fonts, lights/cameras, arbitrary objects,
+hex/named colours, and general user-defined functions are not supported.
 
 ### Comments:
 // Single-line comment

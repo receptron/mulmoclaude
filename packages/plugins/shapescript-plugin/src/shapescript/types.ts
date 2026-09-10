@@ -72,6 +72,7 @@ export type SceneNode =
   | HullNode
   | GroupNode
   | DetailNode
+  | SeedNode
   | PathNode
   | BackgroundNode
   | TextureNode
@@ -169,6 +170,12 @@ export interface DetailNode {
   value: number | Expression;
 }
 
+/** `seed N` — reseeds the `rnd` sequence for the rest of the enclosing block. */
+export interface SeedNode {
+  type: "seed";
+  value: Expression;
+}
+
 export interface BackgroundNode {
   type: "background";
   value: Expression; // Usually a string (filename)
@@ -186,7 +193,7 @@ export interface ColorNode {
 
 export interface RotateNode {
   type: "rotate";
-  value: Expression; // Rotation value (half-turns) or tuple - relative/cumulative
+  value: Expression; // `roll yaw pitch` in half-turns, or `angle x y z` — relative/cumulative
 }
 
 export interface OrientationNode {
@@ -251,7 +258,7 @@ export interface PathNode {
   commands: PathCommand[];
 }
 
-export type PathCommand = DefineNode | PointCommand | CurveCommand | RotateCommand | TranslateCommand | DetailPathCommand | ForLoopPathCommand;
+export type PathCommand = DefineNode | PointCommand | CurveCommand | RotateCommand | TranslateCommand | ScaleCommand | DetailPathCommand | ForLoopPathCommand;
 
 export interface PointCommand {
   type: "point";
@@ -259,21 +266,28 @@ export interface PointCommand {
   y: number | Expression;
 }
 
+/** A quadratic Bézier CONTROL point. The curve passes through the neighbouring
+ *  `point`s, not through this one; two `curve`s in a row get an implicit
+ *  on-curve midpoint between them, as upstream does. */
 export interface CurveCommand {
   type: "curve";
   x: number | Expression;
   y: number | Expression;
-  controlX?: number | Expression;
-  controlY?: number | Expression;
 }
 
 export interface RotateCommand {
   type: "rotate";
-  angle: number | Expression; // In ShapeScript, 1 = 360 degrees
+  angle: number | Expression; // half-turns: 0.5 = 90°, positive = clockwise
 }
 
 export interface TranslateCommand {
   type: "translate";
+  x: number | Expression;
+  y: number | Expression;
+}
+
+export interface ScaleCommand {
+  type: "scale";
   x: number | Expression;
   y: number | Expression;
 }
@@ -315,6 +329,7 @@ export enum TokenType {
   POINT = "POINT",
   CURVE = "CURVE",
   DETAIL = "DETAIL",
+  SEED = "SEED",
   BACKGROUND = "BACKGROUND",
   TEXTURE = "TEXTURE",
 

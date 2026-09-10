@@ -2,16 +2,53 @@ import { Expression, Vector3, Color } from "./types";
 
 export type Value = number | boolean | string | Value[];
 
-export class SymbolTable {
-  private scopes: Map<string, Value>[] = [];
+/** Upstream's `rnd` generator, bit for bit: a 32-bit LCG kept in a double,
+ *  `x = (x * 1664525 + 1013904223) mod 2^32`, returning `x / 2^32`. Matching
+ *  it means `seed 57` scatters shapes exactly as it does in the upstream app.
+ *  A class, not a closure, because scopes SHARE it: a nested block advances
+ *  its parent's sequence, but `seed` inside the block replaces only the
+ *  block's own reference (see `SymbolTable.reseed`). */
+export class RandomSequence {
+  private static readonly MODULUS = 4294967296;
+  private state: number;
 
-  constructor() {
-    this.pushScope();
+  constructor(seed: number) {
+    this.state = RandomSequence.wrap(seed);
+  }
+
+  private static wrap(value: number): number {
+    const wrapped = value % RandomSequence.MODULUS;
+    return Number.isFinite(wrapped) ? (wrapped < 0 ? wrapped + RandomSequence.MODULUS : wrapped) : 0;
+  }
+
+  next(): number {
+    this.state = RandomSequence.wrap(this.state * 1664525 + 1013904223);
+    return this.state / RandomSequence.MODULUS;
+  }
+}
+
+interface Scope {
+  values: Map<string, Value>;
+  random: RandomSequence;
+}
+
+export class SymbolTable {
+  private scopes: Scope[] = [];
+
+  constructor(seed: number = DEFAULT_RANDOM_SEED) {
+    this.scopes.push({ values: new Map(), random: new RandomSequence(seed) });
     for (const [name, value] of Object.entries({ pi: Math.PI, tau: 2 * Math.PI, true: true, false: false })) this.set(name, value);
   }
 
+  private innermost(): Scope {
+    const scope = this.scopes[this.scopes.length - 1];
+    if (scope === undefined) throw new Error("SymbolTable has no active scope");
+    return scope;
+  }
+
   pushScope(): void {
-    this.scopes.push(new Map());
+    // The child shares its parent's sequence, as upstream's child context does.
+    this.scopes.push({ values: new Map(), random: this.innermost().random });
   }
 
   popScope(): void {
@@ -20,18 +57,26 @@ export class SymbolTable {
     }
   }
 
+  /** `seed N`: a fresh sequence for THIS scope only. The parent keeps the
+   *  sequence it had, so `rnd` after the closing brace carries on from there. */
+  reseed(seed: number): void {
+    this.innermost().random = new RandomSequence(seed);
+  }
+
+  nextRandom(): number {
+    return this.innermost().random.next();
+  }
+
   set(name: string, value: Value): void {
-    const scope = this.scopes[this.scopes.length - 1];
-    if (scope === undefined) throw new Error("SymbolTable has no active scope");
-    scope.set(name, value);
+    this.innermost().values.set(name, value);
   }
 
   get(name: string): Value | undefined {
     // Search from innermost to outermost scope
     for (let i = this.scopes.length - 1; i >= 0; i--) {
       const scope = this.scopes[i];
-      if (scope?.has(name)) {
-        return scope.get(name);
+      if (scope?.values.has(name)) {
+        return scope.values.get(name);
       }
     }
     return undefined;
@@ -168,28 +213,28 @@ function toBoolean(value: Value): boolean {
  *  can take different branches, so `if rnd < .5 { cube } else { … }` could
  *  validate clean and then fail in the viewport, which is exactly the failure
  *  the validation exists to prevent. A seeded generator makes both runs agree,
- *  and re-rendering a model on every keystroke stops reshuffling it. */
-export const DEFAULT_RANDOM_SEED = 0x9e3779b9;
-
-/** mulberry32 — small, fast, and good enough for scattering shapes. */
-function seededRandom(seed: number): () => number {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+ *  and re-rendering a model on every keystroke stops reshuffling it.
+ *
+ *  Zero, like upstream, so a script's `rnd` values here are the ones the
+ *  upstream app shows for it. */
+export const DEFAULT_RANDOM_SEED = 0;
 
 export class Evaluator {
   private symbols: SymbolTable;
-  private readonly random: () => number;
 
-  constructor(symbols?: SymbolTable, seed: number = DEFAULT_RANDOM_SEED) {
-    this.symbols = symbols || new SymbolTable();
-    this.random = seededRandom(seed);
+  constructor(symbols?: SymbolTable, seed?: number) {
+    this.symbols = symbols || new SymbolTable(seed);
+    if (seed !== undefined) this.symbols.reseed(seed);
+  }
+
+  private random(): number {
+    return this.symbols.nextRandom();
+  }
+
+  /** The `seed` command. Scoped: see `SymbolTable.reseed`. */
+  reseed(seed: number): void {
+    if (!Number.isFinite(seed)) throw new Error("`seed` needs a finite number");
+    this.symbols.reseed(seed);
   }
 
   getSymbols(): SymbolTable {

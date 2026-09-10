@@ -202,7 +202,7 @@ describe("ShapeScript robustness", () => {
       return original.apply(this, args);
     };
     try {
-      const script = `detail ${MAX_DETAIL}\nextrude {\n  path {\n    for i in 1 to 60000 {\n      point i 1\n    }\n  }\n}`;
+      const script = `detail ${MAX_DETAIL}\nextrude {\n  path {\n    for i in 1 to 60000 {\n      point i sqrt(i)\n    }\n  }\n}`;
       assert.throws(() => astToThreeJS(parseShapeScript(script)), ShapeScriptLimitError);
     } finally {
       THREE.BufferGeometry.prototype.setAttribute = original;

@@ -87,7 +87,12 @@ for x in -5 to 5 {
 ### Primitives & CSG:
 Shapes: cube, sphere, cylinder, cone, torus
 CSG: union, difference, intersection, xor, stencil
-Properties: position, rotation, size, color, opacity
+Properties: position, orientation (alias rotation), size, color, opacity
+
+### Units (upstream ShapeScript conventions):
+- size = DIAMETER for sphere/cylinder/cone/circle/polygon/torus, edge length for cube/square. A bare sphere fits the unit cube.
+- orientation / rotate = HALF-TURNS as roll yaw pitch (Z, Y, X): 0.5 = 90°. A lone value is a roll. Trig functions still use radians.
+- Path point/curve coordinates are absolute; curve is a Bézier control point; rotate/translate/scale inside a path move the frame.
 
 Builders: extrude, fill, lathe, loft, hull. Example: loft { square translate 0 0 2 circle }.
 Stencil preserves the first shape's volume and paints the intersecting surface.
