@@ -154,7 +154,7 @@ path { point X Y … } — coordinates are ABSOLUTE in the path's frame. Close a
 Loft sections must each have one perimeter and enclose an area; extrude/fill primitive profiles must lie in XY.
 
 ### Additional Expressions:
-- Constants: pi, tau, true, false
+- Constants: pi, true, false (tau exists here but NOT in the upstream app; write 2 * pi)
 - Scientific notation and unary plus: 1e-3, +2
 - Tuple/vector members: vector.x, vector.y, vector.z; color.red/green/blue/alpha
 - Tuple/string length: value.count; zero-based indexing: values[0]; ordinals: v.first v.second … v.last, v.allButFirst, v.allButLast

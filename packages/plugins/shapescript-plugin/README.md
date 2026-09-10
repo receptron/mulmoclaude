@@ -167,7 +167,7 @@ define offsets ((1 2 3), (4 5 6))
 cube { position offsets[0].x offsets[1].y offsets.count }
 ```
 
-Also supported: `pi`, `tau`, `true`, `false`, scientific notation, unary `+`,
+Also supported: `pi`, `tau` (plugin-only; upstream has no `tau`, so portable scripts write `2 * pi`), `true`, `false`, scientific notation, unary `+`,
 short-circuit `and`/`or`, string literals, `join`/`trim`, tuple arguments to `min`/`max`,
 zero-based tuple/string subscripts, `.count`, ordinal members `.first` … `.tenth`, `.last`,
 `.allButFirst`, `.allButLast`, vector `.x/.y/.z/.w`, color

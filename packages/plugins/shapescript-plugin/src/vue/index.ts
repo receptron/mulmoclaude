@@ -109,7 +109,7 @@ loft {
     circle
 }
 Stencil preserves the first shape's volume and paints the intersecting surface.
-Constants: pi, tau, true, false. Tuple/string access: values[0], vector.x, value.count.
+Constants: pi, true, false (avoid tau, upstream lacks it; write 2 * pi). Tuple/string access: values[0], vector.x, value.count.
 Polygon supports sides (3–256). String literals and join/trim are supported.
 Use the tool schema for exact syntax and builder limits. This is a modeling subset of upstream ShapeScript;
 imports, textures, text/fonts and general user-defined functions are not supported.
