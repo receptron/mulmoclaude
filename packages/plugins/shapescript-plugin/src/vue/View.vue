@@ -15,7 +15,11 @@
           <span class="material-icons">{{ showGrid ? "visibility_off" : "visibility" }}</span>
           {{ t.grid }}
         </button>
-        <button class="control-btn" :disabled="exporting || !!parseError" data-testid="shapescript-download-usdz" @click="downloadUsdz">
+        <!-- Disabled while the source panel holds unapplied edits: the export
+             is built from the APPLIED script, which is also what the viewport
+             renders, so a dirty editor would otherwise download a model the
+             user is no longer looking at. -->
+        <button class="control-btn" :disabled="exporting || !!parseError || hasChanges" data-testid="shapescript-download-usdz" @click="downloadUsdz">
           <span class="material-icons">download</span>
           {{ t.downloadUsdz }}
         </button>
@@ -369,13 +373,15 @@ function triggerBlobDownload(bytes: Uint8Array<ArrayBuffer>, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/** Build the USDZ in the browser from the script the view is showing — no
- *  round trip, and no file layer needed, so it works on a host with neither.
- *  The scene is rebuilt solid rather than reusing the on-screen objects, which
- *  may be wireframe. */
+/** Build the USDZ in the browser from the script the viewport is rendering —
+ *  the APPLIED one — with no round trip and no file layer, so it works on a
+ *  host with neither. The button is disabled while the editor is dirty, and
+ *  this re-checks so a stale click cannot export a model that differs from the
+ *  one on screen. The scene is rebuilt solid rather than reusing the on-screen
+ *  objects, which may be wireframe. */
 async function downloadUsdz() {
   const script = props.selectedResult.data?.script;
-  if (!script || exporting.value) return;
+  if (!script || exporting.value || hasChanges.value) return;
   exporting.value = true;
   exportError.value = null;
   try {

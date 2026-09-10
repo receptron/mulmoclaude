@@ -72,7 +72,12 @@ test.describe("shapescript plugin rendering", () => {
     await view.locator("summary").click();
     const editor = view.locator("textarea");
     const apply = view.locator("button.apply-btn");
+    const download = page.getByTestId("shapescript-download-usdz");
+    await expect(download).toBeEnabled();
     await editor.fill("cube { size missing }");
+    // A dirty editor cannot be exported: the USDZ is built from the APPLIED
+    // script, which is what the viewport shows, not from unsaved edits.
+    await expect(download).toBeDisabled();
     await apply.click();
     await expect(page.getByTestId("shapescript-parse-error")).toContainText("Undefined variable: missing");
     // Failed edits remain unsaved and can be corrected in place.
@@ -86,6 +91,7 @@ test.describe("shapescript plugin rendering", () => {
       await apply.click();
       await expect(page.getByTestId("shapescript-parse-error")).toHaveCount(0);
       await expect(apply).toBeDisabled();
+      await expect(download).toBeEnabled();
       await expect(view.locator("canvas")).toBeVisible();
     }
   });
