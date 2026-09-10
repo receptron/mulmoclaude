@@ -131,16 +131,36 @@ hull {
 }
 extrude { polygon { sides 5 } }
 fill { square }
-lathe path { point 0 0 point 1 0 curve 1.5 1 point 1 2 point 0 2 }
+lathe path {
+    point 0 0
+    point 1 0
+    curve 1.5 1
+    point 1 2
+    point 0 2
+}
 
 // Paths: absolute points, Bézier control points, a frame moved by rotate/translate/scale.
-extrude path { point 0 0 point 1 0 point 1 1 point 0 1 point 0 0 }
-fill path { for 0 to 8 { curve 0 1 rotate 1 / 8 } }
+extrude path {
+    point 0 0
+    point 1 0
+    point 1 1
+    point 0 1
+    point 0 0
+}
+fill path {
+    for 0 to 8 {
+        curve 0 1
+        rotate 1 / 8
+    }
+}
 
 // Stencil changes surface material without cutting away the first shape.
 stencil {
     cube { color 1 0 0 }
-    cube { position 0.5 0 0 color 0 1 0 }
+    cube {
+        position 0.5 0 0
+        color 0 1 0
+    }
 }
 
 define offsets ((1 2 3), (4 5 6))

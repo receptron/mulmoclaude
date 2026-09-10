@@ -29,7 +29,10 @@ export const SYSTEM_PROMPT = `Use the ${TOOL_NAME} tool to create interactive 3D
 
 For loops with variables (use loop variable in calculations):
 for i in 1 to 5 {
-    cube { position (i * 2 - 6) 0 0 size 1 }
+    cube {
+        position (i * 2 - 6) 0 0
+        size 1
+    }
 }
 
 For loops with step:
@@ -82,7 +85,10 @@ Parametric surface:
 for x in -5 to 5 {
     for z in -5 to 5 {
         define y (sin(x * 0.5) * cos(z * 0.5))
-        cube { position (x * 0.3) y (z * 0.3) size 0.2 }
+        cube {
+            position (x * 0.3) y (z * 0.3)
+            size 0.2
+        }
     }
 }
 
@@ -96,7 +102,12 @@ Properties: position, orientation (alias rotation), size, color, opacity
 - orientation / rotate = HALF-TURNS as roll yaw pitch (Z, Y, X): 0.5 = 90°. A lone value is a roll. Trig functions still use radians.
 - Path point/curve coordinates are absolute; curve is a Bézier control point; rotate/translate/scale inside a path move the frame.
 
-Builders: extrude, fill, lathe, loft, hull. Example: loft { square translate 0 0 2 circle }.
+Builders: extrude, fill, lathe, loft, hull. Example:
+loft {
+    square
+    translate 0 0 2
+    circle
+}
 Stencil preserves the first shape's volume and paints the intersecting surface.
 Constants: pi, tau, true, false. Tuple/string access: values[0], vector.x, value.count.
 Polygon supports sides (3–256). String literals and join/trim are supported.
