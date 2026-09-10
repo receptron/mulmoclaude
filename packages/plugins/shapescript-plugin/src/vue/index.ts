@@ -29,7 +29,10 @@ export const SYSTEM_PROMPT = `Use the ${TOOL_NAME} tool to create interactive 3D
 
 For loops with variables (use loop variable in calculations):
 for i in 1 to 5 {
-    cube { position (i * 2 - 6) 0 0 size 1 }
+    cube {
+        position (i * 2 - 6) 0 0
+        size 1
+    }
 }
 
 For loops with step:
@@ -54,6 +57,8 @@ Switch statements for multiple cases
 CRITICAL: Function calls require NO space between name and (
 - sin(x) ✓ correct
 - sin (x) ✗ wrong - this is NOT a function call!
+Separate arguments with spaces, upstream style: max(0 (j - 1)). Commas work here but not in the upstream app.
+One statement per line; the upstream app rejects two statements on one line.
 
 ### Best Practices:
 1. Use variables for repeated values
@@ -80,18 +85,32 @@ Parametric surface:
 for x in -5 to 5 {
     for z in -5 to 5 {
         define y (sin(x * 0.5) * cos(z * 0.5))
-        cube { position (x * 0.3) y (z * 0.3) size 0.2 }
+        cube {
+            position (x * 0.3) y (z * 0.3)
+            size 0.2
+        }
     }
 }
 
 ### Primitives & CSG:
 Shapes: cube, sphere, cylinder, cone, torus
 CSG: union, difference, intersection, xor, stencil
-Properties: position, rotation, size, color, opacity
+Properties: position, orientation (alias rotation), size, color, opacity
 
-Builders: extrude, fill, lathe, loft, hull. Example: loft { square translate 0 0 2 circle }.
+### Units (upstream ShapeScript conventions):
+- size = DIAMETER for sphere/cylinder/cone/circle/polygon/torus, edge length for cube/square. A bare sphere fits the unit cube.
+- orientation / rotate = HALF-TURNS as roll yaw pitch (Z, Y, X): 0.5 = 90°. A lone value is a roll. Trig functions still use radians.
+- Path point/curve coordinates are absolute; curve is a Bézier control point; rotate/translate/scale inside a path move the frame.
+- A path can carry its own position/orientation/size; give loft/extrude path children (not fill{}), as the upstream app requires.
+
+Builders: extrude, fill, lathe, loft, hull. Example:
+loft {
+    square
+    translate 0 0 2
+    circle
+}
 Stencil preserves the first shape's volume and paints the intersecting surface.
-Constants: pi, tau, true, false. Tuple/string access: values[0], vector.x, value.count.
+Constants: pi, true, false (avoid tau, upstream lacks it; write 2 * pi). Tuple/string access: values[0], vector.x, value.count.
 Polygon supports sides (3–256). String literals and join/trim are supported.
 Use the tool schema for exact syntax and builder limits. This is a modeling subset of upstream ShapeScript;
 imports, textures, text/fonts and general user-defined functions are not supported.

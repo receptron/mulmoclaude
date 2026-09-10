@@ -8,6 +8,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Changed
+
+#### `@mulmoclaude/shapescript-plugin@2.0.0` — upstream ShapeScript units and path semantics
+
+The plugin inherited unit conventions from present3D that upstream
+[ShapeScript](https://shapescript.info/mac/) does not use, so a script written against the
+upstream docs (which is what the agent has read) rendered wrong without any error. It now
+follows upstream:
+
+- `size` is the **diameter** of `sphere` / `cylinder` / `cone` / `circle` / `polygon` / `torus`
+  (was the radius, so every curved shape drew twice as large).
+- `orientation` (alias `rotation`) and `rotate` are **half-turns** as `roll yaw pitch`, applied
+  Z → Y → X, positive clockwise (were radians in XYZ order for the property, full turns for the
+  command). A lone value is a roll; `angle x y z` is accepted too.
+- Path `point` / `curve` coordinates are **absolute** in the path's frame, which `rotate` /
+  `translate` / `scale` move (were relative steps). `curve` is a quadratic Bézier **control
+  point** with implicit midpoints between consecutive controls (was an end point with an
+  optional 4-argument control offset, a syntax that no longer parses).
+- New `seed N` command, scoped to its block, and `rnd` uses upstream's generator with seed 0.
+- Call arguments are a value list, so upstream's `max(0 (j - 1))` parses alongside our
+  `max(0, j - 1)`; a script written the upstream way now opens in both. Ordinal members
+  `.first` … `.tenth`, `.last`, `.allButFirst`, `.allButLast` are accepted.
+
+**Breaking for saved `.shape` files** written against the old conventions — hence the major.
+The remaining gaps are tracked in `plans/feat-shapescript-upstream-parity.md`.
+
 ### Added
 
 #### `@mulmoclaude/shapescript-plugin@1.4.0` — USDZ export, for the agent and for the user
@@ -136,7 +162,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@1.4.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@2.0.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 

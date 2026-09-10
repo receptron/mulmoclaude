@@ -15,6 +15,12 @@ import {
   TextureNode,
   PathNode,
   PathCommand,
+  PointCommand,
+  CurveCommand,
+  TranslateCommand,
+  ScaleCommand,
+  ForLoopPathCommand,
+  SeedNode,
   Expression,
   ParseError,
   GroupNode,
@@ -137,6 +143,7 @@ class Lexer {
       point: TokenType.POINT,
       curve: TokenType.CURVE,
       detail: TokenType.DETAIL,
+      seed: TokenType.SEED,
       background: TokenType.BACKGROUND,
       texture: TokenType.TEXTURE,
       union: TokenType.UNION,
@@ -697,15 +704,17 @@ export class Parser {
         this.advance();
         const args: Expression[] = [];
 
-        this.withValueList(false, () => {
-          if (this.current().type !== TokenType.RPAREN) {
-            args.push(this.parseExpression());
-
-            while (this.current().type === TokenType.COMMA) {
-              this.advance();
-              if (this.current().type === TokenType.RPAREN) break;
-              args.push(this.parseExpression());
-            }
+        // The arguments are a VALUE LIST, exactly as the body of `( … )` is:
+        // `max(0 (j - 1))` is upstream's C-like spelling and `max(0, j - 1)`
+        // the one this plugin always took. Reading both through the tuple
+        // rules means a script can be written once for either parser.
+        this.withValueList(true, () => {
+          if (this.current().type === TokenType.RPAREN) return;
+          args.push(this.parseExpression());
+          if (this.current().type === TokenType.COMMA) {
+            this.parseCommaSeparated(args);
+          } else {
+            this.parseSpaceSeparated(args);
           }
         });
 
@@ -1188,6 +1197,11 @@ export class Parser {
     };
   }
 
+  private parseSeed(): SeedNode {
+    this.advance(); // consume 'seed'
+    return { type: "seed", value: this.parseExpression() };
+  }
+
   private parseBackground(): BackgroundNode {
     this.advance(); // consume 'background'
 
@@ -1290,195 +1304,113 @@ export class Parser {
 
   private parsePath(): PathNode {
     this.advance(); // consume 'path'
+    const properties: ShapeProperties = {};
+    const commands = this.parsePathBody("path", properties);
+    return Object.keys(properties).length === 0 ? { type: "path", commands } : { type: "path", commands, properties };
+  }
 
+  /** `{ … }` of a path or of a `for` inside one. Both accept the same
+   *  commands, so one reader serves both instead of two drifting copies.
+   *  Only the path itself (not a loop inside it) may carry the transform
+   *  options, which land in `properties`. */
+  private parsePathBody(where: string, properties?: ShapeProperties): PathCommand[] {
     this.expect(TokenType.LBRACE);
     this.skipNewlines();
-
     const commands: PathCommand[] = [];
-
     while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-      const token = this.current();
-
-      switch (token.type) {
-        case TokenType.DEFINE: {
-          // Handle define statements inside path blocks
-          // These don't produce path commands, just variable definitions
-          commands.push(this.parseDefine());
-          break;
-        }
-
-        case TokenType.DETAIL: {
-          this.advance();
-          const value = this.parseExpression();
-          commands.push({ type: "detail", value });
-          break;
-        }
-
-        case TokenType.POINT: {
-          this.advance();
-          const x = this.parsePathValue();
-          // Y is optional - defaults to 0 if not provided
-          let y: Expression = { type: "number", value: 0 };
-          if (this.startsValue()) {
-            y = this.parsePathValue();
-          }
-          commands.push({ type: "point", x, y });
-          break;
-        }
-
-        case TokenType.CURVE: {
-          this.advance();
-          const x = this.parsePathValue();
-          const y = this.parsePathValue();
-          // Optional control points
-          let controlX: Expression | undefined;
-          let controlY: Expression | undefined;
-
-          // Check if there's a potential third value (control point x)
-          if (this.startsValue()) {
-            controlX = this.parsePathValue();
-
-            // Try to parse fourth value (control point y)
-            if (this.startsValue()) {
-              controlY = this.parsePathValue();
-            }
-          }
-
-          commands.push({
-            type: "curve",
-            x,
-            y,
-            ...(controlX === undefined ? {} : { controlX }),
-            ...(controlY === undefined ? {} : { controlY }),
-          });
-          break;
-        }
-
-        case TokenType.ROTATE: {
-          this.advance();
-          const angle = this.parseExpression();
-          commands.push({ type: "rotate", angle });
-          break;
-        }
-
-        case TokenType.TRANSLATE: {
-          this.advance();
-          const x = this.parsePathValue();
-          const y = this.parsePathValue();
-          commands.push({ type: "translate", x, y });
-          break;
-        }
-
-        case TokenType.FOR: {
-          // Handle for loops inside path - expand them inline
-          this.advance(); // consume 'for'
-
-          // Check if there's a variable name (for i in 1 to 5) or direct range (for 1 to 5)
-          let variable = "_i"; // Default variable name
-          if (this.current().type === TokenType.IDENTIFIER && this.peek(1).type === TokenType.IN) {
-            variable = this.current().value as string;
-            this.advance(); // consume variable
-            this.expect(TokenType.IN); // consume 'in'
-          }
-
-          const from = this.parseExpression();
-          this.expect(TokenType.TO);
-          const to = this.parseExpression();
-
-          const step = this.current().type === TokenType.STEP ? (this.advance(), this.parseExpression()) : { type: "number" as const, value: 1 };
-
-          // Parse the body commands
-          this.expect(TokenType.LBRACE);
-          this.skipNewlines();
-
-          const bodyCommands: PathCommand[] = [];
-          while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-            const cmd = this.current();
-            switch (cmd.type) {
-              case TokenType.POINT: {
-                this.advance();
-                const x = this.parsePathValue();
-                // Y is optional - defaults to 0 if not provided
-                let y: Expression = { type: "number", value: 0 };
-                if (this.startsValue()) {
-                  y = this.parsePathValue();
-                }
-                bodyCommands.push({ type: "point", x, y });
-                break;
-              }
-              case TokenType.CURVE: {
-                this.advance();
-                const x = this.parsePathValue();
-                const y = this.parsePathValue();
-                // Optional control points
-                let controlX: Expression | undefined;
-                let controlY: Expression | undefined;
-
-                // Check if there's a potential third value (control point x)
-                if (this.startsValue()) {
-                  controlX = this.parsePathValue();
-
-                  // Try to parse fourth value (control point y)
-                  if (this.startsValue()) {
-                    controlY = this.parsePathValue();
-                  }
-                }
-
-                bodyCommands.push({
-                  type: "curve",
-                  x,
-                  y,
-                  ...(controlX === undefined ? {} : { controlX }),
-                  ...(controlY === undefined ? {} : { controlY }),
-                });
-                break;
-              }
-              case TokenType.ROTATE: {
-                this.advance();
-                const angle = this.parseExpression();
-                bodyCommands.push({ type: "rotate", angle });
-                break;
-              }
-              case TokenType.TRANSLATE: {
-                this.advance();
-                const x = this.parsePathValue();
-                const y = this.parsePathValue();
-                bodyCommands.push({ type: "translate", x, y });
-                break;
-              }
-              default:
-                throw new ParseError(`Unexpected token in path for loop: ${cmd.type}`, cmd.line, cmd.column);
-            }
-            this.skipNewlines();
-          }
-
-          this.expect(TokenType.RBRACE);
-
-          // Add the for loop command - it will be expanded during rendering
-          commands.push({
-            type: "for",
-            variable,
-            from,
-            to,
-            step,
-            commands: bodyCommands,
-          });
-          break;
-        }
-
-        default:
-          throw new ParseError(`Unexpected token in path: ${token.type}`, token.line, token.column);
+      if (properties !== undefined && this.parsePathProperty(properties)) {
+        this.skipNewlines();
+        continue;
       }
-
+      commands.push(this.parsePathCommand(where));
       this.skipNewlines();
     }
-
     this.expect(TokenType.RBRACE);
+    return commands;
+  }
 
-    return {
-      type: "path",
-      commands,
-    };
+  /** `position` / `orientation` (alias `rotation`) / `size` inside a path
+   *  block, as upstream allows on any shape. Returns false for anything else. */
+  private parsePathProperty(properties: ShapeProperties): boolean {
+    const type = this.current().type;
+    const key =
+      type === TokenType.POSITION
+        ? "position"
+        : type === TokenType.SIZE
+          ? "size"
+          : type === TokenType.ORIENTATION || type === TokenType.ROTATION
+            ? "orientation"
+            : undefined;
+    if (key === undefined) return false;
+    this.advance();
+    properties[key] = this.parseVectorOrExpression();
+    return true;
+  }
+
+  private parsePathCommand(where: string): PathCommand {
+    const token = this.current();
+    switch (token.type) {
+      case TokenType.DEFINE:
+        return this.parseDefine();
+      case TokenType.DETAIL: {
+        this.advance();
+        return { type: "detail", value: this.parseExpression() };
+      }
+      case TokenType.POINT:
+      case TokenType.CURVE:
+        return this.parsePathPoint(token.type === TokenType.POINT ? "point" : "curve");
+      case TokenType.ROTATE: {
+        this.advance();
+        return { type: "rotate", angle: this.parseExpression() };
+      }
+      case TokenType.TRANSLATE:
+      case TokenType.SCALE:
+        return this.parsePathVector(token.type === TokenType.TRANSLATE ? "translate" : "scale");
+      case TokenType.FOR:
+        return this.parsePathFor();
+      default:
+        throw new ParseError(`Unexpected token in ${where}: ${token.type}`, token.line, token.column);
+    }
+  }
+
+  /** `point x [y]` / `curve x [y]` — absolute coordinates in the path's local
+   *  frame, as upstream. Y defaults to 0. */
+  private parsePathPoint(type: "point" | "curve"): PointCommand | CurveCommand {
+    this.advance();
+    const x = this.parsePathValue();
+    const y: Expression = this.startsValue() ? this.parsePathValue() : { type: "number", value: 0 };
+    return { type, x, y };
+  }
+
+  /** `translate x [y]` / `scale x [y]` inside a path. A lone `translate x`
+   *  moves along X only; a lone `scale s` is uniform, recorded by leaving `y`
+   *  out rather than by copying the expression (which would evaluate it twice). */
+  private parsePathVector(type: "translate" | "scale"): TranslateCommand | ScaleCommand {
+    this.advance();
+    const x = this.parsePathValue();
+    if (type === "scale") return this.startsValue() ? { type, x, y: this.parsePathValue() } : { type, x };
+    const y: Expression = this.startsValue() ? this.parsePathValue() : { type: "number", value: 0 };
+    return { type, x, y };
+  }
+
+  private parsePathFor(): ForLoopPathCommand {
+    this.advance(); // consume 'for'
+
+    // Check if there's a variable name (for i in 1 to 5) or direct range (for 1 to 5)
+    let variable = "_i"; // Default variable name
+    if (this.current().type === TokenType.IDENTIFIER && this.peek(1).type === TokenType.IN) {
+      variable = this.current().value as string;
+      this.advance(); // consume variable
+      this.expect(TokenType.IN); // consume 'in'
+    }
+
+    const from = this.parseExpression();
+    this.expect(TokenType.TO);
+    const to = this.parseExpression();
+    const step = this.current().type === TokenType.STEP ? (this.advance(), this.parseExpression()) : { type: "number" as const, value: 1 };
+
+    // The loop is expanded during rendering.
+    return { type: "for", variable, from, to, step, commands: this.parsePathBody("path for loop") };
   }
 
   private parseNode(): SceneNode | null {
@@ -1571,6 +1503,9 @@ export class Parser {
 
       case TokenType.DETAIL:
         return this.parseDetail();
+
+      case TokenType.SEED:
+        return this.parseSeed();
 
       case TokenType.BACKGROUND:
         return this.parseBackground();

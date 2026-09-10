@@ -19,6 +19,9 @@ import {
   DetailNode,
   PathNode,
   PathCommand,
+  PointCommand,
+  CurveCommand,
+  ForLoopPathCommand,
   CustomShapeNode,
   ColorNode,
   RotateNode,
@@ -32,6 +35,23 @@ import {
 } from "./types";
 import { Evaluator, SymbolTable, Value } from "./evaluator";
 import { disposeObject3D, disposeScratch } from "./dispose";
+
+/** A path point in path space, after the path's local transform. */
+interface PathPoint {
+  x: number;
+  y: number;
+  curved: boolean;
+}
+
+const PATH_POINT_EPSILON = 1e-9;
+
+function samePathPoint(a: PathPoint, b: PathPoint): boolean {
+  return Math.abs(a.x - b.x) < PATH_POINT_EPSILON && Math.abs(a.y - b.y) < PATH_POINT_EPSILON;
+}
+
+function midPathPoint(a: PathPoint, b: PathPoint): PathPoint {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, curved: false };
+}
 
 export interface ConversionOptions {
   wireframe?: boolean;
@@ -47,8 +67,9 @@ export interface ConversionOptions {
   /** Hard ceiling on the wall-clock time one conversion may spend. See
    *  `DEFAULT_MAX_DURATION_MS`. */
   maxDurationMs?: number;
-  /** Seed for `rnd` / `rand()`. Defaults to `DEFAULT_RANDOM_SEED`, which is
-   *  what keeps server validation and browser rendering on the same branch. */
+  /** Starting seed for `rnd` / `rand()`, which a `seed` command in the script
+   *  overrides. Defaults to `DEFAULT_RANDOM_SEED`, which is what keeps server
+   *  validation and browser rendering on the same branch. */
   randomSeed?: number;
 }
 
@@ -286,6 +307,9 @@ export class Converter {
       case "detail":
         this.handleDetail(node);
         return null; // Detail doesn't create geometry
+      case "seed":
+        this.evaluator.reseed(this.evaluateNumber(node.value));
+        return null;
       case "color":
         this.handleColorCommand(node);
         return null;
@@ -307,7 +331,7 @@ export class Converter {
         const shape = this.buildPath(node);
         this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
         this.requireEnclosedArea(shape, "path");
-        const mesh = this.makeMesh(new THREE.ShapeGeometry(shape), this.createMaterial({ properties: {} }));
+        const mesh = this.makeMesh(this.placePath(new THREE.ShapeGeometry(shape), node), this.createMaterial({ properties: {} }));
         this.applyCurrentTransform(mesh);
         return mesh;
       }
@@ -417,13 +441,15 @@ export class Converter {
         this.requireExtent("cube", size);
         return new THREE.BoxGeometry(size[0], size[1], size[2]);
 
+      // `size` is the DIAMETER of every curved primitive, as upstream: a
+      // `sphere` with no size fits the unit cube, not a 2-unit one.
       case "sphere":
         this.requireExtent("sphere", size);
-        return new THREE.SphereGeometry(1, this.detailLevel, this.detailLevel).scale(...size);
+        return new THREE.SphereGeometry(0.5, this.detailLevel, this.detailLevel).scale(...size);
 
       case "cylinder": {
-        const radiusTop = node.properties.radiusTop ? this.evaluateNumber(node.properties.radiusTop) : size[0];
-        const radiusBottom = node.properties.radiusBottom ? this.evaluateNumber(node.properties.radiusBottom) : size[0];
+        const radiusTop = node.properties.radiusTop ? this.evaluateNumber(node.properties.radiusTop) : size[0] / 2;
+        const radiusBottom = node.properties.radiusBottom ? this.evaluateNumber(node.properties.radiusBottom) : size[0] / 2;
         const height = node.properties.height ? this.evaluateNumber(node.properties.height) : size[1];
         // One radius may be zero — that is a cone, not a degenerate cylinder.
         this.requireExtent("cylinder", [radiusTop || radiusBottom, height]);
@@ -431,21 +457,17 @@ export class Converter {
       }
 
       case "cone": {
-        const radius = size[0];
+        const radius = size[0] / 2;
         const height = node.properties.height ? this.evaluateNumber(node.properties.height) : size[1];
         this.requireExtent("cone", [radius, height]);
         return new THREE.ConeGeometry(radius, height, this.detailLevel);
       }
 
-      case "torus": {
-        const outerRadius = node.properties.outerRadius ? this.evaluateNumber(node.properties.outerRadius) : size[0];
-        const innerRadius = node.properties.innerRadius ? this.evaluateNumber(node.properties.innerRadius) : 0.4;
-        this.requireExtent("torus", [outerRadius, innerRadius]);
-        return new THREE.TorusGeometry(outerRadius, innerRadius, Math.max(3, Math.floor(this.detailLevel / 2)), this.detailLevel);
-      }
+      case "torus":
+        return this.createTorus(node, size);
 
       case "circle": {
-        const radius = size[0] || 1;
+        const radius = (size[0] || 1) / 2;
         return new THREE.CircleGeometry(radius, this.detailLevel);
       }
 
@@ -455,7 +477,7 @@ export class Converter {
       }
 
       case "polygon": {
-        const radius = size[0] || 1;
+        const radius = (size[0] || 1) / 2;
         const sides = node.properties.sides === undefined ? 6 : this.evaluateNumber(node.properties.sides);
         if (!Number.isInteger(sides) || sides < 3 || sides > MAX_DETAIL) throw new Error(`Polygon sides must be an integer from 3 to ${MAX_DETAIL}`);
         return new THREE.CircleGeometry(radius, sides);
@@ -464,6 +486,22 @@ export class Converter {
       default:
         throw new Error(`Unknown primitive: ${node.primitive}`);
     }
+  }
+
+  /** A plugin extension (upstream has no torus). `size` is the OVERALL
+   *  diameter, tube included, so it follows the same rule as the other curved
+   *  primitives: the ring radius is what is left once the tube is subtracted.
+   *  `outerRadius` (ring) and `innerRadius` (tube) override the derivation. */
+  private createTorus(node: ShapeNode, size: Vector3): THREE.BufferGeometry {
+    const TUBE_TO_RING = 0.4;
+    const overall = size[0] / 2;
+    const explicitTube = node.properties.innerRadius ? this.evaluateNumber(node.properties.innerRadius) : undefined;
+    const explicitRing = node.properties.outerRadius ? this.evaluateNumber(node.properties.outerRadius) : undefined;
+    const ringRadius = explicitRing ?? (explicitTube === undefined ? overall / (1 + TUBE_TO_RING) : overall - explicitTube);
+    const tubeRadius = explicitTube ?? ringRadius * TUBE_TO_RING;
+    if (ringRadius <= 0) throw new Error("`torus` tube is as wide as the whole shape — its ring has no radius left");
+    this.requireExtent("torus", [ringRadius, tubeRadius]);
+    return new THREE.TorusGeometry(ringRadius, tubeRadius, Math.max(3, Math.floor(this.detailLevel / 2)), this.detailLevel);
   }
 
   private materialColor(property: ShapeProperties["color"]): THREE.Color {
@@ -823,16 +861,42 @@ export class Converter {
       object.position.set(...pos);
     }
 
-    if (properties.rotation) {
-      const rot = this.evaluateVector3(properties.rotation);
-      object.rotation.set(...rot);
+    // `orientation` is upstream's name; `rotation` is kept as an alias.
+    const orientation = properties.orientation ?? properties.rotation;
+    if (orientation) {
+      object.quaternion.copy(this.rotationOf(orientation));
     }
+  }
 
-    // orientation is an alias for rotation
-    if (properties.orientation) {
-      const rot = this.evaluateVector3(properties.orientation);
-      object.rotation.set(...rot);
+  /** An upstream rotation value as a quaternion.
+   *
+   *  `roll yaw pitch` are HALF-TURNS (0.5 = 90°) about Z, Y and X, applied in
+   *  that order, and positive is clockwise looking down each axis toward the
+   *  origin — Euclid stores the negated angle, so the sign is flipped here to
+   *  match. A lone number is a roll (`orientation 0.25` = 45° about Z, not a
+   *  uniform tuple like `size`), and four numbers are `angle x y z`. */
+  private rotationOf(value: Expression | Vector3): THREE.Quaternion {
+    const components = this.rotationComponents(value);
+    if (components.length === 4) {
+      const [angle = 0, x = 0, y = 0, z = 0] = components;
+      // Scale by the largest component first: `lengthSq` of `1e200` overflows
+      // to infinity and `normalize` would collapse a valid axis to zero.
+      const largest = Math.max(Math.abs(x), Math.abs(y), Math.abs(z));
+      if (largest === 0) throw new Error("Rotation axis must not be zero");
+      const axis = new THREE.Vector3(x / largest, y / largest, z / largest).normalize();
+      return new THREE.Quaternion().setFromAxisAngle(axis, -angle * Math.PI);
     }
+    const [roll = 0, yaw = 0, pitch = 0] = components;
+    return new THREE.Quaternion().setFromEuler(new THREE.Euler(-pitch * Math.PI, -yaw * Math.PI, -roll * Math.PI, "ZYX"));
+  }
+
+  private rotationComponents(value: Expression | Vector3): number[] {
+    const raw: Value = Array.isArray(value) && typeof value[0] === "number" ? (value as number[]) : this.evaluator.evaluate(value as Expression);
+    const components = (Array.isArray(raw) ? raw : [raw]).map((component) => (typeof component === "number" ? component : Number.NaN));
+    if (components.length === 0 || components.length > 4 || !components.every(Number.isFinite)) {
+      throw new Error("Expected a rotation of 1 to 3 half-turn components (roll yaw pitch) or an angle and an axis (angle x y z)");
+    }
+    return components;
   }
 
   private handleDetail(node: DetailNode): void {
@@ -853,18 +917,13 @@ export class Converter {
   }
 
   private handleRotateCommand(node: RotateNode): void {
-    const rotation = this.evaluateVector3(node.value);
     const transform = this.currentTransform();
-    const rotationMatrix = new THREE.Matrix4();
-
-    const euler = new THREE.Euler(rotation[0] * Math.PI * 2, rotation[1] * Math.PI * 2, rotation[2] * Math.PI * 2, "XYZ");
-
-    rotationMatrix.makeRotationFromEuler(euler);
-    transform.matrix.multiply(rotationMatrix);
+    // Post-multiplied, so the rotation is in the current local frame — the
+    // same composition as upstream's `Transform.rotated(by:)`.
+    transform.matrix.multiply(new THREE.Matrix4().makeRotationFromQuaternion(this.rotationOf(node.value)));
   }
 
   private handleOrientationCommand(node: OrientationNode): void {
-    const orientation = this.evaluateVector3(node.value);
     const transform = this.currentTransform();
 
     // Orientation sets absolute rotation, not cumulative like rotate
@@ -873,10 +932,8 @@ export class Converter {
     const scale = new THREE.Vector3();
     transform.matrix.decompose(position, new THREE.Quaternion(), scale);
 
-    const euler = new THREE.Euler(orientation[0] * Math.PI * 2, orientation[1] * Math.PI * 2, orientation[2] * Math.PI * 2, "XYZ");
-
     // Rebuild matrix with new orientation but preserve position and scale
-    transform.matrix.compose(position, new THREE.Quaternion().setFromEuler(euler), scale);
+    transform.matrix.compose(position, this.rotationOf(node.value), scale);
   }
 
   private handleTranslateCommand(node: TranslateNode): void {
@@ -934,11 +991,14 @@ export class Converter {
     const curveSegments = Math.max(1, Math.floor(this.detailLevel / 4));
     this.chargePathEstimate(shape, curveSegments, EXTRUDE_VERTICES_PER_POINT);
 
-    const geometry = new THREE.ExtrudeGeometry(shape, {
-      depth,
-      bevelEnabled: false,
-      curveSegments,
-    });
+    const geometry = this.placePath(
+      new THREE.ExtrudeGeometry(shape, {
+        depth,
+        bevelEnabled: false,
+        curveSegments,
+      }),
+      node.path,
+    );
 
     // Create material
     const material = this.createMaterial(node);
@@ -952,26 +1012,44 @@ export class Converter {
   }
 
   private buildPath(pathNode: PathNode): THREE.Shape {
-    const shape = new THREE.Shape();
-    let currentX = 0;
-    let currentY = 0;
-    let currentAngle = 0; // In radians
-    // `moveTo` sets the pen without adding a curve, so `curves.length` stays 0
-    // after the first point — which made the ORIGINAL check below `moveTo`
-    // every point and never `lineTo` any of them. The shape came out empty, so
-    // `extrude` and `fill` rendered nothing at all. Track the pen explicitly.
-    let penDown = false;
+    return this.shapeFromPathPoints(this.collectPathPoints(pathNode));
+  }
 
-    // Path coordinates ACCUMULATE — each command is relative to the last — so
-    // operands that are individually finite can still overflow the pen to
-    // infinity. `LatheGeometry` and friends then build with `NaN` positions,
-    // which no later check catches: a comparison against a `NaN` area is simply
-    // false, and validation would report success over invisible geometry.
-    const movePen = (dx: number, dy: number) => {
-      currentX += dx;
-      currentY += dy;
-      if (!Number.isFinite(currentX) || !Number.isFinite(currentY)) {
-        throw new Error("Path coordinates overflowed to a non-finite value — they accumulate, so each command adds to the previous one");
+  /** Bake the path's own `position` / `orientation` / `size` into geometry
+   *  built from it. Baked rather than set on the mesh so the consuming
+   *  builder's own options (an `extrude { position … }`) still apply on top,
+   *  the way they do upstream where the path is a placed shape. */
+  private placePath<T extends THREE.BufferGeometry>(geometry: T, pathNode: PathNode): T {
+    const properties = pathNode.properties;
+    if (!properties) return geometry;
+    const position = new THREE.Vector3(...this.evaluateVector3(properties.position));
+    const rotation = properties.orientation ?? properties.rotation;
+    const quaternion = rotation ? this.rotationOf(rotation) : new THREE.Quaternion();
+    const scale = new THREE.Vector3(...(properties.size ? this.evaluateVector3(properties.size) : [1, 1, 1]));
+    return geometry.applyMatrix4(new THREE.Matrix4().compose(position, quaternion, scale));
+  }
+
+  /** Run the path's commands and return its points in path space.
+   *
+   *  Coordinates are ABSOLUTE, as upstream: `point 1 0` is at x=1 however many
+   *  points came before it. What `translate`, `rotate` and `scale` move is the
+   *  path's local frame, which every later point is placed through — so
+   *  `for 0 to 8 { curve 0 1 rotate 1 / 8 }` walks a semicircle. The frame is
+   *  post-multiplied like the shape transform, and checked after every command
+   *  because individually finite operands can still overflow it. */
+  private collectPathPoints(pathNode: PathNode): PathPoint[] {
+    const frame = new THREE.Matrix4();
+    const points: PathPoint[] = [];
+
+    const place = (command: PointCommand | CurveCommand) => {
+      const position = new THREE.Vector3(this.evaluateNumber(command.x), this.evaluateNumber(command.y), 0).applyMatrix4(frame);
+      if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error("Path coordinates overflowed to a non-finite value");
+      points.push({ x: position.x, y: position.y, curved: command.type === "curve" });
+    };
+    const move = (step: THREE.Matrix4) => {
+      frame.multiply(step);
+      if (!frame.elements.every(Number.isFinite)) {
+        throw new Error("Path transform overflowed to a non-finite value — `translate`, `rotate` and `scale` accumulate inside a path");
       }
     };
 
@@ -984,104 +1062,95 @@ export class Converter {
         case "detail":
           this.handleDetail(command);
           break;
-        case "point": {
+        case "point":
+        case "curve":
+          place(command);
+          break;
+        case "rotate":
+          // Half-turns, clockwise positive — the same convention as `rotate` on a shape.
+          move(new THREE.Matrix4().makeRotationZ(-this.evaluateNumber(command.angle) * Math.PI));
+          break;
+        case "translate":
+          move(new THREE.Matrix4().makeTranslation(this.evaluateNumber(command.x), this.evaluateNumber(command.y), 0));
+          break;
+        case "scale": {
           const x = this.evaluateNumber(command.x);
-          const y = this.evaluateNumber(command.y);
-
-          // Apply current rotation
-          const cos = Math.cos(currentAngle);
-          const sin = Math.sin(currentAngle);
-          const rotatedX = x * cos - y * sin;
-          const rotatedY = x * sin + y * cos;
-
-          movePen(rotatedX, rotatedY);
-
-          if (penDown) {
-            shape.lineTo(currentX, currentY);
-          } else {
-            shape.moveTo(currentX, currentY);
-            penDown = true;
-          }
+          move(new THREE.Matrix4().makeScale(x, command.y === undefined ? x : this.evaluateNumber(command.y), 1));
           break;
         }
-
-        case "curve": {
-          const x = this.evaluateNumber(command.x);
-          const y = this.evaluateNumber(command.y);
-
-          // Apply current rotation
-          const cos = Math.cos(currentAngle);
-          const sin = Math.sin(currentAngle);
-          const rotatedX = x * cos - y * sin;
-          const rotatedY = x * sin + y * cos;
-
-          movePen(rotatedX, rotatedY);
-
-          // A curve needs a starting point like any other segment.
-          if (!penDown) {
-            shape.moveTo(currentX, currentY);
-            penDown = true;
-            break;
-          }
-          if (command.controlX !== undefined && command.controlY !== undefined) {
-            const cx = this.evaluateNumber(command.controlX);
-            const cy = this.evaluateNumber(command.controlY);
-            const rotatedCX = cx * cos - cy * sin;
-            const rotatedCY = cx * sin + cy * cos;
-            // The pen itself can stay finite while the control point does not,
-            // and a curve sampled from one returns `NaN` coordinates.
-            if (!Number.isFinite(currentX + rotatedCX) || !Number.isFinite(currentY + rotatedCY)) {
-              throw new Error("Curve control point overflowed to a non-finite value");
-            }
-            shape.quadraticCurveTo(currentX + rotatedCX, currentY + rotatedCY, currentX, currentY);
-          } else {
-            shape.lineTo(currentX, currentY);
-          }
+        case "for":
+          this.runPathLoop(command, processCommand);
           break;
-        }
-
-        case "rotate": {
-          // In ShapeScript, 1 = 360 degrees = 2π radians
-          const angle = this.evaluateNumber(command.angle);
-          currentAngle += angle * Math.PI * 2;
-          if (!Number.isFinite(currentAngle)) throw new Error("Path rotation overflowed to a non-finite angle");
-          break;
-        }
-
-        case "translate": {
-          movePen(this.evaluateNumber(command.x), this.evaluateNumber(command.y));
-          break;
-        }
-
-        case "for": {
-          // Expand for loop
-          this.symbols.pushScope();
-
-          const from = this.evaluateNumber(command.from);
-          const to = this.evaluateNumber(command.to);
-          const step = command.step ? this.evaluateNumber(command.step) : 1;
-
-          // Path commands never reach `convertNode`, so `maxNodes` cannot stop
-          // this one — the shared bounded iterator is the only ceiling here.
-          const iterations = this.rangeIterations(from, to, step);
-
-          for (const i of iterations) {
-            this.symbols.set(command.variable, i);
-            for (const bodyCmd of command.commands) {
-              processCommand(bodyCmd);
-            }
-          }
-
-          this.symbols.popScope();
-          break;
-        }
       }
     };
 
     for (const command of pathNode.commands) {
       processCommand(command);
     }
+    return points;
+  }
 
+  private runPathLoop(command: ForLoopPathCommand, processCommand: (command: PathCommand) => void): void {
+    this.symbols.pushScope();
+    try {
+      const from = this.evaluateNumber(command.from);
+      const to = this.evaluateNumber(command.to);
+      const step = command.step ? this.evaluateNumber(command.step) : 1;
+
+      // Path commands never reach `convertNode`, so `maxNodes` cannot stop
+      // this one — the shared bounded iterator is the only ceiling here.
+      for (const i of this.rangeIterations(from, to, step)) {
+        this.symbols.set(command.variable, i);
+        for (const bodyCmd of command.commands) {
+          processCommand(bodyCmd);
+        }
+      }
+    } finally {
+      this.symbols.popScope();
+    }
+  }
+
+  /** Join path points into an outline, treating `curve` points as upstream does.
+   *
+   *  A `curve` is the CONTROL point of a quadratic Bézier; the outline passes
+   *  through the `point`s on either side of it, not through the control point
+   *  itself. Two `curve`s in a row get an implicit on-curve point halfway
+   *  between them, which is how eight controls in an octagon draw a circle.
+   *  A closed path (first and last point equal) may start on a control point.
+   *  An OPEN path's first and last points are taken as corners even when they
+   *  are `curve`s — upstream extrapolates a tangent there; this does not. */
+  private shapeFromPathPoints(points: readonly PathPoint[]): THREE.Shape {
+    const shape = new THREE.Shape();
+    const first = points[0];
+    if (first === undefined) return shape;
+
+    const last = points[points.length - 1] as PathPoint;
+    const closed = points.length > 2 && samePathPoint(first, last);
+    const ring = closed ? points.slice(0, -1) : points;
+    const at = (index: number): PathPoint => ring[(index + ring.length) % ring.length] as PathPoint;
+
+    // Where a curve through `control` begins: the previous corner, or halfway
+    // from the previous control point.
+    const curveStart = (previous: PathPoint, control: PathPoint): PathPoint => (previous.curved ? midPathPoint(previous, control) : previous);
+    const start = closed && first.curved ? curveStart(at(-1), first) : first;
+    shape.moveTo(start.x, start.y);
+    // A curve ends ON the next corner, so that corner must not be drawn again
+    // as a zero-length line; a corner the script repeats deliberately still is.
+    let cornerDrawn = false;
+
+    for (let index = closed ? 0 : 1; index < ring.length; index++) {
+      const point = at(index);
+      const next = closed || index < ring.length - 1 ? at(index + 1) : undefined;
+      if (!point.curved || next === undefined) {
+        if (!cornerDrawn) shape.lineTo(point.x, point.y);
+        cornerDrawn = false;
+        continue;
+      }
+      const end = next.curved ? midPathPoint(point, next) : next;
+      shape.quadraticCurveTo(point.x, point.y, end.x, end.y);
+      cornerDrawn = !next.curved;
+    }
+    if (closed && !cornerDrawn && !samePathPoint(at(-1), start)) shape.lineTo(start.x, start.y);
     return shape;
   }
 
@@ -1125,6 +1194,9 @@ export class Converter {
       // No path found, return empty group
       throw new Error("Lathe requires a path child");
     }
+    // Upstream transforms the profile before revolving it; a 3D orientation
+    // on a profile has no 2D equivalent here, so refuse rather than guess.
+    if (pathNode.properties) throw new Error("`lathe` does not support position/orientation/size on its profile path — place the lathe itself instead");
 
     const shape = this.buildPath(pathNode);
     this.chargePathEstimate(shape, this.detailLevel, this.detailLevel + 1);
@@ -1223,7 +1295,7 @@ export class Converter {
       const shape = this.buildPath(pathNode);
       this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
       this.requireEnclosedArea(shape, "fill");
-      const geometry = new THREE.ShapeGeometry(shape);
+      const geometry = this.placePath(new THREE.ShapeGeometry(shape), pathNode);
       const mesh = this.makeMesh(geometry, this.createMaterial(node));
 
       this.applyExplicitTransforms(mesh, node.properties);

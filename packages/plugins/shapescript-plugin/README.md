@@ -61,15 +61,21 @@ USDZ units are metres, so `size 1` is one metre in AR.
 ## ShapeScript language
 
 - **Primitives**: `cube`, `sphere`, `cylinder`, `cone`, `torus`, `circle`, `square`, `polygon`
-- **Properties**: `position X Y Z`, `rotation X Y Z`, `size X Y Z`, `color R G B` (0–1), `opacity`
+- **Properties**: `position X Y Z`, `orientation ROLL YAW PITCH` (alias `rotation`), `size X Y Z`, `color R G B` (0–1), `opacity`
 - **CSG**: `union`, `difference`, `intersection`, `xor`, `stencil`
 - **Builders**: `extrude`, `loft`, `lathe`, `fill`, `hull`
 - **Variables & expressions**: `define`, arithmetic / comparison / boolean operators, parentheses
 - **Control flow**: `for … in … to … step`, `if` / `else`, `switch` / `case`
 - **Built-ins**: `round floor ceil abs sign sqrt pow min max`, `sin cos tan asin acos atan atan2`
-  (radians), `dot cross length normalize sum`
+  (radians), `dot cross length normalize sum`, `rnd`
+- **Commands**: `detail N`, `seed N` (both scoped to the enclosing block), `color`, and the relative
+  `rotate` / `translate` / `scale`
 
 A function call takes **no space** before its parenthesis: `sin(x)` is a call, `sin (x)` is not.
+Arguments are a value list, so upstream's `max(0 (j - 1))` and `max(0, j - 1)` both work; write the
+space-separated form when a script also has to open in the upstream app. Upstream's bare
+`max 0 (j - 1)` (no parentheses) is not supported. This parser also accepts several statements on
+one line (`define a 1 define b 2`); upstream requires one per line, so portable scripts keep to that.
 
 ## Storage
 
@@ -125,33 +131,77 @@ hull {
 }
 extrude { polygon { sides 5 } }
 fill { square }
-lathe path { point 1 0 curve 0 2 1 -1 }
+lathe path {
+    point 0 0
+    point 1 0
+    curve 1.5 1
+    point 1 2
+    point 0 2
+}
+
+// Paths: absolute points, Bézier control points, a frame moved by rotate/translate/scale.
+extrude path {
+    point 0 0
+    point 1 0
+    point 1 1
+    point 0 1
+    point 0 0
+}
+fill path {
+    for 0 to 8 {
+        curve 0 1
+        rotate 1 / 8
+    }
+}
 
 // Stencil changes surface material without cutting away the first shape.
 stencil {
     cube { color 1 0 0 }
-    cube { position 0.5 0 0 color 0 1 0 }
+    cube {
+        position 0.5 0 0
+        color 0 1 0
+    }
 }
 
 define offsets ((1 2 3), (4 5 6))
 cube { position offsets[0].x offsets[1].y offsets.count }
 ```
 
-Also supported: `pi`, `tau`, `true`, `false`, scientific notation, unary `+`,
+Also supported: `pi`, `tau` (plugin-only; upstream has no `tau`, so portable scripts write `2 * pi`), `true`, `false`, scientific notation, unary `+`,
 short-circuit `and`/`or`, string literals, `join`/`trim`, tuple arguments to `min`/`max`,
-zero-based tuple/string subscripts, `.count`, vector `.x/.y/.z/.w`, color
+zero-based tuple/string subscripts, `.count`, ordinal members `.first` … `.tenth`, `.last`,
+`.allButFirst`, `.allButLast`, vector `.x/.y/.z/.w`, color
 `.red/.green/.blue/.alpha` (or `.r/.g/.b/.a`), custom shape definitions with options,
 and `polygon { sides N }` (integer 3–256). Lathe samples curved profiles, and inline
 builder paths use the same parser as nested paths, including loops and definitions.
 
+## Units and path semantics — same as upstream
+
+Since 2.0.0 the plugin follows the [upstream ShapeScript](https://shapescript.info/mac/)
+conventions, so a script written against the upstream docs renders the same here:
+
+- `size` is the **diameter** of `sphere`, `cylinder`, `cone`, `circle`, `polygon` and `torus`
+  (a bare `sphere` fits the unit cube) and the edge length of `cube` / `square`.
+- `orientation` (alias `rotation`) and `rotate` take **half-turns** as `roll yaw pitch` —
+  rotations about Z, Y and X applied in that order, `0.5` = 90°, positive clockwise (Euclid's
+  sign). A lone value is a roll; four values are `angle x y z`. Trig *functions* still use radians.
+- Path `point` / `curve` coordinates are **absolute** in the path's frame; `rotate`, `translate`
+  and `scale` inside a path move that frame for later points. `curve` is a quadratic Bézier
+  **control point** — the outline passes through the neighbouring `point`s, and two `curve`s in
+  a row get an implicit on-curve midpoint (eight in an octagon draw a circle). A path block may
+  carry `position` / `orientation` / `size` of its own, which is how a `loft` section is placed in
+  3D; `lathe` refuses a placed profile.
+- `rnd` uses upstream's generator (`x = x · 1664525 + 1013904223 mod 2³²`, seed 0) and `seed N`
+  reseeds it for the enclosing block only.
+
+Deviations that remain: an *open* path whose first or last point is a `curve` treats it as a
+corner (upstream extrapolates a tangent), and path points are 2D. The gap list lives in
+[`plans/feat-shapescript-upstream-parity.md`](../../../plans/feat-shapescript-upstream-parity.md).
+
 ## Compatibility and limits
 
 This is the plugin's documented modeling subset, **not complete compatibility with
-[upstream ShapeScript](https://shapescript.info/mac/)**. It preserves existing plugin
-conventions: primitive sphere/circle sizes specify radii; rotation/orientation properties
-and trig functions use radians; relative rotate/orientation commands and path rotation
-use turns (`1 = 360°`). Path point/curve coordinates are relative steps, and curve
-control coordinates are offsets from the endpoint. Upstream uses different conventions.
+upstream ShapeScript**.
 
 Loft accepts ordered, closed planar sections with one perimeter each, resamples differing
 vertex counts, interpolates linearly, and triangulates the end caps. Sections must enclose
@@ -164,9 +214,10 @@ substituting different geometry. As with other polygonal CSG engines, degenerate
 self-intersecting inputs may fail.
 
 `rnd` and `rand()` draw from a seeded generator (`randomSeed`, default
-`DEFAULT_RANDOM_SEED`) rather than `Math.random()`: one script is evaluated twice — once
-on the server, which validates it, and again in the browser, which renders it — and an
-unseeded generator lets those two runs take different branches.
+`DEFAULT_RANDOM_SEED` = 0, overridable in-script with `seed`) rather than `Math.random()`:
+one script is evaluated twice — once on the server, which validates it, and again in the
+browser, which renders it — and an unseeded generator lets those two runs take different
+branches.
 
 Conversion limits cover nodes (100,000), loop/path work (100,000 iterations), detail (3–256),
 aggregate vertices (5,000,000, including CSG intermediates), and a coarse 30-second wall-clock
