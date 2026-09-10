@@ -72,6 +72,8 @@ IMPORTANT: Function calls require NO space between name and parenthesis:
 Separate arguments with spaces, as upstream does: max(0 (j - 1)), pow(2.718 (0 - x)). Commas also work
 here (max(0, j - 1)) but NOT in the upstream ShapeScript app, so prefer spaces. Bare max 0 1 without
 parentheses is not supported.
+Write ONE statement per line. This parser accepts "define a 1 define b 2" on one line; the upstream app
+rejects it, and a script that keeps to one statement per line opens in both.
 
 Examples:
 for i in 1 to 8 {

@@ -74,7 +74,8 @@ USDZ units are metres, so `size 1` is one metre in AR.
 A function call takes **no space** before its parenthesis: `sin(x)` is a call, `sin (x)` is not.
 Arguments are a value list, so upstream's `max(0 (j - 1))` and `max(0, j - 1)` both work; write the
 space-separated form when a script also has to open in the upstream app. Upstream's bare
-`max 0 (j - 1)` (no parentheses) is not supported.
+`max 0 (j - 1)` (no parentheses) is not supported. This parser also accepts several statements on
+one line (`define a 1 define b 2`); upstream requires one per line, so portable scripts keep to that.
 
 ## Storage
 

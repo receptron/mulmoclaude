@@ -55,6 +55,7 @@ CRITICAL: Function calls require NO space between name and (
 - sin(x) ✓ correct
 - sin (x) ✗ wrong - this is NOT a function call!
 Separate arguments with spaces, upstream style: max(0 (j - 1)). Commas work here but not in the upstream app.
+One statement per line; the upstream app rejects two statements on one line.
 
 ### Best Practices:
 1. Use variables for repeated values
