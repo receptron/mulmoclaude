@@ -35,35 +35,37 @@ import { workspacePath } from "../../workspace/workspace.js";
 import { log } from "../../system/logger/index.js";
 import type { McpTool } from "./index.js";
 
-/** The realpath of the artifacts root, created if it does not exist yet —
- *  both containment checks below require a realpath to compare against, and
+/** The realpath of `<workspace>/artifacts`, created if it does not exist yet
+ *  — both containment checks below require a realpath to compare against, and
  *  a first export on a fresh workspace has no `artifacts/` to realpath.
  *
- *  The ROOT's own realpath is trusted, deliberately: this is the host's
- *  policy everywhere artifacts are served or written — the `/artifacts/images`
- *  and `/artifacts/html` mounts root themselves at the realpath of that
- *  subdirectory (`makeCachedRealpath(WORKSPACE_PATHS.images)`), and the shared
- *  `runtime.files.artifacts` FileOps every plugin writes through is lexical.
- *  A workspace owner who symlinks `artifacts/` (to an external volume, say)
- *  chose that layout; it is not a path the model controls. What the model
- *  DOES control is `rel`, and every symlink below the root is refused. */
-async function artifactsRootReal(root: string): Promise<string> {
-  await mkdir(root, { recursive: true });
-  return realpath(root);
+ *  The artifacts directory must itself resolve INSIDE the workspace: an
+ *  `artifacts -> /outside` symlink would otherwise become the trusted root and
+ *  every later check would approve `/outside/shapes/...` (codex on #3065). A
+ *  workspace laid out that way gets a clear error naming the cause. */
+async function artifactsRootReal(workspace: string): Promise<string> {
+  const workspaceReal = await realpath(workspace);
+  const artifacts = path.join(workspaceReal, "artifacts");
+  await mkdir(artifacts, { recursive: true });
+  const artifactsReal = await realpath(artifacts);
+  if (artifactsReal !== artifacts && !artifactsReal.startsWith(workspaceReal + path.sep)) {
+    throw new Error("artifacts/ resolves outside the workspace; exportShapeScriptUsdz will not read or write through it");
+  }
+  return artifactsReal;
 }
 
 /**
- * `ShapeFileOps` over one artifacts directory, with the host's realpath-based
+ * `ShapeFileOps` over one workspace's `artifacts/`, with the host's realpath-based
  * containment: a symlinked `artifacts/shapes -> /outside` must neither be read
  * through nor written through, which a lexical `path.resolve` check would
  * allow (codex on #3065). Reads use `resolveWithinRoot` (the target's realpath
  * must stay in root); the write uses `resolveWriteWithinRoot`, which verifies
  * the existing ancestors instead, since the `.usdz` does not exist yet.
  *
- * Exported for tests; the tool binds it to `<workspace>/artifacts` below.
+ * Exported for tests; the tool binds it to the live workspace below.
  */
-export function makeArtifactsShapeFiles(rootFor: () => string): ShapeFileOps {
-  const readTarget = async (rel: string): Promise<string | null> => resolveWithinRoot(await artifactsRootReal(rootFor()), rel);
+export function makeArtifactsShapeFiles(workspaceFor: () => string): ShapeFileOps {
+  const readTarget = async (rel: string): Promise<string | null> => resolveWithinRoot(await artifactsRootReal(workspaceFor()), rel);
   return {
     read: async (rel) => {
       const abs = await readTarget(rel);
@@ -80,14 +82,14 @@ export function makeArtifactsShapeFiles(rootFor: () => string): ShapeFileOps {
       }
     },
     write: async (rel, content) => {
-      const abs = await resolveWriteWithinRoot(await artifactsRootReal(rootFor()), rel);
+      const abs = await resolveWriteWithinRoot(await artifactsRootReal(workspaceFor()), rel);
       if (abs === null) throw new Error(`path escapes artifacts/: ${rel}`);
       await writeFileAtomic(abs, content);
     },
   };
 }
 
-const shapeFiles = { artifacts: makeArtifactsShapeFiles(() => path.join(workspacePath, "artifacts")), byPath: makeByPathFileOps(SHAPE_EXTENSIONS) };
+const shapeFiles = { artifacts: makeArtifactsShapeFiles(() => workspacePath), byPath: makeByPathFileOps(SHAPE_EXTENSIONS) };
 
 export const exportShapeScriptUsdz: McpTool = {
   definition: {
