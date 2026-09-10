@@ -1,4 +1,4 @@
-# Auto-review every non-draft PR using OpenAI Codex CLI pointed at
+# Review a PR on request using OpenAI Codex CLI pointed at
 # Azure OpenAI. Runs alongside CodeRabbit + Sourcery; the verdict
 # marker (`CODEX VERDICT: LGTM` / `CHANGES REQUESTED`) matches the
 # `/codex-cross-review` skill so both human-driven and automated
@@ -27,32 +27,23 @@
 #                                  as a model — see the AZURE_MODEL comment below)
 #   - AZURE_OPENAI_API_VERSION    (defaults to `preview`)
 #
-# `workflow_dispatch` is also kept for manual re-runs (e.g.
-# requesting a re-review after argument changes, or running on a
-# closed PR for forensics).
+# MANUAL ONLY. It used to fire on every PR; the `pull_request` trigger
+# was removed deliberately, so nothing here starts on its own. Ask for
+# a review with the PR number:
+#
+#     gh workflow run "Codex auto-review" -f pr_number=<N>
+#
+# The same input serves a re-review after argument changes, or a run
+# against a closed PR for forensics.
 
 name: Codex auto-review
 
 on:
-  # Auto-fire on EVERY PR — including drafts and docs-only diffs.
-  # The user's directive: "極力制限しないでどんどんつかえる". Cost is
-  # bounded anyway by `concurrency.cancel-in-progress` (a push burst
-  # collapses to one review against the final commit) and the Azure
-  # deployment's 5000 TPM ceiling. A docs-only PR review is cheap
-  # and occasionally catches a typo or broken link the bots missed.
-  # `ready_for_review` is intentionally NOT in `types`: `opened` already
-  # fires on draft PRs, so promoting draft → ready would otherwise re-run
-  # Codex on the identical SHA (no new commits to review). If a fresh
-  # take is wanted on draft promotion, use `workflow_dispatch` instead.
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-  # Manual escalation: run on demand against any PR (re-review,
-  # one-off check on a closed PR, etc.).
+  # The only trigger: run on demand against any PR — open, draft or closed.
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "PR number to review (required for workflow_dispatch)"
+        description: "PR number to review"
         required: true
         type: string
 
@@ -68,7 +59,7 @@ env:
   CODEX_VERSION: "0.147.0"
 
 concurrency:
-  group: codex-review-pr-${{ github.event.pull_request.number || inputs.pr_number }}
+  group: codex-review-pr-${{ inputs.pr_number }}
   cancel-in-progress: true
 
 jobs:
@@ -176,7 +167,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          PR_NUMBER: ${{ inputs.pr_number }}
           REPO: ${{ github.repository }}
         run: |
           # `--sandbox danger-full-access` skips bubblewrap entirely.
