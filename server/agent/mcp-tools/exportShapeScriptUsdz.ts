@@ -22,6 +22,7 @@ import {
   EXPORT_USDZ_PROMPT,
   EXPORT_USDZ_SCHEMA,
   EXPORT_USDZ_TOOL_NAME,
+  EXPORT_USDZ_TOOL_TIMEOUT_MS,
   SHAPE_EXTENSIONS,
   type ShapeFileOps,
 } from "@mulmoclaude/shapescript-plugin";
@@ -63,6 +64,10 @@ export const exportShapeScriptUsdz: McpTool = {
     description: EXPORT_USDZ_DESCRIPTION,
     inputSchema: EXPORT_USDZ_SCHEMA,
   },
+  // Conversion alone may spend its full 30 s budget on a near-limit model, and
+  // the USDZ serialisation + write come after it; the bridge's 30 s default
+  // would abort an export that was about to succeed (codex on #3065).
+  bridgeTimeoutMs: EXPORT_USDZ_TOOL_TIMEOUT_MS,
   prompt: EXPORT_USDZ_PROMPT,
   handler: async (args: Record<string, unknown>): Promise<string> => {
     log.info("render", "exportShapeScriptUsdz: start", { args: Object.keys(args).join(",") });

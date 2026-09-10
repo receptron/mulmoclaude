@@ -8,8 +8,9 @@ import assert from "node:assert/strict";
 import type { FileOps } from "gui-chat-protocol";
 
 import { shapeScriptToUsdz, USDZ_MIME_TYPE } from "../src/export/usdz";
-import { executeExportShapeScriptUsdz, EXPORT_USDZ_SCHEMA, EXPORT_USDZ_TOOL_NAME } from "../src/export/tool";
+import { executeExportShapeScriptUsdz, EXPORT_USDZ_SCHEMA, EXPORT_USDZ_TOOL_NAME, EXPORT_USDZ_TOOL_TIMEOUT_MS } from "../src/export/tool";
 import { usdzArtifactPath } from "../src/core/paths";
+import { DEFAULT_MAX_DURATION_MS } from "../src/shapescript/toThreeJS";
 
 const CUBE = "cube { size 1 }";
 const CSG = "difference { sphere { size 2 } cylinder { size 1 3 1 } }";
@@ -106,6 +107,12 @@ describe("exportShapeScriptUsdz tool", () => {
   it("exposes its name on the constant and takes script XOR path", () => {
     assert.equal(EXPORT_USDZ_TOOL_NAME, "exportShapeScriptUsdz");
     assert.deepEqual(Object.keys(EXPORT_USDZ_SCHEMA.properties), ["script", "path", "title"]);
+  });
+
+  // The conversion may use its whole budget and the serialisation runs after
+  // it, so a host transport sized to the conversion alone aborts a valid export.
+  it("asks the host for more transport time than the conversion budget alone", () => {
+    assert.ok(EXPORT_USDZ_TOOL_TIMEOUT_MS > DEFAULT_MAX_DURATION_MS);
   });
 
   it("writes an inline script's export under artifacts/shapes and names it", async () => {

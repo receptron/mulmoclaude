@@ -19,7 +19,14 @@ export { isPresentableShapePath, isShapeArtifactPath, shapeArtifactPath, usdzArt
 // the `exportShapeScriptUsdz` tool, which needs only the generic `files`
 // capability — so it lives on `.` rather than a server-only entry.
 export { sceneToUsdz, shapeScriptToUsdz, USDZ_MIME_TYPE, USDZ_EXTENSION } from "../export/usdz";
-export { executeExportShapeScriptUsdz, EXPORT_USDZ_TOOL_NAME, EXPORT_USDZ_DESCRIPTION, EXPORT_USDZ_PROMPT, EXPORT_USDZ_SCHEMA } from "../export/tool";
+export {
+  executeExportShapeScriptUsdz,
+  EXPORT_USDZ_TOOL_NAME,
+  EXPORT_USDZ_DESCRIPTION,
+  EXPORT_USDZ_PROMPT,
+  EXPORT_USDZ_SCHEMA,
+  EXPORT_USDZ_TOOL_TIMEOUT_MS,
+} from "../export/tool";
 export type { ExportUsdzResult } from "../export/tool";
 export { samples } from "./samples";
 

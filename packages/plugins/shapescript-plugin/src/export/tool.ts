@@ -9,9 +9,17 @@
 
 import { locateShape, type ShapeScriptDispatchContext } from "../core/dispatch";
 import { usdzArtifactPath } from "../core/paths";
+import { DEFAULT_MAX_DURATION_MS } from "../shapescript/toThreeJS";
 import { shapeScriptToUsdz } from "./usdz";
 
 export const EXPORT_USDZ_TOOL_NAME = "exportShapeScriptUsdz";
+
+/** Milliseconds a host must allow this tool before its own transport gives up.
+ *  Conversion may legitimately spend its whole `DEFAULT_MAX_DURATION_MS` on a
+ *  near-limit model, and serialising the result to USDZ (plus the write) comes
+ *  AFTER that — a transport sized to the conversion alone aborts an export that
+ *  was about to succeed, exactly as #3056 found for `renderShapeScript`. */
+export const EXPORT_USDZ_TOOL_TIMEOUT_MS = DEFAULT_MAX_DURATION_MS + 30_000;
 
 export const EXPORT_USDZ_DESCRIPTION =
   "Export a ShapeScript model to a USDZ file (Apple's AR / 3D format, openable with AR Quick Look on iPhone, iPad and Mac) and save it under artifacts/shapes/. Returns the saved path. Takes the same source as presentShapeScript: inline `script`, or `path` to a saved .shape file. USDZ units are metres, so a `size 1` cube becomes a one-metre object in AR — scale the model in the script if that is not what the user wants.";
