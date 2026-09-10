@@ -369,15 +369,20 @@ function updateCameraState() {
   emit("updateResult", updatedResult);
 }
 
-/** Hand the browser a file to save. The object URL is revoked once the click
- *  has been dispatched — the download has its own reference by then. */
+/** How long the object URL outlives the click. The download is started
+ *  asynchronously by the browser, and revoking the URL before it has opened
+ *  the blob cancels it in some engines (codex on #3065); a minute is far past
+ *  any such window and the blob is a few hundred kilobytes. */
+const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
+
+/** Hand the browser a file to save. */
 function triggerBlobDownload(bytes: Uint8Array<ArrayBuffer>, filename: string) {
   const url = URL.createObjectURL(new Blob([bytes], { type: USDZ_MIME_TYPE }));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_REVOKE_DELAY_MS);
 }
 
 /** Build the USDZ in the browser from the script the viewport is rendering —
