@@ -10,6 +10,8 @@ const ko: Messages = {
   scriptEditorLabel: "ShapeScript 소스",
   applyChanges: "변경사항 적용",
   saveError: "저장 실패:",
+  downloadUsdz: "USDZ 다운로드",
+  exportError: "내보내기 실패:",
 };
 
 export default ko;

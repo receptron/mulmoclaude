@@ -15,6 +15,10 @@
           <span class="material-icons">{{ showGrid ? "visibility_off" : "visibility" }}</span>
           {{ t.grid }}
         </button>
+        <button class="control-btn" :disabled="exporting || !!parseError" data-testid="shapescript-download-usdz" @click="downloadUsdz">
+          <span class="material-icons">download</span>
+          {{ t.downloadUsdz }}
+        </button>
       </div>
     </div>
 
@@ -24,6 +28,10 @@
 
     <div v-if="saveError" class="error" data-testid="shapescript-save-error">
       <strong>{{ t.saveError }}</strong> {{ saveError }}
+    </div>
+
+    <div v-if="exportError" class="error" data-testid="shapescript-export-error">
+      <strong>{{ t.exportError }}</strong> {{ exportError }}
     </div>
 
     <div ref="viewport" class="viewport" data-testid="shapescript-viewport" />
@@ -52,6 +60,8 @@ import { readLoadShapeResult, readSaveShapeResult } from "../core/contract";
 import { parseShapeScript } from "../shapescript/parser";
 import { astToThreeJS } from "../shapescript/toThreeJS";
 import { removeAndDispose, disposeObject3D } from "../shapescript/dispose";
+import { shapeScriptToUsdz, USDZ_EXTENSION, USDZ_MIME_TYPE } from "../export/usdz";
+import { slugify } from "../core/paths";
 import { useT } from "../lang";
 
 interface CameraState {
@@ -88,6 +98,8 @@ const editableScript = ref(props.selectedResult.data?.script ?? "");
 const viewport = ref<HTMLDivElement | null>(null);
 const parseError = ref<string | null>(null);
 const saveError = ref<string | null>(null);
+const exportError = ref<string | null>(null);
+const exporting = ref(false);
 /** Bumped by every operation that establishes what the source now IS, so an
  *  older in-flight read can tell that it has been superseded. Not a ref: no
  *  template reads it, and reactivity would only invite a watcher. */
@@ -346,6 +358,36 @@ function updateCameraState() {
   emit("updateResult", updatedResult);
 }
 
+/** Hand the browser a file to save. The object URL is revoked once the click
+ *  has been dispatched — the download has its own reference by then. */
+function triggerBlobDownload(bytes: Uint8Array<ArrayBuffer>, filename: string) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: USDZ_MIME_TYPE }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Build the USDZ in the browser from the script the view is showing — no
+ *  round trip, and no file layer needed, so it works on a host with neither.
+ *  The scene is rebuilt solid rather than reusing the on-screen objects, which
+ *  may be wireframe. */
+async function downloadUsdz() {
+  const script = props.selectedResult.data?.script;
+  if (!script || exporting.value) return;
+  exporting.value = true;
+  exportError.value = null;
+  try {
+    const bytes = await shapeScriptToUsdz(script);
+    triggerBlobDownload(bytes, `${slugify(props.selectedResult.title)}${USDZ_EXTENSION}`);
+  } catch (error) {
+    exportError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    exporting.value = false;
+  }
+}
+
 function toggleWireframe() {
   showWireframe.value = !showWireframe.value;
 }
@@ -491,6 +533,15 @@ watch(
 
 .control-btn:hover {
   background: #4a4a4a;
+}
+
+.control-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.control-btn:disabled:hover {
+  background: #3a3a3a;
 }
 
 .control-btn .material-icons {

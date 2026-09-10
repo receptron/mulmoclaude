@@ -62,6 +62,7 @@ test.describe("shapescript plugin rendering", () => {
     await expect(page.locator('[data-testid="shapescript-view"]')).toBeVisible();
     await expect(page.locator('[data-testid="shapescript-viewport"]')).toBeVisible();
     await expect(page.locator('[data-testid="shapescript-parse-error"]')).toHaveCount(0);
+    await expect(page.getByTestId("shapescript-download-usdz")).toBeEnabled();
   });
 
   test("validates edited geometry and renders completed builders", async ({ page }) => {

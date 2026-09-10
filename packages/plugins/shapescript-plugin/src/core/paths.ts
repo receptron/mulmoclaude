@@ -71,6 +71,23 @@ export function shapeArtifactPath(title: string | undefined, now: Date = new Dat
   return { relPath, filePath: toWorkspaceArtifactPath(relPath) };
 }
 
+/** Build a fresh path for a USDZ export, beside the `.shape` sources in the
+ *  same flat `artifacts/shapes/` directory — an export is opened by name too,
+ *  and the user finds it next to the model it came from. Same collision rule as
+ *  `shapeArtifactPath`. */
+export function usdzArtifactPath(title: string | undefined, now: Date = new Date(), token: string = randomToken()): ShapePath {
+  const relPath = buildArtifactRelPath({
+    dir: SHAPE_DIR,
+    title,
+    ext: ".usdz",
+    fallback: SHAPE_FALLBACK_SLUG,
+    now,
+    partitioned: false,
+    suffix: token,
+  });
+  return { relPath, filePath: toWorkspaceArtifactPath(relPath) };
+}
+
 /**
  * Strict guard for a workspace-relative path the caller claims is an existing
  * ShapeScript artifact. Rejects anything outside `artifacts/shapes/`,

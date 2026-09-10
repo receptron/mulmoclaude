@@ -10,6 +10,8 @@ const en: Messages = {
   scriptEditorLabel: "ShapeScript source",
   applyChanges: "Apply Changes",
   saveError: "Save Failed:",
+  downloadUsdz: "Download USDZ",
+  exportError: "Export Failed:",
 };
 
 export default en;

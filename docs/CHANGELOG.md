@@ -8,6 +8,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Added
+
+#### `@mulmoclaude/shapescript-plugin@1.4.0` — USDZ export, for the agent and for the user
+
+A ShapeScript model can now leave the chat as a **USDZ** file — Apple's AR format, which AR Quick
+Look opens on iPhone, iPad and Mac. Two ways in, one implementation:
+
+- New MCP tool **`exportShapeScriptUsdz`** takes the same `script` / `path` source as
+  `presentShapeScript`, writes `artifacts/shapes/<slug>-<epoch>-<token>.usdz` beside the model,
+  and returns the path. Granted wherever `presentShapeScript` is (the Artist role).
+- A **Download USDZ** button in the `presentShapeScript` view builds the same file in the browser
+  from the script on screen — no round trip, no file layer — and hands it to the browser to save.
+
+The exporter is three's own `USDZExporter`, which needs a canvas only for textures; the plugin's
+materials are plain colours, so the identical `shapeScriptToUsdz` runs in Node and in the browser.
+The tool reaches storage only through the generic gui-chat-protocol `files` capability — an
+`{ artifacts, byPath? }` pair, and only `read` / `write` / `exists` of each — so another host
+wires it with one call and no new file layer. Units are metres in USDZ: a `size 1` cube is a one-metre object in
+AR, and the tool description says so.
+
 ### Changed
 
 #### `@mulmoclaude/shapescript-plugin@1.3.0` — the render TOOL moves in too
@@ -116,7 +136,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@1.3.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@1.4.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 

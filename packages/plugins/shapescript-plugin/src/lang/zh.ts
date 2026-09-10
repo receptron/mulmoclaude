@@ -10,6 +10,8 @@ const zh: Messages = {
   scriptEditorLabel: "ShapeScript 源码",
   applyChanges: "应用更改",
   saveError: "保存失败：",
+  downloadUsdz: "下载 USDZ",
+  exportError: "导出失败:",
 };
 
 export default zh;

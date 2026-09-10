@@ -11,10 +11,16 @@ export { TOOL_NAME, TOOL_DEFINITION } from "./definition";
 export { pluginCore, presentShapeScript, executePresentShapeScript } from "./plugin";
 export type { ShapeScriptExecuteContext } from "./plugin";
 export { executeShapeScriptDispatch, locateShape } from "./dispatch";
-export type { ShapeScriptDispatchContext } from "./dispatch";
+export type { ShapeScriptDispatchContext, ShapeFileOps } from "./dispatch";
 export { isShapeScriptDispatchArgs, readLoadShapeResult, readSaveShapeResult } from "./contract";
 export type { LoadShapeArgs, SaveShapeArgs, ShapeScriptDispatchArgs, ShapeScriptDispatchResult } from "./contract";
-export { isPresentableShapePath, isShapeArtifactPath, shapeArtifactPath, toArtifactsRelative, SHAPE_EXTENSIONS } from "./paths";
+export { isPresentableShapePath, isShapeArtifactPath, shapeArtifactPath, usdzArtifactPath, toArtifactsRelative, SHAPE_EXTENSIONS } from "./paths";
+// USDZ export: the pure serialiser (shared with the View's download button) and
+// the `exportShapeScriptUsdz` tool, which needs only the generic `files`
+// capability — so it lives on `.` rather than a server-only entry.
+export { sceneToUsdz, shapeScriptToUsdz, USDZ_MIME_TYPE, USDZ_EXTENSION } from "../export/usdz";
+export { executeExportShapeScriptUsdz, EXPORT_USDZ_TOOL_NAME, EXPORT_USDZ_DESCRIPTION, EXPORT_USDZ_PROMPT, EXPORT_USDZ_SCHEMA } from "../export/tool";
+export type { ExportUsdzResult } from "../export/tool";
 export { samples } from "./samples";
 
 // Re-export ShapeScript utilities

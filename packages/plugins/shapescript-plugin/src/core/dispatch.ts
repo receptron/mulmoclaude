@@ -2,18 +2,24 @@ import type { FileOps } from "gui-chat-protocol";
 import { isPresentableShapePath, isShapeArtifactPath, toArtifactsRelative } from "./paths";
 import type { ShapeScriptDispatchArgs } from "./contract";
 
+/** The three FileOps methods this plugin's file paths actually use. A host's
+ *  full `FileOps` satisfies it; so does a three-method object, which is what
+ *  lets a host wire the `exportShapeScriptUsdz` MCP tool without reaching into
+ *  its plugin runtime for a complete FileOps (that import cycles in MulmoClaude). */
+export type ShapeFileOps = Pick<FileOps, "read" | "write" | "exists">;
+
 /** Capabilities the dispatch router needs: the generic, shared
  *  `files.artifacts` FileOps, plus — for hosts that let presentShapeScript
  *  open sources outside `artifacts/shapes/` — `files.byPath`. */
 export interface ShapeScriptDispatchContext {
-  files: { artifacts: FileOps; byPath?: FileOps };
+  files: { artifacts: ShapeFileOps; byPath?: ShapeFileOps };
 }
 
 /** The FileOps that owns a given source, plus the path in that FileOps' terms.
  *  An `artifacts/shapes/**` source goes through `files.artifacts` — the only
  *  capability an older host provides, and what writes there — while anything
  *  else needs the host's `files.byPath`. */
-export function locateShape(context: ShapeScriptDispatchContext, filePath: string): { files: FileOps; rel: string } | null {
+export function locateShape(context: ShapeScriptDispatchContext, filePath: string): { files: ShapeFileOps; rel: string } | null {
   if (isShapeArtifactPath(filePath)) return { files: context.files.artifacts, rel: toArtifactsRelative(filePath) };
   const byPath = context.files.byPath;
   if (byPath && isPresentableShapePath(filePath)) return { files: byPath, rel: filePath };

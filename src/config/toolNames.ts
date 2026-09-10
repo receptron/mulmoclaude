@@ -65,6 +65,9 @@ const HOST_TOOL_NAMES = {
   // returns its path), so it is listed here rather than in a plugin META.
   // Grant it wherever `presentShapeScript` is granted.
   renderShapeScript: "renderShapeScript",
+  // The USDZ exporter: likewise a pure MCP tool (saves a .usdz, returns its
+  // path). Grant it wherever `presentShapeScript` is granted.
+  exportShapeScriptUsdz: "exportShapeScriptUsdz",
   // Generic host primitives — always active for every role (not gated
   // by `availablePlugins`). See `McpTool.alwaysActive`.
   spawnBackgroundChat: "spawnBackgroundChat",
