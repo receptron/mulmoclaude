@@ -13,6 +13,7 @@ name, and the `Present3D*` type names, are renamed throughout.
 | Entry         | Contents                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `.`           | `TOOL_NAME`, `TOOL_DEFINITION`, `executePresentShapeScript`, `pluginCore`, `samples`, `parseShapeScript`, `astToThreeJS`, `executeShapeScriptDispatch` + the `artifacts/shapes` path rules |
+| `.` (export) | `shapeScriptToUsdz`, `sceneToUsdz`, `USDZ_MIME_TYPE`, `USDZ_EXTENSION`, and the **`exportShapeScriptUsdz`** tool (`executeExportShapeScriptUsdz`, `EXPORT_USDZ_*`). Browser-safe: it needs no canvas, so the View's "Download USDZ" button and a host's MCP tool run the same code. |
 | `./render`    | **server-only** — `renderShapeScriptSheet` and the render page. Rasterises a model to a PNG with Puppeteer's headless Chromium (an OPTIONAL peer); a host without one gets `RenderUnavailableError` carrying the install hint. |
 | `./vue`       | the `ToolPlugin` (View + Preview + `SYSTEM_PROMPT`), plus everything on `.`                                              |
 | `./style.css` | the compiled component styles (Vite lib mode does not auto-inject them)                                                  |
@@ -38,6 +39,24 @@ for i in 1 to count {
 }`,
 });
 ```
+
+## USDZ export
+
+`exportShapeScriptUsdz` writes a model out as a USDZ archive (AR Quick Look on Apple devices, or
+any USD viewer). A host wires it against the same `{ files: { artifacts, byPath? } }` context shape
+`executeShapeScriptDispatch` takes — a full `FileOps`, or just `read` / `write` / `exists`
+(`ShapeFileOps`) — no browser, no `node:*`:
+
+```ts
+import { executeExportShapeScriptUsdz, EXPORT_USDZ_TOOL_NAME, EXPORT_USDZ_DESCRIPTION, EXPORT_USDZ_SCHEMA, EXPORT_USDZ_PROMPT } from "@mulmoclaude/shapescript-plugin";
+
+// register { name: EXPORT_USDZ_TOOL_NAME, description: EXPORT_USDZ_DESCRIPTION, inputSchema: EXPORT_USDZ_SCHEMA }
+const { message, filePath } = await executeExportShapeScriptUsdz({ files: shapeFiles }, args);
+```
+
+The file lands at `artifacts/shapes/<slug>-<epoch-ms>-<token>.usdz`. The View's **Download USDZ**
+button builds the same archive in the browser with `shapeScriptToUsdz` and saves it locally.
+USDZ units are metres, so `size 1` is one metre in AR.
 
 ## ShapeScript language
 

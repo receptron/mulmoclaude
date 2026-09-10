@@ -15,6 +15,14 @@
           <span class="material-icons">{{ showGrid ? "visibility_off" : "visibility" }}</span>
           {{ t.grid }}
         </button>
+        <!-- Disabled while the source panel holds unapplied edits: the export
+             is built from the APPLIED script, which is also what the viewport
+             renders, so a dirty editor would otherwise download a model the
+             user is no longer looking at. -->
+        <button class="control-btn" :disabled="!canExport" data-testid="shapescript-download-usdz" @click="downloadUsdz">
+          <span class="material-icons">download</span>
+          {{ t.downloadUsdz }}
+        </button>
       </div>
     </div>
 
@@ -24,6 +32,10 @@
 
     <div v-if="saveError" class="error" data-testid="shapescript-save-error">
       <strong>{{ t.saveError }}</strong> {{ saveError }}
+    </div>
+
+    <div v-if="exportError" class="error" data-testid="shapescript-export-error">
+      <strong>{{ t.exportError }}</strong> {{ exportError }}
     </div>
 
     <div ref="viewport" class="viewport" data-testid="shapescript-viewport" />
@@ -52,6 +64,8 @@ import { readLoadShapeResult, readSaveShapeResult } from "../core/contract";
 import { parseShapeScript } from "../shapescript/parser";
 import { astToThreeJS } from "../shapescript/toThreeJS";
 import { removeAndDispose, disposeObject3D } from "../shapescript/dispose";
+import { shapeScriptToUsdz, USDZ_EXTENSION, USDZ_MIME_TYPE } from "../export/usdz";
+import { slugify } from "../core/paths";
 import { useT } from "../lang";
 
 interface CameraState {
@@ -88,6 +102,8 @@ const editableScript = ref(props.selectedResult.data?.script ?? "");
 const viewport = ref<HTMLDivElement | null>(null);
 const parseError = ref<string | null>(null);
 const saveError = ref<string | null>(null);
+const exportError = ref<string | null>(null);
+const exporting = ref(false);
 /** Bumped by every operation that establishes what the source now IS, so an
  *  older in-flight read can tell that it has been superseded. Not a ref: no
  *  template reads it, and reactivity would only invite a watcher. */
@@ -99,6 +115,13 @@ const showGrid = ref(true);
 const hasChanges = computed(() => {
   return editableScript.value !== props.selectedResult.data?.script;
 });
+
+/** Download USDZ is offered only for a model there is something to export
+ *  from: an applied, non-empty, valid script with no unapplied edits. An
+ *  empty script is a valid way to clear the scene, but an empty USDZ helps
+ *  nobody, so the button disables rather than clicking through to nothing
+ *  (CodeRabbit on #3065). */
+const canExport = computed(() => !exporting.value && !parseError.value && !hasChanges.value && Boolean(props.selectedResult.data?.script));
 
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
@@ -346,6 +369,43 @@ function updateCameraState() {
   emit("updateResult", updatedResult);
 }
 
+/** How long the object URL outlives the click. The download is started
+ *  asynchronously by the browser, and revoking the URL before it has opened
+ *  the blob cancels it in some engines (codex on #3065); a minute is far past
+ *  any such window and the blob is a few hundred kilobytes. */
+const OBJECT_URL_REVOKE_DELAY_MS = 60_000;
+
+/** Hand the browser a file to save. */
+function triggerBlobDownload(bytes: Uint8Array<ArrayBuffer>, filename: string) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: USDZ_MIME_TYPE }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_REVOKE_DELAY_MS);
+}
+
+/** Build the USDZ in the browser from the script the viewport is rendering —
+ *  the APPLIED one — with no round trip and no file layer, so it works on a
+ *  host with neither. The button is disabled unless `canExport`, and this
+ *  re-checks so a stale click cannot export a model that differs from the one
+ *  on screen. The scene is rebuilt solid rather than reusing the on-screen
+ *  objects, which may be wireframe. */
+async function downloadUsdz() {
+  const script = props.selectedResult.data?.script;
+  if (!script || !canExport.value) return;
+  exporting.value = true;
+  exportError.value = null;
+  try {
+    const bytes = await shapeScriptToUsdz(script);
+    triggerBlobDownload(bytes, `${slugify(props.selectedResult.title)}${USDZ_EXTENSION}`);
+  } catch (error) {
+    exportError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    exporting.value = false;
+  }
+}
+
 function toggleWireframe() {
   showWireframe.value = !showWireframe.value;
 }
@@ -491,6 +551,15 @@ watch(
 
 .control-btn:hover {
   background: #4a4a4a;
+}
+
+.control-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.control-btn:disabled:hover {
+  background: #3a3a3a;
 }
 
 .control-btn .material-icons {

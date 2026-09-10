@@ -10,6 +10,8 @@ const de: Messages = {
   scriptEditorLabel: "ShapeScript-Quelltext",
   applyChanges: "Änderungen übernehmen",
   saveError: "Speichern fehlgeschlagen:",
+  downloadUsdz: "USDZ herunterladen",
+  exportError: "Export fehlgeschlagen:",
 };
 
 export default de;

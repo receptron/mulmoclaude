@@ -10,6 +10,8 @@ const ptBR: Messages = {
   scriptEditorLabel: "Código ShapeScript",
   applyChanges: "Aplicar alterações",
   saveError: "Falha ao salvar:",
+  downloadUsdz: "Baixar USDZ",
+  exportError: "Falha na exportação:",
 };
 
 export default ptBR;

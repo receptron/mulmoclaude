@@ -8,4 +8,6 @@ export interface Messages {
   scriptEditorLabel: string;
   applyChanges: string;
   saveError: string;
+  downloadUsdz: string;
+  exportError: string;
 }

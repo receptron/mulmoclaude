@@ -10,6 +10,8 @@ const ja: Messages = {
   scriptEditorLabel: "ShapeScript ソース",
   applyChanges: "変更を適用",
   saveError: "保存に失敗しました:",
+  downloadUsdz: "USDZ をダウンロード",
+  exportError: "エクスポートに失敗しました:",
 };
 
 export default ja;
