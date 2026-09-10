@@ -99,6 +99,70 @@ describe("a deck save that failed", () => {
   });
 });
 
+describe("two saves in flight at once", () => {
+  /**
+   * The debounce spaces the STARTS of two writes 300ms apart, not their answers — and the
+   * failing kind is the slow kind. An older answer arriving last must not overwrite a newer one,
+   * or a save that landed shows a red banner over it.
+   */
+  function overlappingHarness() {
+    const script: MulmoScript = { title: "deck", beats: [{ text: "one" }] };
+    const committed: MulmoScript[] = [];
+    const pending: ((outcome: SaveOutcome) => void)[] = [];
+
+    const api: DeckEditorTransport = {
+      call: () => new Promise<SaveOutcome>((resolve) => pending.push(resolve)),
+      onScriptChanged: () => () => {},
+    };
+
+    const editor = useDeckEditor({
+      api,
+      filePath: computed(() => "stories/deck/launch.json"),
+      effectiveScript: computed(() => script),
+      commitScript: (next) => committed.push(next),
+    });
+
+    function startSave(title: string): void {
+      editor.onDeckUpdate({ title, beats: [{ text: "one" }] });
+      editor.flushPendingDeckSave();
+    }
+
+    async function answer(index: number, outcome: SaveOutcome): Promise<void> {
+      const resolve = pending[index];
+      assert.ok(resolve, `save ${index} is in flight`);
+      resolve(outcome);
+      await new Promise((settled) => setImmediate(settled));
+    }
+
+    return { ...editor, startSave, answer, committed, inFlight: () => pending.length };
+  }
+
+  it("ignores the older save's failure when the newer one already succeeded", async () => {
+    const { deckSaveError, startSave, answer, committed, inFlight } = overlappingHarness();
+    startSave("first");
+    startSave("second");
+    assert.equal(inFlight(), 2);
+    await answer(1, OK);
+    assert.equal(deckSaveError.value, null);
+    await answer(0, failedWith("ETIMEDOUT"));
+    assert.equal(deckSaveError.value, null, "a save that landed does not get a red banner over it");
+    assert.deepEqual(
+      committed.map((script) => script.title),
+      ["second"],
+    );
+  });
+
+  it("ignores the older save's success when the newer one already failed", async () => {
+    const { deckSaveError, startSave, answer, committed } = overlappingHarness();
+    startSave("first");
+    startSave("second");
+    await answer(1, failedWith("EACCES: permission denied"));
+    await answer(0, OK);
+    assert.equal(deckSaveError.value, "EACCES: permission denied");
+    assert.deepEqual(committed, []);
+  });
+});
+
 describe("a deck save that succeeds", () => {
   it("never puts a message on screen", async () => {
     const { deckSaveError, edit, committed, sentTitles } = harness([OK, OK]);

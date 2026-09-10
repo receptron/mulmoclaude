@@ -67,6 +67,16 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
    */
   const deckSaveError: Ref<string | null> = ref(null);
 
+  /**
+   * Which save is the current one.
+   *
+   * Two writes can be in flight at once: the debounce only spaces their STARTS 300ms apart, and
+   * the failing kind is the slow kind — a timeout costs the whole budget. If the older one
+   * answers last, its answer wins: a red banner over a save that actually landed, or the older
+   * script committed over the newer one. Only the newest save's answer is acted on.
+   */
+  let latestSaveId = 0;
+
   function scheduleDeckSave(next: MulmoScript): void {
     pendingDeckScript = next;
     if (deckSaveTimer) clearTimeout(deckSaveTimer);
@@ -80,7 +90,9 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
     const next = pendingDeckScript;
     pendingDeckScript = null;
     if (!next || !filePath.value) return;
+    const saveId = ++latestSaveId;
     const response = await api.call("updateScript", { filePath: filePath.value, script: next, origin: EDITOR_ORIGIN });
+    if (saveId !== latestSaveId) return;
     if (!response.ok) {
       // The deck editor still holds the latest edit in its props until the next refresh, so
       // the view doesn't snap back on a transient failure — which is why the failure has to be
