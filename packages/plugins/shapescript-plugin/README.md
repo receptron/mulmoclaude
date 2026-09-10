@@ -72,6 +72,9 @@ USDZ units are metres, so `size 1` is one metre in AR.
   `rotate` / `translate` / `scale`
 
 A function call takes **no space** before its parenthesis: `sin(x)` is a call, `sin (x)` is not.
+Arguments are a value list, so upstream's `max(0 (j - 1))` and `max(0, j - 1)` both work; write the
+space-separated form when a script also has to open in the upstream app. Upstream's bare
+`max 0 (j - 1)` (no parentheses) is not supported.
 
 ## Storage
 
@@ -145,7 +148,8 @@ cube { position offsets[0].x offsets[1].y offsets.count }
 
 Also supported: `pi`, `tau`, `true`, `false`, scientific notation, unary `+`,
 short-circuit `and`/`or`, string literals, `join`/`trim`, tuple arguments to `min`/`max`,
-zero-based tuple/string subscripts, `.count`, vector `.x/.y/.z/.w`, color
+zero-based tuple/string subscripts, `.count`, ordinal members `.first` … `.tenth`, `.last`,
+`.allButFirst`, `.allButLast`, vector `.x/.y/.z/.w`, color
 `.red/.green/.blue/.alpha` (or `.r/.g/.b/.a`), custom shape definitions with options,
 and `polygon { sides N }` (integer 3–256). Lathe samples curved profiles, and inline
 builder paths use the same parser as nested paths, including loops and definitions.

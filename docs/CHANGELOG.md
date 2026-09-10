@@ -27,6 +27,9 @@ follows upstream:
   point** with implicit midpoints between consecutive controls (was an end point with an
   optional 4-argument control offset, a syntax that no longer parses).
 - New `seed N` command, scoped to its block, and `rnd` uses upstream's generator with seed 0.
+- Call arguments are a value list, so upstream's `max(0 (j - 1))` parses alongside our
+  `max(0, j - 1)`; a script written the upstream way now opens in both. Ordinal members
+  `.first` … `.tenth`, `.last`, `.allButFirst`, `.allButLast` are accepted.
 
 **Breaking for saved `.shape` files** written against the old conventions — hence the major.
 The remaining gaps are tracked in `plans/feat-shapescript-upstream-parity.md`.

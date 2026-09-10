@@ -101,6 +101,18 @@ function vectorLength(v: Value): number {
 
 // Built-in functions
 const memberIndices: Record<string, number> = { x: 0, y: 1, z: 2, w: 3, r: 0, g: 1, b: 2, a: 3, red: 0, green: 1, blue: 2, alpha: 3 };
+/** Upstream's ordinal members, `vector.first` … `vector.tenth`. `last`,
+ *  `allButFirst` and `allButLast` depend on the length and are handled inline. */
+const ordinalIndices: Record<string, number> = { first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7, ninth: 8, tenth: 9 };
+
+function sequenceMember(value: Value[] | string, member: string): Value | undefined {
+  if (member === "count") return value.length;
+  if (member === "last") return value.length > 0 ? value[value.length - 1] : undefined;
+  if (member === "allButFirst") return typeof value === "string" ? value.slice(1) : value.slice(1);
+  if (member === "allButLast") return typeof value === "string" ? value.slice(0, -1) : value.slice(0, -1);
+  const index = ordinalIndices[member] ?? (Array.isArray(value) ? memberIndices[member] : undefined);
+  return index !== undefined && index < value.length ? value[index] : undefined;
+}
 const builtInFunctions: Record<string, (...args: Value[]) => Value> = {
   // Arithmetic
   round: (x: Value) => Math.round(toNumber(x)),
@@ -428,10 +440,9 @@ export class Evaluator {
 
       case "member": {
         const value = this.evaluate(expr.object);
-        if (expr.member === "count" && (Array.isArray(value) || typeof value === "string")) return value.length;
-        const index = memberIndices[expr.member];
-        if (Object.hasOwn(memberIndices, expr.member) && index !== undefined && Array.isArray(value) && index < value.length) return value[index]!;
-        throw new Error(`Unknown member: ${expr.member}`);
+        const result = Array.isArray(value) || typeof value === "string" ? sequenceMember(value, expr.member) : undefined;
+        if (result === undefined) throw new Error(`Unknown member: ${expr.member}`);
+        return result;
       }
       case "subscript": {
         const value = this.evaluate(expr.object);

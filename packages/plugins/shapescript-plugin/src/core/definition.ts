@@ -69,6 +69,9 @@ Vector: dot, cross, length, normalize, sum
 IMPORTANT: Function calls require NO space between name and parenthesis:
 - sin(x) ✓ function call
 - sin (x) ✗ NOT a function call (identifier + parenthesized expression)
+Separate arguments with spaces, as upstream does: max(0 (j - 1)), pow(2.718 (0 - x)). Commas also work
+here (max(0, j - 1)) but NOT in the upstream ShapeScript app, so prefer spaces. Bare max 0 1 without
+parentheses is not supported.
 
 Examples:
 for i in 1 to 8 {
@@ -116,7 +119,7 @@ Loft sections must each have one perimeter and enclose an area; extrude/fill pri
 - Constants: pi, tau, true, false
 - Scientific notation and unary plus: 1e-3, +2
 - Tuple/vector members: vector.x, vector.y, vector.z; color.red/green/blue/alpha
-- Tuple/string length: value.count; zero-based indexing: values[0]
+- Tuple/string length: value.count; zero-based indexing: values[0]; ordinals: v.first v.second … v.last, v.allButFirst, v.allButLast
 - String literals, join(...), trim(...); min/max also accept tuples
 - Custom shapes with options:
 define post { option height 2 cylinder { size 0.2 height } }

@@ -704,15 +704,17 @@ export class Parser {
         this.advance();
         const args: Expression[] = [];
 
-        this.withValueList(false, () => {
-          if (this.current().type !== TokenType.RPAREN) {
-            args.push(this.parseExpression());
-
-            while (this.current().type === TokenType.COMMA) {
-              this.advance();
-              if (this.current().type === TokenType.RPAREN) break;
-              args.push(this.parseExpression());
-            }
+        // The arguments are a VALUE LIST, exactly as the body of `( … )` is:
+        // `max(0 (j - 1))` is upstream's C-like spelling and `max(0, j - 1)`
+        // the one this plugin always took. Reading both through the tuple
+        // rules means a script can be written once for either parser.
+        this.withValueList(true, () => {
+          if (this.current().type === TokenType.RPAREN) return;
+          args.push(this.parseExpression());
+          if (this.current().type === TokenType.COMMA) {
+            this.parseCommaSeparated(args);
+          } else {
+            this.parseSpaceSeparated(args);
           }
         });
 

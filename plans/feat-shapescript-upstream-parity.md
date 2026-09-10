@@ -24,6 +24,8 @@ These are the highest-value fixes: valid upstream scripts render, but incorrectl
 | 6 | `seed N` command | scoped reseed of the `rnd` sequence; LCG `x = x * 1664525 + 1013904223 mod 2^32`, default seed 0 | no keyword (tool option `randomSeed` only); mulberry32 | fixed in this PR |
 | 7 | single-value rotation `orientation 0.25` | roll only (`0.25 0 0`) | uniform `0.25 0.25 0.25` | fixed in this PR |
 | 8 | angle-axis rotation `orientation 0.5 0 1 0` | supported (1.11.0) | not supported | fixed in this PR |
+| 9 | call arguments `max(0 (j - 1))` | space-separated (C-like parens) or bare `max 0 (j - 1)` | comma-separated only, so no script with a 2-arg call could open in both | parenthesised form fixed in this PR; bare form still unsupported |
+| 10 | ordinal members `.first` … `.last`, `.allButFirst`, `.allButLast` | supported | only `[i]` and `.x/.y/.z` | fixed in this PR |
 
 Conventions that already matched and stay: trig functions in radians, `size` on `cube` /
 `square` = edge length, single-value `size` = uniform, `translate` / `scale` as relative
@@ -55,9 +57,10 @@ Known remaining deviations inside phase 1 scope (documented in the README):
 - **Rotation values**: `rotation` function, quaternion-style multiplication of rotations,
   `{ yaw 0.5 }` / `{ axis … angle … }` block syntax (1.11.0 – 1.11.2).
 - **Object syntax** for `color`, `size`, `point`, `path`, `polygon`, `mesh` (1.11.0).
-- **Expressions**: ranges as values (`1 to 5`), partial ranges, `allButFirst` / `allButLast`,
-  `if` / `switch` / `for` inside expressions (1.10.0), `split`, `bounds` members,
-  mesh members (`polygons`, `triangles`).
+- **Expressions**: ranges as values (`1 to 5`), partial ranges, bare function calls without
+  parentheses (`max 0 1`), `if` / `switch` / `for` inside expressions (1.10.0), `split`,
+  `bounds` members, mesh members (`polygons`, `triangles`), string `lines` / `words` /
+  `characters`.
 - **Custom functions** with return values (we only have custom shapes with `option`s).
 - **Scene**: `text` / `font`, `light`, `camera`, `import`, raw `mesh`, `smoothing`, `name`,
   `debug`, `print`, `assert`, `focus`.

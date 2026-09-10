@@ -261,6 +261,28 @@ describe("expressions", () => {
       assert.ok(Math.abs(volume(mesh) - 2) < 1e-5);
     });
   });
+  it("reads call arguments as a value list, so upstream's `max(0 (j - 1))` and our `max(0, j - 1)` both work", () => {
+    for (const call of ["max(0 (j - 1))", "max(0, j - 1)", "max(0,(j - 1))", "(max(0 (j-1)))"]) {
+      withMesh(`define j 3\ncube { size ${call} }`, (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    }
+    withMesh("cube { size pow(2 3) pow(2, 2) pow(2 -1) }", (mesh) => near(extent(mesh).toArray(), [8, 4, 0.5]));
+    withMesh("cube { size min(1, max(0, (1 - 0.5) / 2)) }", (mesh) => near(extent(mesh).toArray(), [0.25, 0.25, 0.25]));
+    withMesh('cube { size join(("a", "b"), "-").count }', (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
+  });
+  it("supports upstream's ordinal members", () => {
+    withMesh("define v (1 2 3 4)\ncube { position v.first v.second v.last size v.fourth }", (mesh) => {
+      near(mesh.position.toArray(), [1, 2, 4]);
+      near(extent(mesh).toArray(), [4, 4, 4]);
+    });
+    withMesh("define rows ((1 2 3) (4 5 6))\ncube { position rows.last size rows.first.third }", (mesh) => near(mesh.position.toArray(), [4, 5, 6]));
+    withMesh('define v (1 2 3)\ncube { position v.allButFirst.first v.allButLast.count 0 size "abc".allButFirst.count }', (mesh) => {
+      near(mesh.position.toArray(), [2, 2, 0]);
+      near(extent(mesh).toArray(), [2, 2, 2]);
+    });
+    for (const expression of ["(1 2).third", "(1 2).fifth", "().last", "5.first"]) {
+      assert.throws(() => astToThreeJS(parseShapeScript(`cube { size ${expression} }`)), /Unknown member|Unexpected|Undefined variable/);
+    }
+  });
   it("distinguishes signed tuple components from binary arithmetic", () => {
     for (const vector of ["1 +2 3", "+1 +2 +3", "(1 +2 +3)", "1 (1 + 1) (1+2)"]) {
       withMesh(`cube { position ${vector} }`, (mesh) => assert.deepEqual(mesh.position.toArray(), [1, 2, 3]));
