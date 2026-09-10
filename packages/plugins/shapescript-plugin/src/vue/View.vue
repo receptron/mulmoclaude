@@ -19,7 +19,7 @@
              is built from the APPLIED script, which is also what the viewport
              renders, so a dirty editor would otherwise download a model the
              user is no longer looking at. -->
-        <button class="control-btn" :disabled="exporting || !!parseError || hasChanges" data-testid="shapescript-download-usdz" @click="downloadUsdz">
+        <button class="control-btn" :disabled="!canExport" data-testid="shapescript-download-usdz" @click="downloadUsdz">
           <span class="material-icons">download</span>
           {{ t.downloadUsdz }}
         </button>
@@ -115,6 +115,13 @@ const showGrid = ref(true);
 const hasChanges = computed(() => {
   return editableScript.value !== props.selectedResult.data?.script;
 });
+
+/** Download USDZ is offered only for a model there is something to export
+ *  from: an applied, non-empty, valid script with no unapplied edits. An
+ *  empty script is a valid way to clear the scene, but an empty USDZ helps
+ *  nobody, so the button disables rather than clicking through to nothing
+ *  (CodeRabbit on #3065). */
+const canExport = computed(() => !exporting.value && !parseError.value && !hasChanges.value && Boolean(props.selectedResult.data?.script));
 
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
@@ -375,13 +382,13 @@ function triggerBlobDownload(bytes: Uint8Array<ArrayBuffer>, filename: string) {
 
 /** Build the USDZ in the browser from the script the viewport is rendering —
  *  the APPLIED one — with no round trip and no file layer, so it works on a
- *  host with neither. The button is disabled while the editor is dirty, and
- *  this re-checks so a stale click cannot export a model that differs from the
- *  one on screen. The scene is rebuilt solid rather than reusing the on-screen
+ *  host with neither. The button is disabled unless `canExport`, and this
+ *  re-checks so a stale click cannot export a model that differs from the one
+ *  on screen. The scene is rebuilt solid rather than reusing the on-screen
  *  objects, which may be wireframe. */
 async function downloadUsdz() {
   const script = props.selectedResult.data?.script;
-  if (!script || exporting.value || hasChanges.value) return;
+  if (!script || !canExport.value) return;
   exporting.value = true;
   exportError.value = null;
   try {
