@@ -37,7 +37,16 @@ import type { McpTool } from "./index.js";
 
 /** The realpath of the artifacts root, created if it does not exist yet —
  *  both containment checks below require a realpath to compare against, and
- *  a first export on a fresh workspace has no `artifacts/` to realpath. */
+ *  a first export on a fresh workspace has no `artifacts/` to realpath.
+ *
+ *  The ROOT's own realpath is trusted, deliberately: this is the host's
+ *  policy everywhere artifacts are served or written — the `/artifacts/images`
+ *  and `/artifacts/html` mounts root themselves at the realpath of that
+ *  subdirectory (`makeCachedRealpath(WORKSPACE_PATHS.images)`), and the shared
+ *  `runtime.files.artifacts` FileOps every plugin writes through is lexical.
+ *  A workspace owner who symlinks `artifacts/` (to an external volume, say)
+ *  chose that layout; it is not a path the model controls. What the model
+ *  DOES control is `rel`, and every symlink below the root is refused. */
 async function artifactsRootReal(root: string): Promise<string> {
   await mkdir(root, { recursive: true });
   return realpath(root);
