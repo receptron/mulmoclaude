@@ -26,6 +26,7 @@ These are the highest-value fixes: valid upstream scripts render, but incorrectl
 | 8 | angle-axis rotation `orientation 0.5 0 1 0` | supported (1.11.0) | not supported | fixed in this PR |
 | 9 | call arguments `max(0 (j - 1))` | space-separated (C-like parens) or bare `max 0 (j - 1)` | comma-separated only, so no script with a 2-arg call could open in both | parenthesised form fixed in this PR; bare form still unsupported |
 | 10 | ordinal members `.first` … `.last`, `.allButFirst`, `.allButLast` | supported | only `[i]` and `.x/.y/.z` | fixed in this PR |
+| 13 | `path { position … orientation … size … }` | transform options on a path, used to place loft sections | not parsed inside a path block | fixed in this PR (lathe profiles excepted) |
 | 12 | `tau` constant | not defined (only `pi`) | defined | plugin extension, kept; docs steer the agent to `2 * pi` |
 | 11 | statement separators | one statement per line (line break, `}` or EOF) | also accepts several per line | documented only; ours is a superset, so scripts written for upstream parse here |
 

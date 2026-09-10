@@ -331,7 +331,7 @@ export class Converter {
         const shape = this.buildPath(node);
         this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
         this.requireEnclosedArea(shape, "path");
-        const mesh = this.makeMesh(new THREE.ShapeGeometry(shape), this.createMaterial({ properties: {} }));
+        const mesh = this.makeMesh(this.placePath(new THREE.ShapeGeometry(shape), node), this.createMaterial({ properties: {} }));
         this.applyCurrentTransform(mesh);
         return mesh;
       }
@@ -991,11 +991,14 @@ export class Converter {
     const curveSegments = Math.max(1, Math.floor(this.detailLevel / 4));
     this.chargePathEstimate(shape, curveSegments, EXTRUDE_VERTICES_PER_POINT);
 
-    const geometry = new THREE.ExtrudeGeometry(shape, {
-      depth,
-      bevelEnabled: false,
-      curveSegments,
-    });
+    const geometry = this.placePath(
+      new THREE.ExtrudeGeometry(shape, {
+        depth,
+        bevelEnabled: false,
+        curveSegments,
+      }),
+      node.path,
+    );
 
     // Create material
     const material = this.createMaterial(node);
@@ -1010,6 +1013,20 @@ export class Converter {
 
   private buildPath(pathNode: PathNode): THREE.Shape {
     return this.shapeFromPathPoints(this.collectPathPoints(pathNode));
+  }
+
+  /** Bake the path's own `position` / `orientation` / `size` into geometry
+   *  built from it. Baked rather than set on the mesh so the consuming
+   *  builder's own options (an `extrude { position … }`) still apply on top,
+   *  the way they do upstream where the path is a placed shape. */
+  private placePath<T extends THREE.BufferGeometry>(geometry: T, pathNode: PathNode): T {
+    const properties = pathNode.properties;
+    if (!properties) return geometry;
+    const position = new THREE.Vector3(...this.evaluateVector3(properties.position));
+    const rotation = properties.orientation ?? properties.rotation;
+    const quaternion = rotation ? this.rotationOf(rotation) : new THREE.Quaternion();
+    const scale = new THREE.Vector3(...(properties.size ? this.evaluateVector3(properties.size) : [1, 1, 1]));
+    return geometry.applyMatrix4(new THREE.Matrix4().compose(position, quaternion, scale));
   }
 
   /** Run the path's commands and return its points in path space.
@@ -1177,6 +1194,9 @@ export class Converter {
       // No path found, return empty group
       throw new Error("Lathe requires a path child");
     }
+    // Upstream transforms the profile before revolving it; a 3D orientation
+    // on a profile has no 2D equivalent here, so refuse rather than guess.
+    if (pathNode.properties) throw new Error("`lathe` does not support position/orientation/size on its profile path — place the lathe itself instead");
 
     const shape = this.buildPath(pathNode);
     this.chargePathEstimate(shape, this.detailLevel, this.detailLevel + 1);
@@ -1275,7 +1295,7 @@ export class Converter {
       const shape = this.buildPath(pathNode);
       this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
       this.requireEnclosedArea(shape, "fill");
-      const geometry = new THREE.ShapeGeometry(shape);
+      const geometry = this.placePath(new THREE.ShapeGeometry(shape), pathNode);
       const mesh = this.makeMesh(geometry, this.createMaterial(node));
 
       this.applyExplicitTransforms(mesh, node.properties);

@@ -101,6 +101,7 @@ Properties: position, orientation (alias rotation), size, color, opacity
 - size = DIAMETER for sphere/cylinder/cone/circle/polygon/torus, edge length for cube/square. A bare sphere fits the unit cube.
 - orientation / rotate = HALF-TURNS as roll yaw pitch (Z, Y, X): 0.5 = 90°. A lone value is a roll. Trig functions still use radians.
 - Path point/curve coordinates are absolute; curve is a Bézier control point; rotate/translate/scale inside a path move the frame.
+- A path can carry its own position/orientation/size; give loft/extrude path children (not fill{}), as the upstream app requires.
 
 Builders: extrude, fill, lathe, loft, hull. Example:
 loft {

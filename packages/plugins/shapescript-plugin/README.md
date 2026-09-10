@@ -188,7 +188,9 @@ conventions, so a script written against the upstream docs renders the same here
 - Path `point` / `curve` coordinates are **absolute** in the path's frame; `rotate`, `translate`
   and `scale` inside a path move that frame for later points. `curve` is a quadratic Bézier
   **control point** — the outline passes through the neighbouring `point`s, and two `curve`s in
-  a row get an implicit on-curve midpoint (eight in an octagon draw a circle).
+  a row get an implicit on-curve midpoint (eight in an octagon draw a circle). A path block may
+  carry `position` / `orientation` / `size` of its own, which is how a `loft` section is placed in
+  3D; `lathe` refuses a placed profile.
 - `rnd` uses upstream's generator (`x = x · 1664525 + 1013904223 mod 2³²`, seed 0) and `seed N`
   reseeds it for the enclosing block only.
 

@@ -1304,22 +1304,47 @@ export class Parser {
 
   private parsePath(): PathNode {
     this.advance(); // consume 'path'
-    const commands = this.parsePathBody("path");
-    return { type: "path", commands };
+    const properties: ShapeProperties = {};
+    const commands = this.parsePathBody("path", properties);
+    return Object.keys(properties).length === 0 ? { type: "path", commands } : { type: "path", commands, properties };
   }
 
   /** `{ … }` of a path or of a `for` inside one. Both accept the same
-   *  commands, so one reader serves both instead of two drifting copies. */
-  private parsePathBody(where: string): PathCommand[] {
+   *  commands, so one reader serves both instead of two drifting copies.
+   *  Only the path itself (not a loop inside it) may carry the transform
+   *  options, which land in `properties`. */
+  private parsePathBody(where: string, properties?: ShapeProperties): PathCommand[] {
     this.expect(TokenType.LBRACE);
     this.skipNewlines();
     const commands: PathCommand[] = [];
     while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+      if (properties !== undefined && this.parsePathProperty(properties)) {
+        this.skipNewlines();
+        continue;
+      }
       commands.push(this.parsePathCommand(where));
       this.skipNewlines();
     }
     this.expect(TokenType.RBRACE);
     return commands;
+  }
+
+  /** `position` / `orientation` (alias `rotation`) / `size` inside a path
+   *  block, as upstream allows on any shape. Returns false for anything else. */
+  private parsePathProperty(properties: ShapeProperties): boolean {
+    const type = this.current().type;
+    const key =
+      type === TokenType.POSITION
+        ? "position"
+        : type === TokenType.SIZE
+          ? "size"
+          : type === TokenType.ORIENTATION || type === TokenType.ROTATION
+            ? "orientation"
+            : undefined;
+    if (key === undefined) return false;
+    this.advance();
+    properties[key] = this.parseVectorOrExpression();
+    return true;
   }
 
   private parsePathCommand(where: string): PathCommand {

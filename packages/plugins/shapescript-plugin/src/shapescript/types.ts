@@ -256,6 +256,10 @@ export interface GroupNode {
 export interface PathNode {
   type: "path";
   commands: PathCommand[];
+  /** `position` / `orientation` / `size` given inside the path block — the
+   *  standard transform options upstream allows on a path, which is how a
+   *  `loft` section is placed in 3D without a wrapping `fill`. */
+  properties?: ShapeProperties;
 }
 
 export type PathCommand = DefineNode | PointCommand | CurveCommand | RotateCommand | TranslateCommand | ScaleCommand | DetailPathCommand | ForLoopPathCommand;

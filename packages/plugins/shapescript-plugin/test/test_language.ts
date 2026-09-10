@@ -436,3 +436,24 @@ describe("upstream conventions", () => {
     assert.throws(() => astToThreeJS(parseShapeScript("seed (1e308 * 1e308)")), /finite/);
   });
 });
+
+describe("path transform options", () => {
+  it("places a path with its own position/orientation/size, as upstream does for loft sections", () => {
+    // Two placed unit squares, 2 apart along Z, loft into a 1×1×2 slab.
+    const loft =
+      "loft {\npath {\n position 0 0 -1\n point -0.5 -0.5\n point 0.5 -0.5\n point 0.5 0.5\n point -0.5 0.5\n point -0.5 -0.5\n}\npath {\n position 0 0 1\n point -0.5 -0.5\n point 0.5 -0.5\n point 0.5 0.5\n point -0.5 0.5\n point -0.5 -0.5\n}\n}";
+    withMesh(loft, (mesh) => near(extent(mesh).toArray(), [1, 1, 2], 1e-6));
+    // A yaw of a quarter turn stands the path's plane on the X axis instead of Z.
+    withMesh("fill path {\n orientation 0 0.5 0\n point 0 0\n point 2 0\n point 2 1\n point 0 1\n point 0 0\n}", (mesh) =>
+      near(extent(mesh).toArray(), [0, 1, 2], 1e-6),
+    );
+    withMesh("extrude path {\n position 5 0 0\n size 2\n point 0 0\n point 1 0\n point 1 1\n point 0 1\n point 0 0\n}", (mesh) => {
+      mesh.geometry.computeBoundingBox();
+      near([mesh.geometry.boundingBox!.min.x, mesh.geometry.boundingBox!.max.x], [5, 7]);
+    });
+  });
+  it("refuses a placed profile on a lathe and a placement inside a path loop", () => {
+    assert.throws(() => astToThreeJS(parseShapeScript("lathe path {\n position 1 0 0\n point 0 0\n point 1 0\n point 1 1\n point 0 1\n}")), /place the lathe/);
+    assert.throws(() => parseShapeScript("fill path { for i in 1 to 3 { position 1 0 0 point i 0 } }"), /Unexpected token/);
+  });
+});

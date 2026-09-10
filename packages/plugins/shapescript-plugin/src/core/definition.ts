@@ -114,6 +114,7 @@ difference {
 ### Paths:
 path { point X Y … } — coordinates are ABSOLUTE in the path's frame. Close a path by repeating the first point.
 - curve X Y is a quadratic Bézier CONTROL point: the outline passes through the point commands on either side, not through it. Two curves in a row get an implicit on-curve midpoint, so eight curves in an octagon draw a circle.
+- A path may carry position / orientation / size of its own (path { position 0 0 2 orientation 0 0.5 0 point … }); that is how a loft section is placed in 3D. Give loft and extrude PATH children, not fill{} meshes — the upstream app rejects a mesh there.
 - rotate (half-turns) / translate / scale inside a path move the frame for later points:
   path {
       for 0 to 8 {
