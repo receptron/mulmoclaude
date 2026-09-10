@@ -14,7 +14,7 @@
 // `server/plugins/runtime.ts`: that module reaches the chat route, which
 // reaches the prompt, which reaches this tool list — a cycle that leaves
 // `MCP_SERVER_ID` uninitialised at import time. Three methods over one
-// directory do not justify it.
+// directory, on the host's shared containment helpers, do not justify it.
 
 import {
   executeExportShapeScriptUsdz,
@@ -26,37 +26,59 @@ import {
   SHAPE_EXTENSIONS,
   type ShapeFileOps,
 } from "@mulmoclaude/shapescript-plugin";
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
+import { resolveWithinRoot, resolveWriteWithinRoot } from "../../utils/files/safe.js";
 import { makeByPathFileOps } from "../../utils/files/by-path.js";
 import { workspacePath } from "../../workspace/workspace.js";
 import { log } from "../../system/logger/index.js";
 import type { McpTool } from "./index.js";
 
-/** Absolute path for an artifacts-relative one, refusing anything that
- *  resolves outside `<workspace>/artifacts`. The plugin already rejects
- *  traversal lexically; this is the belt to that brace. */
-function withinArtifacts(rel: string): string {
-  const root = path.join(workspacePath, "artifacts");
-  const abs = path.resolve(root, rel);
-  if (abs !== root && !abs.startsWith(root + path.sep)) throw new Error(`path escapes artifacts/: ${rel}`);
-  return abs;
+/** The realpath of the artifacts root, created if it does not exist yet —
+ *  both containment checks below require a realpath to compare against, and
+ *  a first export on a fresh workspace has no `artifacts/` to realpath. */
+async function artifactsRootReal(root: string): Promise<string> {
+  await mkdir(root, { recursive: true });
+  return realpath(root);
 }
 
-const artifacts: ShapeFileOps = {
-  read: (rel) => readFile(withinArtifacts(rel), "utf-8"),
-  write: (rel, content) => writeFileAtomic(withinArtifacts(rel), content),
-  exists: async (rel) => {
-    try {
-      return (await stat(withinArtifacts(rel))).isFile();
-    } catch {
-      return false;
-    }
-  },
-};
+/**
+ * `ShapeFileOps` over one artifacts directory, with the host's realpath-based
+ * containment: a symlinked `artifacts/shapes -> /outside` must neither be read
+ * through nor written through, which a lexical `path.resolve` check would
+ * allow (codex on #3065). Reads use `resolveWithinRoot` (the target's realpath
+ * must stay in root); the write uses `resolveWriteWithinRoot`, which verifies
+ * the existing ancestors instead, since the `.usdz` does not exist yet.
+ *
+ * Exported for tests; the tool binds it to `<workspace>/artifacts` below.
+ */
+export function makeArtifactsShapeFiles(rootFor: () => string): ShapeFileOps {
+  const readTarget = async (rel: string): Promise<string | null> => resolveWithinRoot(await artifactsRootReal(rootFor()), rel);
+  return {
+    read: async (rel) => {
+      const abs = await readTarget(rel);
+      if (abs === null) throw new Error(`No ShapeScript exists at artifacts/${rel}`);
+      return readFile(abs, "utf-8");
+    },
+    exists: async (rel) => {
+      const abs = await readTarget(rel);
+      if (abs === null) return false;
+      try {
+        return (await stat(abs)).isFile();
+      } catch {
+        return false;
+      }
+    },
+    write: async (rel, content) => {
+      const abs = await resolveWriteWithinRoot(await artifactsRootReal(rootFor()), rel);
+      if (abs === null) throw new Error(`path escapes artifacts/: ${rel}`);
+      await writeFileAtomic(abs, content);
+    },
+  };
+}
 
-const shapeFiles = { artifacts, byPath: makeByPathFileOps(SHAPE_EXTENSIONS) };
+const shapeFiles = { artifacts: makeArtifactsShapeFiles(() => path.join(workspacePath, "artifacts")), byPath: makeByPathFileOps(SHAPE_EXTENSIONS) };
 
 export const exportShapeScriptUsdz: McpTool = {
   definition: {
