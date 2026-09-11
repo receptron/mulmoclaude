@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -20,13 +20,28 @@ import { dirname, join } from "node:path";
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const VUE_SOURCES = [
-  "src/vue/View.vue",
-  "src/vue/composables/useBeatMovie.ts",
-  "src/vue/composables/useCharacterImages.ts",
-  "src/vue/composables/useDeckEditor.ts",
-  "src/vue/composables/useMediaExport.ts",
-] as const;
+const VUE_DIR = join(here, "..", "src", "vue");
+
+/**
+ * Every browser-side file that dispatches, DISCOVERED rather than listed.
+ *
+ * A hardcoded list only guards the files someone remembered to add to it, and a new composable
+ * is exactly the thing that would be written root-blind (Codex, round 1). Walking the tree means
+ * a new file is covered the moment it makes its first `api.call`.
+ */
+function dispatchingSources(): string[] {
+  const walk = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return walk(full);
+      return /\.(ts|vue)$/.test(entry.name) && readFileSync(full, "utf-8").includes("api.call(") ? [full] : [];
+    });
+  return walk(VUE_DIR).sort();
+}
+
+const VUE_SOURCES = dispatchingSources();
+/** Shown in test names — the path from `src/vue` down, not the absolute one. */
+const label = (absolute: string): string => absolute.slice(absolute.indexOf(join("src", "vue")));
 
 /** The argument text of every `api.call("<kind>", <args>)` in one file, kind included. */
 function dispatchArguments(source: string): { kind: string; args: string }[] {
@@ -56,23 +71,14 @@ function carriesRoot(args: string): boolean {
 }
 
 describe("every browser dispatch carries its card's root", () => {
-  VUE_SOURCES.forEach((relative) => {
-    it(`${relative} names a root on every api.call`, () => {
-      const source = readFileSync(join(here, "..", relative), "utf-8");
+  assert.ok(VUE_SOURCES.length >= 5, "the walk found the dispatching files");
+  VUE_SOURCES.forEach((absolute) => {
+    it(`${label(absolute)} names a root on every api.call`, () => {
+      const source = readFileSync(absolute, "utf-8");
       const calls = dispatchArguments(source);
-      assert.ok(calls.length > 0, `${relative} has at least one dispatch to check`);
+      assert.ok(calls.length > 0, `${label(absolute)} has at least one dispatch to check`);
       const rootless = calls.filter((call) => !carriesRoot(call.args)).map((call) => call.kind);
       assert.deepEqual(rootless, [], `these dispatches send no root: ${rootless.join(", ")}`);
-    });
-  });
-
-  it("checks every dispatch in the Vue layer, so a new FILE cannot slip past the list", () => {
-    const viewSource = readFileSync(join(here, "..", "src", "vue", "View.vue"), "utf-8");
-    const composables = viewSource.match(/from "\.\/composables\/(\w+)"/g) ?? [];
-    const listed = VUE_SOURCES.join(" ");
-    composables.forEach((importLine) => {
-      const name = /composables\/(\w+)/.exec(importLine)?.[1];
-      assert.ok(name && listed.includes(`composables/${name}.ts`), `composable ${name} is not in VUE_SOURCES`);
     });
   });
 
@@ -93,5 +99,68 @@ describe("every browser dispatch carries its card's root", () => {
     assert.match(deckSource, /root: \(\) => root\.value/);
     assert.doesNotMatch(viewSource, /root: \(\) => undefined/);
     assert.doesNotMatch(deckSource, /root: \(\) => undefined/);
+  });
+});
+
+/**
+ * Every AWAITED dispatch that then mutates View state re-checks the pair first.
+ *
+ * Sending the root fixes which file a call addresses; it does not fix which card the ANSWER is
+ * applied to. `selectedResult` can change during the await, and the same `stories/deck.json`
+ * exists in every root — so a response from one deck could seed the source editor with another
+ * deck's text, or commit it into the card now on screen (Codex P2, round 1). Two of the three
+ * unguarded sites were exactly that.
+ *
+ * Stated as what is PERMITTED: after the await, a call site either re-checks the pair
+ * (`staleSince` / `isStale()`) or is one of the named exceptions below, each with its reason.
+ * A new awaited dispatch is then red by default.
+ */
+describe("an awaited dispatch re-checks the pair before it applies the answer", () => {
+  /** Guarded by `editRevision`, not `staleSince`: `resetForScriptChange()` advances it on a
+   *  result switch, so a stale answer is dropped by the revision check instead. */
+  const GUARDED_BY_REVISION = new Set(["useDeckEditor.ts:updateScript"]);
+
+  VUE_SOURCES.forEach((absolute) => {
+    it(`${label(absolute)} guards every awaited dispatch`, () => {
+      const source = readFileSync(absolute, "utf-8");
+      const file = absolute.split("/").pop() ?? absolute;
+      const unguarded: string[] = [];
+      const awaited = /await api\.call\(\s*"(\w+)"/g;
+      let match = awaited.exec(source);
+      while (match) {
+        const kind = match[1] ?? "";
+        // The guard has to be close: past ~400 characters the answer has already been applied.
+        const following = source.slice(match.index, match.index + 400);
+        const guarded = /staleSince\(|isStale\(\)|revision !== editRevision/.test(following);
+        if (!guarded && !GUARDED_BY_REVISION.has(`${file}:${kind}`)) unguarded.push(kind);
+        match = awaited.exec(source);
+      }
+      assert.deepEqual(unguarded, [], `these awaited dispatches apply their answer unguarded: ${unguarded.join(", ")}`);
+    });
+  });
+});
+
+/**
+ * The media-byte download carries the root too.
+ *
+ * `toStoryRef` relativizes an artifact against ITS OWN root's directory, so a `moviePath` /
+ * `pdfPath` does not carry the root — and the same `stories/…/__movies__/x.mov` exists in every
+ * registered one. The issue predicted this exact consumer: "a consumer that stores the ref
+ * alone breaks". `fetchMediaBlob` is that consumer (Codex P2, round 1).
+ */
+describe("media-byte downloads carry the root", () => {
+  it("the host adapter's query declares it", () => {
+    const adapter = readFileSync(join(here, "..", "src", "vue", "hostAdapter.ts"), "utf-8");
+    assert.match(adapter, /fetchMediaBlob\?: \(query: \{[^}]*root\?: string \| undefined[^}]*\}\)/);
+  });
+
+  it("both call sites pass it", () => {
+    const beatMovie = readFileSync(join(here, "..", "src", "vue", "composables", "useBeatMovie.ts"), "utf-8");
+    const mediaExport = readFileSync(join(here, "..", "src", "vue", "composables", "useMediaExport.ts"), "utf-8");
+    const calls = [...beatMovie.matchAll(/fetchMediaBlob\(([^)]*)\)/g), ...mediaExport.matchAll(/fetchMediaBlob\(([^)]*)\)/g)]
+      .map((m) => m[1] ?? "")
+      .filter((args) => args.includes("Path"));
+    assert.ok(calls.length >= 2, "both download call sites are found");
+    calls.forEach((args) => assert.match(args, /root: root\.value/, `this fetchMediaBlob call sends no root: ${args}`));
   });
 });

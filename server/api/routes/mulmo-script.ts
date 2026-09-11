@@ -400,7 +400,10 @@ bindRoute(router, API_ROUTES.mulmoScript.downloadMovie, (req: Request, res: Resp
     badRequest(res, "moviePath is required");
     return;
   }
-  const resolved = mulmoScriptOps.resolveStory(moviePath);
+  // An artifact ref is relative to ITS stories root (#3014). Absent = the default root, which
+  // is every request this host makes today — it registers no extra roots — so this is
+  // unchanged for it and correct for a host that does.
+  const resolved = mulmoScriptOps.resolveStory(moviePath, getOptionalStringQuery(req, "root"));
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return;
@@ -477,7 +480,8 @@ bindRoute(router, API_ROUTES.mulmoScript.downloadPdf, (req: Request, res: Respon
     badRequest(res, "pdfPath is required");
     return;
   }
-  const resolved = mulmoScriptOps.resolveStory(pdfPath);
+  // Same as downloadMovie above: the ref is relative to its root (#3014).
+  const resolved = mulmoScriptOps.resolveStory(pdfPath, getOptionalStringQuery(req, "root"));
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return;

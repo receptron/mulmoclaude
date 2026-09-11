@@ -19,8 +19,15 @@ export interface MulmoScriptHostAdapter {
   chatSessionId?: Ref<string | undefined>;
   /** Authenticated media download. Exactly one of `moviePath` / `pdfPath`
    *  is set — both are the wire `stories/…` paths the status/probe
-   *  dispatches return. Rejects on transport/HTTP failure. */
-  fetchMediaBlob?: (query: { moviePath?: string; pdfPath?: string }) => Promise<Blob>;
+   *  dispatches return. Rejects on transport/HTTP failure.
+   *
+   *  `root` is which registered stories root that path is relative to (#3014); absent = the
+   *  host's default. It is REQUIRED for correctness, not decoration: `toStoryRef` relativizes
+   *  an artifact against its own root's directory, so the returned path does not carry the
+   *  root, and the same `stories/…/__movies__/x.mov` exists in every one of them. A host that
+   *  ignores it serves the DEFAULT root's file of that name, or 404s. Optional so an older
+   *  host keeps compiling; a single-root host can ignore it because for it the two agree. */
+  fetchMediaBlob?: (query: { moviePath?: string; pdfPath?: string; root?: string | undefined }) => Promise<Blob>;
 }
 
 export const MULMOSCRIPT_HOST_ADAPTER_KEY: InjectionKey<MulmoScriptHostAdapter> = Symbol("mulmoscript-host-adapter");

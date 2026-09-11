@@ -53,6 +53,15 @@ if (staleSince(filePath.value, requestedFilePath)) return;
    カードの root にする。
 4. `staleSince(current, requested)` を **対を取る形**に変える。`sameRoot`（`core/contract.ts:103`）が
    既にあるので、root の比較はそれを使う（`undefined` と既定 root の綴りを同一視する正規化込み）。
+5. **メディアのバイト取得にも root を載せる。** `toStoryRef` は成果物を**その root 自身のディレクトリ**に
+   対して相対化するので、`moviePath` / `pdfPath` は root を持たず、同じ綴りが全 root に存在する。
+   issue が「ref だけを保存する消費者が現れると壊れる」と予告していた、まさにその消費者が
+   `fetchMediaBlob` だった。`MulmoScriptHostAdapter` の query に `root?: string` を足し（optional なので
+   既存ホストは非破壊）、呼び出し2箇所とホストの adapter・ダウンロード2ルートまで通す。
+6. **await した dispatch は応答を適用する前に対を再確認する。** root を送ることは「どのファイルを
+   指すか」を直すだけで、「その応答をどのカードに適用するか」は直さない。await 中に
+   `selectedResult` は変わり得るので、source editor の2経路（`openSource` の reopen と
+   `applySource` の updateScript）にガードが要る。
 
 **エージェントのツールスキーマは変えない。** `root` は意図的にスキーマに無く、ホストが埋める
 （#3015 の設計。モデルが任意の root を名指しできないことが封じ込めの一部）。
@@ -70,6 +79,11 @@ if (staleSince(filePath.value, requestedFilePath)) return;
 
 dispatch が root を載せることは、composable には注入した fake transport で、View には
 ソース読み取りで（`test_beatPaneDefault.ts` と同じ手法 —— mount にはランタイム一式が要る）。
+
+`test_dispatchCarriesRoot.ts` は**ルールを「許されている形」で述べる**（引数は story ref を spread するか
+`root:` を名指す / await の後は対を再確認する）。対象ファイルは**ハードコードせず `src/vue` を走査**して
+`api.call(` を含むものを拾うので、**新しい composable はそれが最初の dispatch を書いた瞬間から対象**になる
+（ハードコードした一覧は、誰かが足し忘れたファイルを守らない）。
 
 ## 関連
 

@@ -94,7 +94,9 @@ export function useMediaExport({ api, adapter, filePath, root, chatSessionId }: 
     downloading.value = true;
     let objectUrl: string | null = null;
     try {
-      const blob = await fetchMediaBlob(kind === "movie" ? { moviePath: sourcePath } : { pdfPath: sourcePath });
+      // The root travels with the path: an artifact ref is relative to ITS root, and the same
+      // spelling exists in every other one (#3014).
+      const blob = await fetchMediaBlob(kind === "movie" ? { moviePath: sourcePath, root: root.value } : { pdfPath: sourcePath, root: root.value });
       objectUrl = URL.createObjectURL(blob);
       clickDownloadAnchor(objectUrl, downloadFilename(sourcePath, fallbackName));
     } catch (err) {

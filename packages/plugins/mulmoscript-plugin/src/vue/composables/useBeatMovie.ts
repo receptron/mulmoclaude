@@ -48,7 +48,7 @@ export function useBeatMovie({ api, adapter, filePath, root }: UseBeatMovieOptio
     try {
       // Re-type the .mov blob as video/mp4 — same ISO-BMFF family, and
       // <video> support for "video/mp4" is broader than "video/quicktime".
-      const blob = new Blob([await fetchMediaBlob({ moviePath: beatMovies[index] })], { type: "video/mp4" });
+      const blob = new Blob([await fetchMediaBlob({ moviePath: beatMovies[index], root: root.value })], { type: "video/mp4" });
       beatMovieUrls[index] = URL.createObjectURL(blob);
       beatMovieOpen[index] = true;
     } catch (err) {

@@ -830,7 +830,11 @@ async function onSourceToggle(open: boolean) {
     // `stories/<rel>` and only the mulmoScript save/reopen op knows
     // how to map it to the on-disk path under `artifacts/stories/...`.
     if (filePath.value) {
-      const response = await api.call("save", storyRef());
+      const requested = storyRef();
+      const response = await api.call("save", requested);
+      // The disk read describes the script it was asked for. Navigating away during it would
+      // otherwise seed the source editor with ANOTHER deck's text (#3014).
+      if (staleSince(requested)) return;
       const diskScript = response.ok ? (response.data.script as MulmoScript | undefined) : undefined;
       if (diskScript) text = toScriptSourceText(diskScript);
       // fall through to in-memory script on failure
@@ -852,10 +856,15 @@ async function applySource() {
     alert(errorMessage(err));
     return;
   }
+  const requested = storyRef();
   const response = await api.call("updateScript", {
-    ...storyRef(),
+    ...requested,
     script: parsed,
   });
+  // The write landed in the script it was asked for. Committing it after the user moved on
+  // would put that script into the card now on screen, and re-initialize against it (#3014) —
+  // the same shape the deck editor's `resetForScriptChange` closes on its own path.
+  if (staleSince(requested)) return;
   if (!response.ok) {
     alert(response.error || "Update failed");
     return;
