@@ -122,10 +122,11 @@ export function minkowskiSum(a: MinkowskiOperand, b: MinkowskiOperand): THREE.Bu
   }
   // A flat pair (two parallel faces) adds nothing to the union and is skipped.
   const pieces: THREE.BufferGeometry[] = [];
-  for (const face of faces) for (const corners of other) {
-    const piece = smoothHull(pairwiseSums(face, corners));
-    if (piece) pieces.push(piece);
-  }
+  for (const face of faces)
+    for (const corners of other) {
+      const piece = smoothHull(pairwiseSums(face, corners));
+      if (piece) pieces.push(piece);
+    }
   if (pieces.length === 0) throw new Error("`minkowski` operands must enclose a volume");
   const merged = pieces.length === 1 ? pieces[0]! : mergeGeometries(pieces);
   if (pieces.length > 1) pieces.forEach((piece) => piece.dispose());

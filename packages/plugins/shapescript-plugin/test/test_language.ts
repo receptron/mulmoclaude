@@ -909,6 +909,18 @@ describe("minkowski, inset and extrude along", () => {
       near([volume(mesh)], [1.5 ** 3], 1e-4);
       assert.equal(mesh.geometry.hasAttribute("color"), false);
     });
+    // Per-face colours cannot follow the sum's new vertices: a mesh whose
+    // vertices differ gives an uncoloured result; one colour throughout is kept.
+    const tetra = (colors: readonly string[]) =>
+      `mesh {\n polygon { color ${colors[0]} point 0 0 0 point 1 0 0 point 0 1 0 }\n polygon { color ${colors[1]} point 0 0 0 point 0 0 1 point 1 0 0 }\n polygon { color ${colors[2]} point 0 0 0 point 0 1 0 point 0 0 1 }\n polygon { color ${colors[3]} point 1 0 0 point 0 0 1 point 0 1 0 }\n}`;
+    withMesh(`minkowski {\n ${tetra(["1 0 0", "0 1 0", "0 0 1", "1 1 0"])}\n cube { size 0.5 }\n}`, (mesh) => {
+      near(extent(mesh).toArray(), [1.5, 1.5, 1.5], 1e-4);
+      assert.equal(mesh.geometry.hasAttribute("color"), false);
+    });
+    withMesh(`minkowski {\n ${tetra(["0 1 0", "0 1 0", "0 1 0", "0 1 0"])}\n cube { size 0.5 }\n}`, (mesh) => {
+      const color = mesh.geometry.getAttribute("color");
+      near([color.getX(0), color.getY(0), color.getZ(0)], [0, 1, 0]);
+    });
     // A mirrored operand is still convex: one hull, not per-face pieces.
     withMesh("minkowski {\n cube { size -1 1 1 }\n cube { size 0.5 }\n}", (mesh) => {
       near([volume(mesh)], [1.5 ** 3], 1e-4);

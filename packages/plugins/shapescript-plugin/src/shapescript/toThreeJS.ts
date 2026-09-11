@@ -2201,11 +2201,19 @@ function coloredClone(mesh: THREE.Mesh): THREE.BufferGeometry {
   return geometry;
 }
 
-/** The colour a mesh was explicitly given, or its first vertex colour. */
+/** The colour a mesh was explicitly given, or the one colour all its vertices
+ *  share; nothing for a mesh whose vertices differ, since a result built from
+ *  new vertices could not carry those. */
 function uniformColorOf(mesh: THREE.Mesh): [number, number, number] | undefined {
   const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial | undefined;
   const color = mesh.geometry.getAttribute("color");
-  if (color && color.count > 0) return [color.getX(0), color.getY(0), color.getZ(0)];
+  if (color && color.count > 0) {
+    const first: [number, number, number] = [color.getX(0), color.getY(0), color.getZ(0)];
+    for (let i = 1; i < color.count; i++) {
+      if (Math.abs(color.getX(i) - first[0]) > 1e-6 || Math.abs(color.getY(i) - first[1]) > 1e-6 || Math.abs(color.getZ(i) - first[2]) > 1e-6) return undefined;
+    }
+    return first;
+  }
   if (material?.userData?.colored && material.color) return [material.color.r, material.color.g, material.color.b];
   return undefined;
 }
