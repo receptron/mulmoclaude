@@ -85,8 +85,10 @@ guards は注入するので、プラグインのランタイム無しで駆動�
 直接代入 `const root = <parser 以外>`、および **request から直に** op へ渡す形
 （`req.query.root` / `req.body.root`）。
 
-**報告しない形は列挙してある**（docblock）: 別ファイルのヘルパー経由、`ops["movieStatusOp"]` 等の
-綴り、destructure された root（来歴が見えない）、上記以外の1式で読んで渡す形。
+**報告しない形は列挙してある**（docblock）: ヘルパー経由（**別ファイルでも同一ファイルでも**。
+`root` を**引数**で受けて渡す関数、中間オブジェクト `{ root: raw }` に載せて渡す形を含む）、
+`ops["movieStatusOp"]` 等の綴り、destructure された root（来歴が見えない）、
+上記以外の1式で読んで渡す形。
 4つとも本当の封じは `parseSuppliedRoot` だけが作れる branded type だが、パッケージの
 シグネチャ変更になるのでこの PR には入れない。コメントは走査前に除去しているので
 `// parseSuppliedRoot` で偽装はできない。

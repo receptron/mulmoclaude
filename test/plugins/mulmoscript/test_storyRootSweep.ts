@@ -187,7 +187,10 @@ describe("a story is addressed by the pair, not the path", () => {
     // KNOWN LIMITS — enumerated rather than implied, because this guard was tightened three
     // times in one review loop and a regex has a ceiling. NOT reported:
     //
-    //   1. a root laundered through a helper in ANOTHER file;
+    //   1. a root laundered through a helper — in another file OR in THIS one. A function that
+    //      takes `root` as a PARAMETER and passes it on is not examined either, and neither is a
+    //      root carried inside an intermediate object (`const args = { root: raw }`) and spread
+    //      or read at the call (Codex, round 6);
     //   2. an op reached by `ops["movieStatusOp"]`, `?.()`, or an alias;
     //   3. a DESTRUCTURED root — its provenance is not visible here (see below);
     //   4. a root read and passed in one expression other than a direct request read.
