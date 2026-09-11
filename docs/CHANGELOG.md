@@ -43,6 +43,33 @@ warning naming it. Text is capped at 2000 characters before the vertex budget ap
 
 ### Fixed
 
+#### Every bridge connected to port 3001 whether or not the server was on it (#3078, PR #3081)
+
+The shared `@mulmobridge/client` resolved its server address as `opts.apiUrl` → `MULMOCLAUDE_API_URL`
+→ `http://localhost:3001`. The server is not pinned to 3001: it honours `PORT`, walks an implicit busy
+default forward, and publishes what it actually bound to `<workspace>/.server-port` — the file the Vite
+proxy (#2650) and the readiness wait (#2981) were already taught to follow. All 25 bridges were left
+out of that fix.
+
+A single `PORT=3099` instance therefore left every bridge retrying against nothing, with the README's
+"no error, no reply" symptom. Worse, a second instance left them connected to the FIRST one holding
+3001 — and with the `MULMOCLAUDE_AUTH_TOKEN` the README recommends for that case, the misdirection
+authenticates cleanly and produces no error at all.
+
+`.server-port` is now consulted ahead of the default; an explicit `opts.apiUrl` / `MULMOCLAUDE_API_URL`
+still wins, so nothing that configures one changes. A published port becomes `http://127.0.0.1:<port>`
+rather than `localhost`, which resolves to `::1` first on a dual-stack host and does not fall back once
+something answers there.
+
+The bearer token was read from a hardcoded `<homedir>/mulmoclaude`, ignoring `MULMOCLAUDE_WORKSPACE_PATH`
+— a moved workspace got "no bearer token found" naming a directory the server never writes.
+`.session-token` and `.server-port` are a pair the server rewrites together, so both now resolve from
+one root.
+
+Re-reading the token after `invalid token` is deliberately not part of this: the port can change across
+a restart too, so following one means rebuilding the socket rather than refreshing auth. #3078 stays
+open for it.
+
 #### `@mulmoclaude/mulmoscript-plugin@4.7.0` — a failed deck save is on screen, not only in the console (PR #3071, closes #3070)
 
 The Canvas deck editor swallowed a failed save. `console.error` was the only trace, and the

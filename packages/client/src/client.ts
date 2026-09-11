@@ -14,14 +14,13 @@
 
 import { io, type Socket } from "socket.io-client";
 import { CHAT_SOCKET_EVENTS, CHAT_SOCKET_PATH, type Attachment, type BridgeOptions } from "@mulmobridge/protocol";
-import { readBridgeToken, TOKEN_FILE_PATH } from "./token.js";
+import { readBridgeToken, tokenFilePath } from "./token.js";
 import { readBridgeEnvOptions } from "./options.js";
+import { resolveApiUrl } from "./apiUrl.js";
 
 // 6 min > the server's REPLY_TIMEOUT_MS (5 min) so the server's
 // timeout surfaces as a reply, not a client-side cancellation.
 const REPLY_TIMEOUT_MS = 6 * 60 * 1000;
-
-const DEFAULT_API_URL = "http://localhost:3001";
 
 export interface MessageAck {
   ok: boolean;
@@ -39,7 +38,9 @@ export interface BridgeClientOptions {
   /** Required. Identifier for this bridge in the handshake.
    *  Matches `handshake.auth.transportId` server-side. */
   transportId: string;
-  /** Defaults to `$MULMOCLAUDE_API_URL` or `http://localhost:3001`. */
+  /** Defaults to `$MULMOCLAUDE_API_URL`, then the port the server
+   *  published to `<workspace>/.server-port`, then
+   *  `http://localhost:3001` (#3078). */
   apiUrl?: string;
   /** Flat primitive bag forwarded to the host app's startChat
    *  callback via the handshake (`BridgeOptions` from the
@@ -80,9 +81,12 @@ export interface BridgeClient {
 export function requireBearerToken(): string {
   const token = readBridgeToken();
   if (token !== null) return token;
+  // `tokenFilePath()` rather than `TOKEN_FILE_PATH`, which is fixed at module
+  // load: a bridge that imports this before `dotenv/config` would otherwise be
+  // told to look somewhere the token was never going to be.
   process.stderr.write(
     `No bearer token found. The MulmoClaude server writes one to\n` +
-      `  ${TOKEN_FILE_PATH}\n` +
+      `  ${tokenFilePath()}\n` +
       `at startup (mode 0600). Start the server with \`yarn dev\` (or\n` +
       `\`npm run dev\`) first, or set MULMOCLAUDE_AUTH_TOKEN to the\n` +
       `same value the server is using.\n`,
@@ -91,8 +95,18 @@ export function requireBearerToken(): string {
 }
 
 export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
-  const apiUrl = opts.apiUrl ?? process.env.MULMOCLAUDE_API_URL ?? DEFAULT_API_URL;
+  // Token BEFORE port. A restart rewrites both files and nothing marks them as
+  // one generation, so a bridge starting mid-restart can read a torn pair in
+  // either order. What the order decides is WHICH tear it gets. Port first
+  // yields a NEW token with an OLD port — a fresh credential sent to the port
+  // the server has just left, retried in silence because the socket's URL is
+  // fixed at construction. Token first mostly yields the opposite, an OLD token
+  // with a NEW port, which the right server answers `invalid token` and the
+  // connect handler explains; the dangerous pairing survives only in the narrow
+  // window where BOTH reads fall between the token write and the port publish.
+  // Closing it needs a shared generation marker on the sidecars (Codex, #3082).
   const token = requireBearerToken();
+  const apiUrl = resolveApiUrl(opts.apiUrl);
   // `opts.options === undefined` → scrape env automatically.
   // `opts.options === {}` → opt out of the scrape explicitly.
   const options = opts.options ?? readBridgeEnvOptions(opts.transportId, process.env);

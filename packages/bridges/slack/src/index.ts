@@ -16,7 +16,8 @@
 //                                "1" = on with default ":eyes:"
 //                                any other emoji shortcode (no colons) = on with that emoji
 //                                Requires the `reactions:write` bot scope.
-//   MULMOCLAUDE_API_URL        — default http://localhost:3001
+//   MULMOCLAUDE_API_URL        — default: the port in <workspace>/.server-port,
+//                                else http://localhost:3001
 //   MULMOCLAUDE_AUTH_TOKEN     — bearer token (or read from workspace)
 
 import "dotenv/config";

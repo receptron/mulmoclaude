@@ -17,7 +17,8 @@ yarn add @mulmobridge/client
 | `createBridgeClient(opts)` | Create a connected socket.io client with auth |
 | `requireBearerToken()` | Read the bearer token or exit with a helpful message |
 | `readBridgeToken()` | Read the bearer token (returns `null` if absent) |
-| `TOKEN_FILE_PATH` | Path to `~/mulmoclaude/.session-token` |
+| `TOKEN_FILE_PATH` | Path to the workspace's `.session-token` |
+| `resolveApiUrl(explicit?)` | Resolve the server URL a bridge should connect to |
 | `mimeFromExtension(ext)` | Map file extension to MIME type |
 | `isImageMime(mime)` | Check if MIME is an image type |
 | `isPdfMime(mime)` | Check if MIME is PDF |
@@ -46,6 +47,39 @@ client.onPush((ev) => {
   console.log(`Push from ${ev.chatId}: ${ev.message}`);
 });
 ```
+
+## Which server it connects to
+
+The MulmoClaude server is **not pinned to port 3001**. It honours `PORT`, and an
+implicit default that is already busy walks forward (`Port 3001 busy → using 3002
+instead`). Whatever it ends up binding, it publishes to `<workspace>/.server-port`
+— the file every out-of-process reader uses to find it.
+
+`createBridgeClient()` resolves the address in this order:
+
+1. `opts.apiUrl` — an explicit value always wins
+2. `$MULMOCLAUDE_API_URL`
+3. `http://127.0.0.1:<port>` from `<workspace>/.server-port`
+4. `http://localhost:3001`
+
+The workspace itself is `$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when
+that is unset — the same rule the server applies, and the same root the bearer
+token is read from.
+
+Only `process.env` is consulted. A `.env` file reaches this library through the
+bridge's own `import "dotenv/config"`, which resolves `.env` against the
+process's **current working directory** — so a bridge launched from somewhere
+else does not see a `MULMOCLAUDE_WORKSPACE_PATH` that lives only in the repo's
+`.env`, exactly as it would not see `MULMOCLAUDE_AUTH_TOKEN` there. Export the
+variable, or run the bridge from the directory holding the `.env`.
+
+| Export | Resolves |
+|---|---|
+| `readBridgeToken()` / `tokenFilePath()` | at call time |
+| `TOKEN_FILE_PATH` | at import time — a snapshot, kept for compatibility |
+
+The port is read once, when the client is created. A server that restarts onto a
+*different* port after that still needs the bridge restarted.
 
 ## Ecosystem
 
