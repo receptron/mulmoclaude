@@ -681,6 +681,13 @@ describe("control flow, ranges and functions", () => {
     withMesh("define max 5\ncube { size max }", (mesh) => near(extent(mesh).toArray(), [5, 5, 5]));
     withMesh("group { define max 5 }\ncube { size max 1 2 }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
     withMesh("define f(a) {\n define max a\n max\n}\ncube { size max 1 f(3) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
+    // Loop variables, block options and function parameters shadow too.
+    withMesh("for sum in 2 to 2 { cube { size sum 1 1 } }", (mesh) => near(extent(mesh).toArray(), [2, 1, 1]));
+    withMesh("define box {\n option max 2\n cube { size max 1 1 }\n}\nbox", (mesh) => near(extent(mesh).toArray(), [2, 1, 1]));
+    withMesh("define f(max) { max 1 1 }\ncube { size f(2) }", (mesh) => near(extent(mesh).toArray(), [2, 1, 1]));
+    withMesh("extrude path {\n for sum in 1 to 1 {\n point 0 0\n point sum 0\n point 0 sum\n point 0 0\n }\n}", (mesh) =>
+      near(extent(mesh).toArray(), [1, 1, 1]),
+    );
   });
   it("defines functions with parameters, local defines and a result", () => {
     withMesh("define sq(a) { a * a }\ncube { size sq(3) }", (mesh) => near(extent(mesh).toArray(), [9, 9, 9]));

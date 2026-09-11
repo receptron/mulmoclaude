@@ -1166,7 +1166,12 @@ export class Parser {
   private parseForLoop(): ForLoopNode {
     this.advance(); // consume 'for'
     const { variable, iterable } = this.parseLoopHeader();
-    return { type: "for", variable, iterable, body: this.parseBlock() };
+    // The loop variable shadows a function of the same name inside the body.
+    const body = this.scoped(() => {
+      this.callable.delete(variable);
+      return this.parseBlock();
+    });
+    return { type: "for", variable, iterable, body };
   }
 
   private parseLoopHeader(): { variable: string; iterable: Expression } {
@@ -1324,6 +1329,8 @@ export class Parser {
 
             const optionName = this.expectIdentifier().value as string;
             const defaultValue = this.parseVectorOrExpression();
+            // An option is a symbol in the body, shadowing a function of that name.
+            this.callable.delete(optionName);
 
             options.push({
               type: "option",
@@ -1394,6 +1401,7 @@ export class Parser {
     this.callable.add(name);
     this.expect(TokenType.LBRACE);
     const { body, value } = this.scoped(() => {
+      for (const param of params) this.callable.delete(param);
       this.skipNewlines();
       const defines: DefineNode[] = [];
       while (this.current().type === TokenType.DEFINE) {
@@ -1683,7 +1691,11 @@ export class Parser {
     this.advance(); // consume 'for'
     const { variable, iterable } = this.parseLoopHeader();
     // The loop is expanded during rendering.
-    return { type: "for", variable, iterable, commands: this.parsePathBody("path for loop") };
+    const commands = this.scoped(() => {
+      this.callable.delete(variable);
+      return this.parsePathBody("path for loop");
+    });
+    return { type: "for", variable, iterable, commands };
   }
 
   private parseNode(): SceneNode | null {
