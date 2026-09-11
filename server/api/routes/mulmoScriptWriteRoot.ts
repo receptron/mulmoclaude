@@ -55,8 +55,10 @@ export type StoryWriteTarget =
  * Decide where a write goes.
  *
  * Returns the FileOps to write through, or the refusal — never a default-root fallback, which is
- * the failure this exists to prevent. `root` is already normalized by the caller: absent, empty
- * and wrong-typed all arrive here as `undefined`, meaning the host's default root.
+ * the failure this exists to prevent. `root` has already been through `parseSuppliedRoot` above,
+ * so only two shapes reach here: `undefined` (the caller named no root, or an empty one) and a
+ * non-empty string. A wrong-typed root never arrives — it was refused with a 400 before this
+ * ran, precisely so it could not be mistaken for the first case.
  */
 export function resolveStoryWriteTarget(guards: StoryWriteGuards, filePath: unknown, root: string | undefined): StoryWriteTarget {
   const rootRefusal = guards.guardStoryWriteRoot(root);

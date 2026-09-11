@@ -83,8 +83,9 @@ const ROOTLESS_BY_DESIGN = new Map<string, string>([
  *
  * What makes that safe rather than a hole is a BEHAVIOURAL test, not this sentence:
  * `test/server/api/test_mulmoScriptBeatOp.ts` → "makeBeatOpHandler — the root it hands the op"
- * asserts the factory forwards a named root and degrades an absent, empty or wrong-typed one to
- * the default. Delete that suite and these two entries become unchecked.
+ * asserts the factory forwards a named root, reads an absent or empty one as the default, and
+ * REFUSES a wrong-typed one with a 400 without running the op. Delete that suite and these two
+ * entries become unchecked.
  */
 const OP_VALUES_BY_DESIGN = new Set<string>([
   "server/api/routes/mulmo-script.ts:makeBeatOpHandler(mulmoScriptOps.generateBeatAudioOp, (result) => ({ audio: result.audio })),",
