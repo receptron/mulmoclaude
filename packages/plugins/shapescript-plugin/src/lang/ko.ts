@@ -12,6 +12,8 @@ const ko: Messages = {
   saveError: "저장 실패:",
   downloadUsdz: "USDZ 다운로드",
   exportError: "내보내기 실패:",
+  sceneWarnings: "렌더링되지 않음:",
+  printOutput: "출력:",
 };
 
 export default ko;

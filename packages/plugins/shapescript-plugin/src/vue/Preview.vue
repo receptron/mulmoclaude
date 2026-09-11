@@ -13,7 +13,7 @@ import * as THREE from "three";
 import type { ToolResult } from "gui-chat-protocol";
 import type { PresentShapeScriptData } from "../core/types";
 import { parseShapeScript } from "../shapescript/parser";
-import { astToThreeJS } from "../shapescript/toThreeJS";
+import { astToThreeJS, sceneInfoOf } from "../shapescript/toThreeJS";
 import { removeAndDispose } from "../shapescript/dispose";
 import { useT } from "../lang";
 
@@ -51,13 +51,15 @@ watch(
   },
 );
 
+const DEFAULT_PREVIEW_BACKGROUND = 0x2a2a3a;
+
 function initPreview() {
   if (!previewViewport.value) return;
 
   try {
     // Create scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x2a2a3a);
+    scene.background = new THREE.Color(DEFAULT_PREVIEW_BACKGROUND);
 
     // Create camera
     const width = previewViewport.value.clientWidth || 200;
@@ -116,6 +118,7 @@ function reloadScene() {
     // disposed, and this runs again on every script change.
     removeAndDispose(scene, sceneGroup);
     sceneGroup = null;
+    scene.background = new THREE.Color(DEFAULT_PREVIEW_BACKGROUND);
     // An empty script is valid and means "nothing to draw". Returning before
     // the removal above left the PREVIOUS result's geometry on screen, so the
     // thumbnail described a model the result no longer has.
@@ -125,6 +128,9 @@ function reloadScene() {
     const ast = parseShapeScript(script);
     sceneGroup = astToThreeJS(ast, { wireframe: false });
     scene.add(sceneGroup);
+    // The script's `background r g b`, as in the full View; else the preview's own.
+    const { background } = sceneInfoOf(sceneGroup);
+    scene.background = background ? new THREE.Color(background[0], background[1], background[2]) : new THREE.Color(DEFAULT_PREVIEW_BACKGROUND);
   } catch (error) {
     console.error("Preview reload error:", error);
   }

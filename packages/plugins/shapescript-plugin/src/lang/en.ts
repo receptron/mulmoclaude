@@ -12,6 +12,8 @@ const en: Messages = {
   saveError: "Save Failed:",
   downloadUsdz: "Download USDZ",
   exportError: "Export Failed:",
+  sceneWarnings: "Not rendered:",
+  printOutput: "Output:",
 };
 
 export default en;

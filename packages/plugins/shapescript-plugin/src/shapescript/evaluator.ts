@@ -1,6 +1,57 @@
-import { Expression, Vector3, Color } from "./types";
+import { Expression, Vector3, Color, DefineNode, MaterialExpr } from "./types";
 
-export type Value = number | boolean | string | Value[];
+/** `1 to 5 step 2` as a value: walked by `for`, tested by `in`. */
+export interface RangeValue {
+  kind: "range";
+  from: number;
+  to: number;
+  step: number;
+  /** Whether a `step` was written: `in` then tests only the stepped values,
+   *  while an unstepped range contains every number between its bounds. */
+  stepped: boolean;
+}
+
+/** A `define name(a b) { … }` function, kept as its definition node. */
+export interface FunctionValue {
+  kind: "function";
+  definition: DefineNode;
+}
+
+/** An evaluated `material { … }` block. Colours carry alpha; a texture is
+ *  kept only so the renderer can warn about it. */
+export interface MaterialValue {
+  kind: "material";
+  color?: RGBA;
+  opacity?: number;
+  metallicity?: number;
+  roughness?: number;
+  glow?: RGBA;
+  texture?: string;
+}
+
+export type RGBA = [number, number, number, number];
+
+export type Value = number | boolean | string | Value[] | RangeValue | FunctionValue | MaterialValue;
+
+const isObjectValue = (value: Value | undefined): value is RangeValue | FunctionValue | MaterialValue =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Upstream's predefined colour constants (materials.md), as RGB tuples. A
+ *  script may `define red …` over them. */
+const NAMED_COLORS: Record<string, [number, number, number]> = {
+  black: [0, 0, 0],
+  blue: [0, 0, 1],
+  green: [0, 1, 0],
+  cyan: [0, 1, 1],
+  red: [1, 0, 0],
+  magenta: [1, 0, 1],
+  purple: [0.5, 0, 0.5],
+  yellow: [1, 1, 0],
+  white: [1, 1, 1],
+  orange: [1, 0.5, 0],
+  gray: [0.5, 0.5, 0.5],
+  grey: [0.5, 0.5, 0.5],
+};
 
 /** Upstream's `rnd` generator, bit for bit: a 32-bit LCG kept in a double,
  *  `x = (x * 1664525 + 1013904223) mod 2^32`, returning `x / 2^32`. Matching
@@ -38,6 +89,7 @@ export class SymbolTable {
   constructor(seed: number = DEFAULT_RANDOM_SEED) {
     this.scopes.push({ values: new Map(), random: new RandomSequence(seed) });
     for (const [name, value] of Object.entries({ pi: Math.PI, tau: 2 * Math.PI, true: true, false: false })) this.set(name, value);
+    for (const [name, value] of Object.entries(NAMED_COLORS)) this.set(name, value);
   }
 
   private innermost(): Scope {
@@ -100,7 +152,57 @@ function vectorLength(v: Value): number {
 }
 
 // Built-in functions
-const memberIndices: Record<string, number> = { x: 0, y: 1, z: 2, w: 3, r: 0, g: 1, b: 2, a: 3, red: 0, green: 1, blue: 2, alpha: 3 };
+const memberIndices: Record<string, number> = {
+  x: 0,
+  y: 1,
+  z: 2,
+  w: 3,
+  r: 0,
+  g: 1,
+  b: 2,
+  a: 3,
+  red: 0,
+  green: 1,
+  blue: 2,
+  alpha: 3,
+  width: 0,
+  height: 1,
+  depth: 2,
+  roll: 0,
+  yaw: 1,
+  pitch: 2,
+};
+/** `color.hue` / `.saturation` / `.brightness` — HSB of an RGB tuple. */
+const hsbMembers: Record<string, number> = { hue: 0, saturation: 1, brightness: 2 };
+
+function rgbToHsb(r: number, g: number, b: number): [number, number, number] {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const hue = delta === 0 ? 0 : max === r ? ((g - b) / delta + 6) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+  return [hue / 6, max === 0 ? 0 : delta / max, max];
+}
+
+function hsbToRgb(h: number, s: number, b: number): [number, number, number] {
+  const hue = ((h % 1) + 1) % 1;
+  const sector = hue * 6;
+  const chroma = b * s;
+  const x = chroma * (1 - Math.abs((sector % 2) - 1));
+  const m = b - chroma;
+  const [r, g, bl] =
+    sector < 1
+      ? [chroma, x, 0]
+      : sector < 2
+        ? [x, chroma, 0]
+        : sector < 3
+          ? [0, chroma, x]
+          : sector < 4
+            ? [0, x, chroma]
+            : sector < 5
+              ? [x, 0, chroma]
+              : [chroma, 0, x];
+  return [r + m, g + m, bl + m];
+}
 /** Upstream's ordinal members, `vector.first` … `vector.tenth`. `last`,
  *  `allButFirst` and `allButLast` depend on the length and are handled inline. */
 const ordinalIndices: Record<string, number> = { first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7, ninth: 8, tenth: 9 };
@@ -110,8 +212,17 @@ function sequenceMember(value: Value[] | string, member: string): Value | undefi
   if (member === "last") return value.length > 0 ? value[value.length - 1] : undefined;
   if (member === "allButFirst") return typeof value === "string" ? value.slice(1) : value.slice(1);
   if (member === "allButLast") return typeof value === "string" ? value.slice(0, -1) : value.slice(0, -1);
+  if (Array.isArray(value) && member in hsbMembers && value.length >= 3) {
+    return rgbToHsb(toNumber(value[0]), toNumber(value[1]), toNumber(value[2]))[hsbMembers[member]!];
+  }
   const index = ordinalIndices[member] ?? (Array.isArray(value) ? memberIndices[member] : undefined);
-  return index !== undefined && index < value.length ? value[index] : undefined;
+  if (index === undefined) return undefined;
+  // `pos.z` of a 2D position is 0 and `col.alpha` of an RGB colour is 1, as
+  // upstream pads them; other missing components are errors.
+  if (index < value.length) return value[index];
+  if (Array.isArray(value) && index < 4 && (member === "alpha" || member === "a")) return 1;
+  if (Array.isArray(value) && index < 3 && member in memberIndices) return 0;
+  return undefined;
 }
 const builtInFunctions: Record<string, (...args: Value[]) => Value> = {
   // Arithmetic
@@ -181,11 +292,22 @@ const builtInFunctions: Record<string, (...args: Value[]) => Value> = {
   },
 
   trim: (s: Value) => String(s).trim(),
+  split: (s: Value, separator: Value) => String(s).split(String(separator ?? "")),
+
+  // Colours: `rgb(r g b [a])` passes through, `hsb(h s b [a])` converts.
+  rgb: (...args: Value[]) => args.flat(),
+  hsb: (...args: Value[]) => {
+    const [h = 0, s = 0, b = 0, a] = args.flat().map(toNumber);
+    return a === undefined ? hsbToRgb(h, s, b) : [...hsbToRgb(h, s, b), a];
+  },
 
   // `rand` is intercepted by the evaluator, which owns the seeded generator;
   // the entry stays so `Unknown function` still lists it as known.
   rand: () => 0,
 };
+
+/** Every built-in a bare call may name (`max 0 1`). */
+export const BUILT_IN_FUNCTION_NAMES: readonly string[] = Object.keys(builtInFunctions);
 
 // Accepts `undefined` so callers can index into a `Value[]` under
 // `noUncheckedIndexedAccess` without a guard at every call site; an
@@ -201,6 +323,7 @@ function toNumber(value: Value | undefined): number {
   if (Array.isArray(value) && value.length > 0) {
     return toNumber(value[0]);
   }
+  if (isObjectValue(value)) throw new Error(`Cannot use a ${value.kind} as a number`);
   throw new Error(`Cannot convert ${typeof value} to number`);
 }
 
@@ -217,6 +340,47 @@ function toBoolean(value: Value): boolean {
   return false;
 }
 
+/** Whether `needle` is in `haystack`: a range (on its steps), a tuple (by
+ *  value), or a string (as a substring), as upstream's `in` operator. */
+function contains(needle: Value, haystack: Value): boolean {
+  if (isObjectValue(haystack) && haystack.kind === "range") {
+    const n = toNumber(needle);
+    const { from, to, step } = haystack;
+    const low = Math.min(from, to);
+    const high = Math.max(from, to);
+    if (n < low || n > high) return false;
+    if (!haystack.stepped) return true;
+    const offset = (n - from) / step;
+    return Math.abs(offset - Math.round(offset)) < 1e-9;
+  }
+  if (Array.isArray(haystack)) return haystack.some((item) => valuesEqual(item, needle));
+  if (typeof haystack === "string") return haystack.includes(String(needle));
+  throw new Error("`in` needs a range, tuple or string on its right");
+}
+
+export function valuesEqual(a: Value, b: Value): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((item, i) => valuesEqual(item, b[i]!));
+  return a === b;
+}
+
+/** The values a `for` loop visits: a range walked by its step, a tuple's
+ *  elements, or a lone value. The count is bounded by the caller. */
+export function iterationValues(iterable: Value, limit: number, exceeded: () => Error): Value[] {
+  if (isObjectValue(iterable)) {
+    if (iterable.kind !== "range") throw new Error(`Cannot loop over a ${iterable.kind}`);
+    const { from, to, step } = iterable;
+    const values: number[] = [];
+    for (let i = from; step > 0 ? i <= to : i >= to; i += step) {
+      if (values.length >= limit) throw exceeded();
+      values.push(i);
+    }
+    return values;
+  }
+  const values = Array.isArray(iterable) ? iterable : [iterable];
+  if (values.length > limit) throw exceeded();
+  return values;
+}
+
 /** Seeds the generator behind `rnd` / `rand()` when a caller names none.
  *
  *  The same script is evaluated TWICE for one visualization — once on the
@@ -231,8 +395,13 @@ function toBoolean(value: Value): boolean {
  *  upstream app shows for it. */
 export const DEFAULT_RANDOM_SEED = 0;
 
+/** A function calling itself with no way out would otherwise overflow the
+ *  JavaScript stack, which surfaces as a RangeError with no script context. */
+const MAX_CALL_DEPTH = 256;
+
 export class Evaluator {
   private symbols: SymbolTable;
+  private callDepth = 0;
 
   constructor(symbols?: SymbolTable, seed?: number) {
     this.symbols = symbols || new SymbolTable(seed);
@@ -390,6 +559,9 @@ export class Evaluator {
           case "or":
             return toBoolean(left) || toBoolean(right);
 
+          case "in":
+            return contains(left, right);
+
           default:
             throw new Error(`Unknown binary operator: ${expr.operator}`);
         }
@@ -421,6 +593,8 @@ export class Evaluator {
         // used to resolve to a function and return an object that later
         // coerced to `false` — a silently skipped `if` branch instead of
         // "Unknown function".
+        const custom = this.symbols.get(expr.name);
+        if (isObjectValue(custom) && custom.kind === "function") return this.callFunction(custom, expr.args);
         const name = expr.name.toLowerCase();
         // `rand()` shares the seeded generator behind `rnd`, so it cannot be
         // served from the shared function table.
@@ -438,6 +612,12 @@ export class Evaluator {
         return expr.elements.map((el) => this.evaluate(el));
       }
 
+      case "range":
+        return this.evaluateRange(expr.from, expr.to, expr.step);
+
+      case "material":
+        return this.evaluateMaterial(expr);
+
       case "member": {
         const value = this.evaluate(expr.object);
         const result = Array.isArray(value) || typeof value === "string" ? sequenceMember(value, expr.member) : undefined;
@@ -448,14 +628,82 @@ export class Evaluator {
         const value = this.evaluate(expr.object);
         const index = this.evaluate(expr.index);
         if (!Array.isArray(value) && typeof value !== "string") throw new Error("Subscripting requires a tuple or string");
-        if (typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= value.length)
+        // `v["y"]` is `v.y`; `v[-1]` counts from the end, as upstream.
+        if (typeof index === "string") {
+          const member = sequenceMember(value, index);
+          if (member === undefined) throw new Error(`Unknown member: ${index}`);
+          return member;
+        }
+        if (typeof index !== "number" || !Number.isInteger(index) || index < -value.length || index >= value.length)
           throw new Error(`Subscript out of range: ${String(index)}`);
-        return value[index]!;
+        return value[index < 0 ? value.length + index : index]!;
       }
 
       default:
         throw new Error(`Unknown expression type: ${(expr as { type: string }).type}`);
     }
+  }
+
+  /** `from to to [step]`, or `range step s` when `to` is absent. */
+  private evaluateRange(fromExpr: Expression, toExpr: Expression | undefined, stepExpr: Expression | undefined): RangeValue {
+    const from = this.evaluate(fromExpr);
+    const step = stepExpr === undefined ? undefined : toNumber(this.evaluate(stepExpr));
+    if (toExpr === undefined) {
+      if (!isObjectValue(from) || from.kind !== "range") throw new Error("`step` needs a range before it");
+      return { ...from, step: step ?? from.step, stepped: step !== undefined || from.stepped };
+    }
+    const range: RangeValue = { kind: "range", from: toNumber(from), to: toNumber(this.evaluate(toExpr)), step: step ?? 1, stepped: step !== undefined };
+    if (range.step === 0 || ![range.from, range.to, range.step].every(Number.isFinite))
+      throw new Error("Loop bounds and step must be finite, with a nonzero step");
+    return range;
+  }
+
+  private evaluateMaterial(expr: MaterialExpr): MaterialValue {
+    const material: MaterialValue = { kind: "material" };
+    const { color, opacity, metallicity, roughness, glow, texture } = expr.properties;
+    if (color) material.color = this.evaluateToRGBA(color);
+    if (glow) material.glow = this.evaluateToRGBA(glow);
+    if (opacity !== undefined) material.opacity = this.evaluateToNumber(opacity);
+    if (metallicity !== undefined) material.metallicity = this.evaluateToNumber(metallicity);
+    if (roughness !== undefined) material.roughness = this.evaluateToNumber(roughness);
+    if (texture) material.texture = String(this.evaluate(texture));
+    return material;
+  }
+
+  /** Bind the parameters in a fresh scope, run the body's `define`s, and
+   *  evaluate the result expression. */
+  private callFunction(fn: FunctionValue, argExprs: Expression[]): Value {
+    const { params = [], body = [], value, name } = fn.definition;
+    const args = argExprs.map((arg) => this.evaluate(arg));
+    if (args.length !== params.length) throw new Error(`Function \`${name}\` takes ${params.length} argument(s), got ${args.length}`);
+    if (value === undefined) throw new Error(`Function \`${name}\` returns nothing`);
+    if (++this.callDepth > MAX_CALL_DEPTH) throw new Error(`Function \`${name}\` recursed more than ${MAX_CALL_DEPTH} levels deep`);
+    this.symbols.pushScope();
+    try {
+      params.forEach((param, i) => this.symbols.set(param, args[i]!));
+      for (const define of body) {
+        if (define.type !== "define") throw new Error(`Function \`${name}\` may only contain \`define\`s before its result`);
+        this.define(define);
+      }
+      return this.evaluate(value);
+    } finally {
+      this.symbols.popScope();
+      this.callDepth--;
+    }
+  }
+
+  /** A `define` of a value or a function. Custom shape blocks are stored by
+   *  the converter, which owns their bodies. */
+  define(node: DefineNode): boolean {
+    if (node.params !== undefined) {
+      this.symbols.set(node.name, { kind: "function", definition: node });
+      return true;
+    }
+    if (node.value !== undefined) {
+      this.symbols.set(node.name, this.evaluate(node.value));
+      return true;
+    }
+    return false;
   }
 
   evaluateToNumber(expr: Expression | number): number {
@@ -488,21 +736,43 @@ export class Evaluator {
   }
 
   evaluateToColor(expr: Expression | Color): Color {
-    if (Array.isArray(expr) && typeof expr[0] === "number") {
-      return expr as Color;
-    }
+    const [r, g, b] = this.evaluateToRGBA(expr);
+    return [r, g, b];
+  }
 
-    const value = this.evaluate(expr);
+  /** A colour value with alpha, by upstream's count rules: one number is a
+   *  luminance, two are luminance and alpha, three RGB, four RGBA; and a colour
+   *  followed by a number (`red 0.5`, `#ff0 0.5`) is that colour with its
+   *  alpha replaced. */
+  evaluateToRGBA(expr: Expression | Color): RGBA {
+    const value = Array.isArray(expr) && typeof expr[0] === "number" ? (expr as number[]) : this.evaluate(expr);
+    return rgbaOf(value);
+  }
+}
 
-    if (Array.isArray(value)) {
-      const r = value.length > 0 ? toNumber(value[0]) : 0;
-      const g = value.length > 1 ? toNumber(value[1]) : 0;
-      const b = value.length > 2 ? toNumber(value[2]) : 0;
-      return [r, g, b];
-    }
-
-    // Single number becomes grayscale
+export function rgbaOf(value: Value): RGBA {
+  if (typeof value === "number" || typeof value === "boolean") {
     const n = toNumber(value);
-    return [n, n, n];
+    return [n, n, n, 1];
+  }
+  if (!Array.isArray(value)) throw new Error("Expected numeric color channels");
+  if (value.length === 2 && Array.isArray(value[0])) return [...rgbaOf(value[0]).slice(0, 3), toNumber(value[1])] as RGBA;
+  if (value.length === 1 && Array.isArray(value[0])) return rgbaOf(value[0]);
+  const channels = value.map((channel) => {
+    if (typeof channel !== "number" && typeof channel !== "boolean") throw new Error("Expected numeric color channels");
+    return toNumber(channel);
+  });
+  const [a = 0.8, b = 1, c = 0, d = 1] = channels;
+  switch (channels.length) {
+    case 0:
+      return [0.8, 0.8, 0.8, 1];
+    case 1:
+      return [a, a, a, 1];
+    case 2:
+      return [a, a, a, b];
+    case 3:
+      return [a, b, c, 1];
+    default:
+      return [a, b, c, d];
   }
 }

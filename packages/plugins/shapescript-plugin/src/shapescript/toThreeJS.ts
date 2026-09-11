@@ -21,6 +21,7 @@ import {
   PathCommand,
   PointCommand,
   CurveCommand,
+  ArcCommand,
   ForLoopPathCommand,
   CustomShapeNode,
   ColorNode,
@@ -28,13 +29,31 @@ import {
   OrientationNode,
   TranslateNode,
   ScaleNode,
+  MaterialNode,
+  MaterialProperties,
   Expression,
   Vector3,
   Color,
   ShapeProperties,
 } from "./types";
-import { Evaluator, SymbolTable, Value } from "./evaluator";
+import { Evaluator, SymbolTable, Value, RGBA, MaterialValue, iterationValues, rgbaOf, valuesEqual } from "./evaluator";
 import { disposeObject3D, disposeScratch } from "./dispose";
+
+/** What a conversion reports besides geometry. Stored on the root group's
+ *  `userData` so both viewers and the tool result can read it. */
+export interface ShapeScriptSceneInfo {
+  /** `background r g b a` from the script's root, when set. */
+  background?: RGBA;
+  /** Commands that were accepted but not rendered (`texture`, `camera`, …). */
+  warnings: string[];
+  /** Every `print`, one line each. */
+  logs: string[];
+}
+
+export function sceneInfoOf(group: THREE.Object3D): ShapeScriptSceneInfo {
+  const info = group.userData as Partial<ShapeScriptSceneInfo>;
+  return { ...(info.background ? { background: info.background } : {}), warnings: info.warnings ?? [], logs: info.logs ?? [] };
+}
 
 /** A path point in path space, after the path's local transform. */
 interface PathPoint {
@@ -147,12 +166,84 @@ export class ShapeScriptLimitError extends Error {
   }
 }
 
+/** The scoped material, as upstream's `context.state.material`: every field a
+ *  `color` / `opacity` / `metallicity` / `roughness` / `glow` / `smoothing`
+ *  command sets for the rest of its block. */
+type MaterialState = {
+  color: THREE.Color | undefined;
+  /** Alpha of the current colour (`color 1 0 0 0.5`), separate from `opacity`. */
+  alpha: number;
+  /** Multiplies through nested scopes: `opacity 0.5` twice is 0.25. */
+  opacity: number;
+  metallicity: number | undefined;
+  roughness: number | undefined;
+  glow: THREE.Color | undefined;
+  /** `smoothing` threshold in half-turns; 0 means flat shading. */
+  smoothing: number | undefined;
+};
+
 type TransformState = {
   matrix: THREE.Matrix4;
-  // Explicitly `| undefined` rather than optional: `exactOptionalPropertyTypes`
-  // otherwise rejects the `current.color = undefined` reset in block scopes.
-  color: THREE.Color | undefined;
+  material: MaterialState;
 };
+
+function cloneMaterialState(material: MaterialState): MaterialState {
+  return {
+    ...material,
+    color: material.color?.clone(),
+    glow: material.glow?.clone(),
+  };
+}
+
+/** How many print statements are kept. A `print` inside a 100k-iteration loop
+ *  should not turn the tool result into a transcript. */
+const MAX_LOGS = 200;
+/** Same bound for distinct warnings; they are deduplicated first. */
+const MAX_WARNINGS = 200;
+
+/** Signed volume of an indexed or unindexed triangle geometry. */
+function signedVolume(geometry: THREE.BufferGeometry): number {
+  const position = geometry.getAttribute("position");
+  const index = geometry.getIndex();
+  const count = index?.count ?? position.count;
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  let volume = 0;
+  for (let i = 0; i < count; i += 3) {
+    a.fromBufferAttribute(position, index ? index.getX(i) : i);
+    b.fromBufferAttribute(position, index ? index.getX(i + 1) : i + 1);
+    c.fromBufferAttribute(position, index ? index.getX(i + 2) : i + 2);
+    volume += a.dot(b.cross(c));
+  }
+  return volume / 6;
+}
+
+/** Flip a closed geometry whose faces point inward, so booleans and lighting
+ *  treat it as the solid it encloses. */
+function orientOutward<T extends THREE.BufferGeometry>(geometry: T): T {
+  if (signedVolume(geometry) >= 0) return geometry;
+  const index = geometry.getIndex();
+  if (index) {
+    for (let i = 0; i < index.count; i += 3) {
+      const b = index.getX(i + 1);
+      index.setX(i + 1, index.getX(i + 2));
+      index.setX(i + 2, b);
+    }
+    index.needsUpdate = true;
+  }
+  const normal = geometry.getAttribute("normal");
+  if (normal) {
+    for (let i = 0; i < normal.count; i++) normal.setXYZ(i, -normal.getX(i), -normal.getY(i), -normal.getZ(i));
+    normal.needsUpdate = true;
+  }
+  return geometry;
+}
+
+/** Upstream's icosphere subdivision level for a detail setting. */
+function icosphereSubdivisions(detail: number): number {
+  return Math.max(0, Math.round(Math.log2(Math.max(4, detail))) - 2);
+}
 
 export class Converter {
   private options: ConversionOptions;
@@ -169,11 +260,21 @@ export class Converter {
 
   // Transform state stack for relative transforms
   private transformStack: TransformState[] = [];
+  /** > 0 while building a builder's operands, where a bare `path` must be a
+   *  flat mesh for `profileOf`; at the scene level it draws as a line. */
+  private operandDepth = 0;
+  private readonly warnings: string[] = [];
+  private readonly warningSet = new Set<string>();
+  private readonly logs: string[] = [];
+  private background: RGBA | undefined;
+  private sceneDepth = 0;
 
   constructor(options: ConversionOptions = {}) {
     this.options = options;
     this.symbols = new SymbolTable();
     this.evaluator = new Evaluator(this.symbols, options.randomSeed);
+    // `detail` is readable as a symbol before any `detail` command runs.
+    this.symbols.set("detail", this.detailLevel);
     // Initialize with identity transform
     this.pushTransform();
   }
@@ -183,6 +284,8 @@ export class Converter {
 
     try {
       this.addChildren(group, nodes);
+      const info: ShapeScriptSceneInfo = { warnings: this.warnings, logs: this.logs, ...(this.background ? { background: this.background } : {}) };
+      group.userData = info;
     } catch (error) {
       // The ROOT is abandoned the same way a nested group is: the callers
       // assign it only once this returns, and both Vue surfaces catch the error
@@ -250,22 +353,6 @@ export class Converter {
     return new THREE.Mesh(geometry, material);
   }
 
-  /** Expand a `for … from to to step` range without materialising it first.
-   *  The array used to be built up front, so an absurd bound exhausted memory
-   *  before a single node existed and the budget below never got a turn. */
-  private rangeIterations(from: number, to: number, step: number): number[] {
-    if (step === 0 || !Number.isFinite(step) || !Number.isFinite(from) || !Number.isFinite(to))
-      throw new Error("Loop bounds and step must be finite, with a nonzero step");
-    const iterations: number[] = [];
-    for (let i = from; step > 0 ? i <= to : i >= to; i += step) {
-      if (iterations.length >= this.maxLoopIterations) {
-        throw new ShapeScriptLimitError(`ShapeScript loop exceeds ${this.maxLoopIterations} iterations — narrow the range or increase the step`);
-      }
-      iterations.push(i);
-    }
-    return iterations;
-  }
-
   private convertNode(node: SceneNode): THREE.Object3D | null {
     // Counted on the way IN, so a runaway loop stops at the limit rather than
     // after building everything it asked for.
@@ -313,6 +400,24 @@ export class Converter {
       case "color":
         this.handleColorCommand(node);
         return null;
+      case "material":
+        this.handleMaterialCommand(node);
+        return null;
+      case "smoothing":
+        this.currentTransform().material.smoothing = this.evaluateNumber(node.value);
+        return null;
+      case "background":
+        this.handleBackground(node.value);
+        return null;
+      case "print":
+        if (this.logs.length < MAX_LOGS) this.logs.push(printable(this.evaluator.evaluate(node.value)));
+        return null;
+      case "assert":
+        if (!this.evaluator.evaluateToBoolean(node.value)) throw new Error("Assertion failed");
+        return null;
+      case "ignored":
+        this.warn(`\`${node.command}\` is not rendered by this viewer and was skipped`);
+        return null;
       case "rotate":
         this.handleRotateCommand(node);
         return null;
@@ -327,17 +432,63 @@ export class Converter {
         return null;
       case "customShape":
         return this.convertCustomShape(node);
-      case "path": {
-        const shape = this.buildPath(node);
-        this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
-        this.requireEnclosedArea(shape, "path");
-        const mesh = this.makeMesh(this.placePath(new THREE.ShapeGeometry(shape), node), this.createMaterial({ properties: {} }));
-        this.applyCurrentTransform(mesh);
-        return mesh;
-      }
+      case "path":
+        return this.operandDepth > 0 ? this.convertPathProfile(node) : this.convertPathLine(node);
       default:
         throw new Error(`Unsupported command: ${(node as { type: string }).type}`);
     }
+  }
+
+  /** A `path` handed to a builder: the flat face it encloses, which `profileOf`
+   *  reads the perimeter back from. */
+  private convertPathProfile(node: PathNode): THREE.Mesh {
+    const shape = this.buildPath(node);
+    this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
+    this.requireEnclosedArea(shape, "path");
+    const mesh = this.makeMesh(this.placePath(new THREE.ShapeGeometry(shape), node), this.createMaterial({ properties: {} }));
+    this.applyCurrentTransform(mesh);
+    return mesh;
+  }
+
+  /** A `path` in the scene draws as a stroke, as upstream: `fill` makes a
+   *  face of it, and a builder consumes it. Open paths are allowed here. */
+  private convertPathLine(node: PathNode): THREE.Line {
+    const shape = this.buildPath(node);
+    const points = shape.getPoints(Math.max(1, Math.floor(this.detailLevel / 4)));
+    if (!points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)))
+      throw new Error("`path` needs finite path coordinates — these overflow");
+    if (points.length < 2) throw new Error("`path` needs at least two points");
+    this.chargeEstimate(points.length);
+    this.vertexCount += points.length;
+    const geometry = this.placePath(new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, 0))), node);
+    const material = this.currentTransform().material;
+    const opacity = Math.min(1, Math.max(0, material.alpha * material.opacity));
+    const line = new THREE.Line(
+      geometry,
+      new THREE.LineBasicMaterial({ color: material.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8), opacity, transparent: opacity < 1 }),
+    );
+    this.applyCurrentTransform(line);
+    return line;
+  }
+
+  /** Deduplicated and capped: a `texture` inside a 100k-iteration loop must
+   *  not turn the warning list into a transcript, nor the check into a scan. */
+  private warn(message: string): void {
+    if (this.warningSet.has(message) || this.warnings.length >= MAX_WARNINGS) return;
+    this.warningSet.add(message);
+    this.warnings.push(message);
+  }
+
+  /** `background` at the root: a colour is kept for the viewer, a texture
+   *  file cannot be loaded here. */
+  private handleBackground(value: Expression): void {
+    if (this.sceneDepth > 0) throw new Error("`background` can only be used at the root of the script");
+    const raw = this.evaluator.evaluate(value);
+    if (typeof raw === "string") {
+      this.warn(`background image "${raw}" is not supported — the scene keeps its default background`);
+      return;
+    }
+    this.background = this.requireFiniteColor(rgbaOf(raw));
   }
 
   /** Build `group` inside a fresh symbol + transform scope.
@@ -368,9 +519,11 @@ export class Converter {
   private inFrame<T>(build: () => T): T {
     this.symbols.pushScope();
     this.pushTransform();
+    this.sceneDepth++;
     try {
       return build();
     } finally {
+      this.sceneDepth--;
       this.popTransform();
       this.symbols.popScope();
     }
@@ -393,11 +546,31 @@ export class Converter {
     return this.inScope(group, () => this.addChildren(group, node.children));
   }
 
-  private finishMesh(geometry: THREE.BufferGeometry, node: { properties: ShapeProperties }): THREE.Mesh {
+  /** A control-flow body: `for`, `if` and `switch` scope SYMBOLS only. Their
+   *  `translate` / `rotate` / `color` carry on past the closing brace, as
+   *  upstream (scope.md, "Conditional Scope") — a loop that rotates each
+   *  iteration leaves the frame where the last one ended. */
+  private inSymbolScope(group: THREE.Group, build: () => void): THREE.Group {
+    this.symbols.pushScope();
+    try {
+      build();
+      return group;
+    } catch (error) {
+      disposeObject3D(group);
+      throw error;
+    } finally {
+      this.symbols.popScope();
+    }
+  }
+
+  /** Wrap a finished geometry in a mesh with the node's material and
+   *  placement. `scaleBySize` is for builders and groups, whose `size` scales
+   *  the result; a primitive's `size` is already in its geometry. */
+  private finishMesh(geometry: THREE.BufferGeometry, node: { properties: ShapeProperties }, scaleBySize = true, material?: MaterialState): THREE.Mesh {
     let mesh: THREE.Mesh | undefined;
     try {
-      mesh = this.makeMesh(geometry, this.createMaterial(node));
-      this.applyExplicitTransforms(mesh, node.properties);
+      mesh = this.makeMesh(geometry, this.createMaterial(node, material));
+      this.applyExplicitTransforms(mesh, node.properties, scaleBySize);
       this.applyCurrentTransform(mesh);
       return mesh;
     } catch (error) {
@@ -407,8 +580,24 @@ export class Converter {
     }
   }
 
+  /** Run `build` with the shape's own `detail` / `smoothing` in force, then
+   *  restore the enclosing values. */
+  private withShapeOptions<T>(properties: ShapeProperties, build: () => T): T {
+    const detail = this.detailLevel;
+    const smoothing = this.currentTransform().material.smoothing;
+    try {
+      if (properties.detail !== undefined) this.handleDetail({ type: "detail", value: properties.detail });
+      if (properties.smoothing !== undefined) this.currentTransform().material.smoothing = this.evaluateNumber(properties.smoothing);
+      return build();
+    } finally {
+      this.detailLevel = detail;
+      this.symbols.set("detail", detail);
+      this.currentTransform().material.smoothing = smoothing;
+    }
+  }
+
   private convertShape(node: ShapeNode): THREE.Mesh {
-    return this.finishMesh(this.createGeometry(node), node);
+    return this.withShapeOptions(node.properties, () => this.finishMesh(this.createGeometry(node), node, false));
   }
 
   /** A solid whose extent is zero in any dimension draws nothing.
@@ -425,16 +614,7 @@ export class Converter {
   }
 
   private createGeometry(node: ShapeNode): THREE.BufferGeometry {
-    let size: Vector3 = [1, 1, 1];
-
-    if (node.properties.size) {
-      size = this.evaluateVector3(node.properties.size);
-    }
-
-    // If only one dimension specified (others are 0), make it uniform
-    if (size[1] === 0 && size[2] === 0 && size[0] !== 0) {
-      size = [size[0], size[0], size[0]];
-    }
+    const size = this.evaluateSize(node.properties.size);
 
     switch (node.primitive) {
       case "cube":
@@ -446,6 +626,10 @@ export class Converter {
       case "sphere":
         this.requireExtent("sphere", size);
         return new THREE.SphereGeometry(0.5, this.detailLevel, this.detailLevel).scale(...size);
+
+      case "icosphere":
+        this.requireExtent("icosphere", size);
+        return new THREE.IcosahedronGeometry(0.5, icosphereSubdivisions(this.detailLevel)).scale(...size);
 
       case "cylinder": {
         const radiusTop = node.properties.radiusTop ? this.evaluateNumber(node.properties.radiusTop) : size[0] / 2;
@@ -476,6 +660,9 @@ export class Converter {
         return new THREE.PlaneGeometry(sideLength, size[1] || sideLength);
       }
 
+      case "roundrect":
+        return this.createRoundrect(node, size);
+
       case "polygon": {
         const radius = (size[0] || 1) / 2;
         const sides = node.properties.sides === undefined ? 6 : this.evaluateNumber(node.properties.sides);
@@ -486,6 +673,31 @@ export class Converter {
       default:
         throw new Error(`Unknown primitive: ${node.primitive}`);
     }
+  }
+
+  /** `roundrect { size w h radius r }`: the corner radius is `r` times the
+   *  smaller side (default 0.25), as upstream. */
+  private createRoundrect(node: ShapeNode, size: Vector3): THREE.BufferGeometry {
+    const width = size[0] || 1;
+    const height = size[1] || width;
+    const proportion = node.properties.radius === undefined ? 0.25 : this.evaluateNumber(node.properties.radius);
+    const radius = Math.min(Math.max(0, proportion) * Math.min(width, height), width / 2, height / 2);
+    const shape = new THREE.Shape();
+    const w = width / 2;
+    const h = height / 2;
+    shape.moveTo(-w + radius, -h);
+    shape.lineTo(w - radius, -h);
+    shape.absarc(w - radius, -h + radius, radius, -Math.PI / 2, 0, false);
+    shape.lineTo(w, h - radius);
+    shape.absarc(w - radius, h - radius, radius, 0, Math.PI / 2, false);
+    shape.lineTo(-w + radius, h);
+    shape.absarc(-w + radius, h - radius, radius, Math.PI / 2, Math.PI, false);
+    shape.lineTo(-w, -h + radius);
+    shape.absarc(-w + radius, -h + radius, radius, Math.PI, Math.PI * 1.5, false);
+    shape.closePath();
+    const segments = Math.max(1, Math.floor(this.detailLevel / 4));
+    this.chargePathEstimate(shape, segments);
+    return new THREE.ShapeGeometry(shape, segments);
   }
 
   /** A plugin extension (upstream has no torus). `size` is the OVERALL
@@ -504,29 +716,61 @@ export class Converter {
     return new THREE.TorusGeometry(ringRadius, tubeRadius, Math.max(3, Math.floor(this.detailLevel / 2)), this.detailLevel);
   }
 
-  private materialColor(property: ShapeProperties["color"]): THREE.Color {
-    if (property !== undefined) {
-      const [red = 0.8, green = 0.8, blue = 0.8] = this.evaluateColor(property);
-      return new THREE.Color(red, green, blue);
-    }
-    const scopeColor = this.currentTransform().color;
-    return scopeColor === undefined ? new THREE.Color(0.8, 0.8, 0.8) : scopeColor.clone();
+  /** The material state a shape's own properties produce on top of `base`:
+   *  a `material` bundle first, then the individual properties, the way the
+   *  same commands would apply in order inside its block. */
+  private materialFor(properties: MaterialProperties & { material?: Expression | undefined }, base: MaterialState): MaterialState {
+    const state = cloneMaterialState(base);
+    if (properties.material !== undefined) this.applyMaterialValue(state, this.evaluator.evaluate(properties.material));
+    if (properties.color !== undefined) this.applyColor(state, this.evaluateRGBA(properties.color));
+    if (properties.opacity !== undefined) state.opacity *= this.evaluateNumber(properties.opacity);
+    if (properties.metallicity !== undefined) state.metallicity = this.evaluateNumber(properties.metallicity);
+    if (properties.roughness !== undefined) state.roughness = this.evaluateNumber(properties.roughness);
+    if (properties.glow !== undefined) state.glow = this.glowColor(this.evaluator.evaluate(properties.glow));
+    if (properties.texture !== undefined) this.warnTexture(this.evaluator.evaluate(properties.texture));
+    return state;
   }
 
-  private createMaterial(node: { properties: ShapeProperties }): THREE.Material {
-    // A per-shape `color` property wins; otherwise the enclosing scope's
-    // `color` command applies. That fallback was missing, so `color 1 0 0`
-    // followed by `cube` rendered the default grey — the scope colour was
-    // stored and cloned but never read back.
-    const threeColor = this.materialColor(node.properties.color);
+  private applyColor(state: MaterialState, [r, g, b, a]: RGBA): void {
+    state.color = new THREE.Color(r, g, b);
+    state.alpha = a;
+  }
 
-    const opacity = node.properties.opacity ? this.evaluateNumber(node.properties.opacity) : 1;
-    const transparent = opacity < 1;
+  /** `glow` takes a colour or a brightness; the alpha is ignored upstream. */
+  private glowColor(value: Value): THREE.Color {
+    const [r, g, b] = this.requireFiniteColor(rgbaOf(value));
+    return new THREE.Color(r, g, b);
+  }
 
+  private warnTexture(value: Value): void {
+    if (value === "") return;
+    this.warn(`texture "${String(value)}" is not supported — the shape is drawn with its colour instead`);
+  }
+
+  private applyMaterialValue(state: MaterialState, value: Value): void {
+    if (typeof value !== "object" || Array.isArray(value) || value.kind !== "material") throw new Error("`material` needs a value made with `material { … }`");
+    const material: MaterialValue = value;
+    if (material.color) this.applyColor(state, this.requireFiniteColor(material.color));
+    if (material.opacity !== undefined) state.opacity *= material.opacity;
+    if (material.metallicity !== undefined) state.metallicity = material.metallicity;
+    if (material.roughness !== undefined) state.roughness = material.roughness;
+    if (material.glow) state.glow = this.glowColor(material.glow);
+    if (material.texture !== undefined) this.warnTexture(material.texture);
+  }
+
+  private createMaterial(node: { properties: ShapeProperties }, base?: MaterialState): THREE.Material {
+    // A per-shape property wins; otherwise the enclosing scope's commands
+    // apply. Opacity is the colour's alpha times every `opacity` in scope.
+    const state = this.materialFor(node.properties, base ?? this.currentTransform().material);
+    const opacity = Math.max(0, state.alpha * state.opacity);
     return new THREE.MeshStandardMaterial({
-      color: threeColor,
-      opacity,
-      transparent,
+      color: state.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8),
+      opacity: Math.min(1, opacity),
+      transparent: opacity < 1,
+      ...(state.metallicity === undefined ? {} : { metalness: Math.min(1, Math.max(0, state.metallicity)) }),
+      ...(state.roughness === undefined ? {} : { roughness: Math.min(1, Math.max(0, state.roughness)) }),
+      ...(state.glow === undefined ? {} : { emissive: state.glow.clone() }),
+      flatShading: state.smoothing !== undefined && state.smoothing <= 0,
       wireframe: this.options.wireframe ?? false,
     });
   }
@@ -719,45 +963,27 @@ export class Converter {
   private convertForLoop(node: ForLoopNode): THREE.Group {
     const group = new THREE.Group();
 
-    // New scope for the loop, both symbols and transforms. Transforms
-    // accumulate across iterations but stay scoped to the loop.
-    return this.inScope(group, () => {
-      // Check if it's a values iteration or range iteration
-      if (node.iterableValues) {
-        // for i in values
-        const values = this.evaluator.evaluate(node.iterableValues);
-        const valueArray = Array.isArray(values) ? values : [values];
-        // Same ceiling as the range form. This one used to bypass both budgets:
-        // the iteration cap lives in `rangeIterations`, and the node cap only
-        // counts what the BODY builds — so an empty body ran the whole list for
-        // free.
-        if (valueArray.length > this.maxLoopIterations) {
-          throw new ShapeScriptLimitError(`ShapeScript loop exceeds ${this.maxLoopIterations} iterations — narrow the range or increase the step`);
-        }
-
-        for (const iterationValue of valueArray) {
-          this.symbols.set(node.variable, iterationValue);
-
-          // Convert body nodes - transforms accumulate across iterations
-          this.addChildren(group, node.body);
-        }
-      } else {
-        // for i in from to to
-        const from = this.evaluateNumber(node.from);
-        const to = this.evaluateNumber(node.to);
-        const step = node.step ? this.evaluateNumber(node.step) : 1;
-
-        const iterations = this.rangeIterations(from, to, step);
-
-        for (const i of iterations) {
-          this.symbols.set(node.variable, i);
-
-          // Convert body nodes directly - no iteration sub-groups.
-          // Transforms accumulate across iterations within the loop scope.
-          this.addChildren(group, node.body);
-        }
+    // Symbols are scoped to the loop; transforms and materials are not.
+    return this.inSymbolScope(group, () => {
+      // A range or a tuple; both go through the same bounded expansion, so
+      // neither form can run the body more times than the budget allows.
+      for (const value of this.iterations(node.iterable)) {
+        this.symbols.set(node.variable, value);
+        // Convert body nodes directly - no iteration sub-groups.
+        // Transforms accumulate across iterations within the loop scope.
+        this.addChildren(group, node.body);
       }
     });
+  }
+
+  /** Expand a loop's iterable without materialising an absurd range first:
+   *  the walk stops at the budget rather than after allocating past it. */
+  private iterations(iterable: Expression): Value[] {
+    return iterationValues(
+      this.evaluator.evaluate(iterable),
+      this.maxLoopIterations,
+      () => new ShapeScriptLimitError(`ShapeScript loop exceeds ${this.maxLoopIterations} iterations — narrow the range or increase the step`),
+    );
   }
 
   private convertIf(node: IfNode): THREE.Group {
@@ -766,7 +992,7 @@ export class Converter {
     // Evaluated BEFORE the scope is pushed, as it always was.
     const condition = this.evaluator.evaluateToBoolean(node.condition);
 
-    return this.inScope(group, () => this.addChildren(group, condition ? node.thenBody : (node.elseBody ?? [])));
+    return this.inSymbolScope(group, () => this.addChildren(group, condition ? node.thenBody : (node.elseBody ?? [])));
   }
 
   private convertSwitch(node: SwitchNode): THREE.Group {
@@ -775,19 +1001,17 @@ export class Converter {
     // Evaluate switch value
     const switchValue = this.evaluator.evaluate(node.value);
 
-    return this.inScope(group, () => {
-      const matched = node.cases.find((caseNode) => caseNode.values.some((caseValue) => this.valuesEqual(switchValue, this.evaluator.evaluate(caseValue))));
+    return this.inSymbolScope(group, () => {
+      const matched = node.cases.find((caseNode) => caseNode.values.some((caseValue) => valuesEqual(switchValue, this.evaluator.evaluate(caseValue))));
       this.addChildren(group, matched ? matched.body : (node.defaultCase ?? []));
     });
   }
 
   private handleDefine(node: DefineNode): void {
-    // Check if this is a variable definition or a custom shape definition
-    if (node.value !== undefined) {
-      // Variable definition: define x 5
-      const value = this.evaluator.evaluate(node.value);
-      this.symbols.set(node.name, value);
-    } else if (node.body !== undefined || node.options !== undefined) {
+    // A value or a function is the evaluator's; a custom shape block is kept
+    // here, since its body is scene nodes.
+    if (this.evaluator.define(node)) return;
+    if (node.body !== undefined || node.options !== undefined) {
       // Custom shape definition: define shape { ... }
       // Store the entire node for later instantiation
       // Note: We cast to Value since SymbolTable expects Value, but we know it's a DefineNode
@@ -814,27 +1038,44 @@ export class Converter {
     // nothing downstream ever sees it) or leave the frames behind.
     const group = new THREE.Group();
     const body = defineNode.body;
+    const { position, orientation, rotation, size, name, ...rest } = node.properties as ShapeProperties & Record<string, unknown>;
     return this.inScope(group, () => {
+      // The standard options place the block's output, as on any shape; the
+      // material ones set the scope its body runs in.
+      this.applyPlacement(this.currentTransform().matrix, { position, orientation, rotation, size } as ShapeProperties);
+      this.currentTransform().material = this.materialFor(rest as MaterialProperties, this.currentTransform().material);
+
       // Set default values from options
       for (const option of defineNode.options ?? []) {
         this.symbols.set(option.name, this.evaluator.evaluate(option.defaultValue));
       }
 
       // Override with provided properties
-      for (const [key, value] of Object.entries(node.properties)) {
-        this.symbols.set(key, this.evaluator.evaluate(value as Expression));
+      for (const [key, value] of Object.entries(rest)) {
+        if (!(key in STANDARD_KEYS)) this.symbols.set(key, this.evaluator.evaluate(value as Expression));
       }
 
-      // Convert the body
-      this.addChildren(group, body);
+      if (name !== undefined) group.name = String(this.evaluator.evaluate(name as Expression));
+
+      // Convert the body, under the call's own `detail` / `smoothing`.
+      this.withShapeOptions(rest as ShapeProperties, () => this.addChildren(group, body));
     });
+  }
+
+  /** Post-multiply a shape's `position` / `orientation` / `size` into a frame. */
+  private applyPlacement(matrix: THREE.Matrix4, properties: ShapeProperties): void {
+    const position = properties.position ? new THREE.Vector3(...this.evaluateVector3(properties.position)) : new THREE.Vector3();
+    const rotation = properties.orientation ?? properties.rotation;
+    const quaternion = rotation ? this.rotationOf(rotation) : new THREE.Quaternion();
+    const scale = properties.size ? new THREE.Vector3(...this.evaluateSize(properties.size)) : new THREE.Vector3(1, 1, 1);
+    matrix.multiply(new THREE.Matrix4().compose(position, quaternion, scale));
   }
 
   private pushTransform(): void {
     const current = this.currentTransform();
     this.transformStack.push({
       matrix: current.matrix.clone(),
-      color: current.color === undefined ? undefined : current.color.clone(),
+      material: cloneMaterialState(current.material),
     });
   }
 
@@ -847,7 +1088,12 @@ export class Converter {
   private currentTransform(): TransformState {
     const top = this.transformStack[this.transformStack.length - 1];
     // Empty stack — hand back a fresh identity transform.
-    return top ?? { matrix: new THREE.Matrix4(), color: undefined };
+    return (
+      top ?? {
+        matrix: new THREE.Matrix4(),
+        material: { color: undefined, alpha: 1, opacity: 1, metallicity: undefined, roughness: undefined, glow: undefined, smoothing: undefined },
+      }
+    );
   }
 
   private applyCurrentTransform(object: THREE.Object3D): void {
@@ -855,7 +1101,7 @@ export class Converter {
     object.applyMatrix4(transform.matrix);
   }
 
-  private applyExplicitTransforms(object: THREE.Object3D, properties: ShapeProperties): void {
+  private applyExplicitTransforms(object: THREE.Object3D, properties: ShapeProperties, scaleBySize = false): void {
     if (properties.position) {
       const pos = this.evaluateVector3(properties.position);
       object.position.set(...pos);
@@ -866,6 +1112,8 @@ export class Converter {
     if (orientation) {
       object.quaternion.copy(this.rotationOf(orientation));
     }
+    if (scaleBySize && properties.size) object.scale.set(...this.evaluateSize(properties.size));
+    if (properties.name !== undefined) object.name = String(this.evaluator.evaluate(properties.name));
   }
 
   /** An upstream rotation value as a quaternion.
@@ -912,8 +1160,31 @@ export class Converter {
   }
 
   private handleColorCommand(node: ColorNode): void {
-    const colorValue = this.evaluateVector3OrColor(node.value);
-    this.currentTransform().color = new THREE.Color(colorValue[0], colorValue[1], colorValue[2]);
+    this.applyColor(this.currentTransform().material, this.evaluateRGBA(node.value));
+  }
+
+  private handleMaterialCommand(node: MaterialNode): void {
+    const state = this.currentTransform().material;
+    switch (node.property) {
+      case "opacity":
+        state.opacity *= this.evaluateNumber(node.value);
+        break;
+      case "metallicity":
+        state.metallicity = this.evaluateNumber(node.value);
+        break;
+      case "roughness":
+        state.roughness = this.evaluateNumber(node.value);
+        break;
+      case "glow":
+        state.glow = this.glowColor(this.evaluator.evaluate(node.value));
+        break;
+      case "texture":
+        this.warnTexture(this.evaluator.evaluate(node.value));
+        break;
+      case "material":
+        this.applyMaterialValue(state, this.evaluator.evaluate(node.value));
+        break;
+    }
   }
 
   private handleRotateCommand(node: RotateNode): void {
@@ -945,7 +1216,7 @@ export class Converter {
   }
 
   private handleScaleCommand(node: ScaleNode): void {
-    const scale = this.evaluateVector3(node.value);
+    const scale = this.evaluateSize(node.value);
     const transform = this.currentTransform();
     const scaleMatrix = new THREE.Matrix4().makeScale(scale[0], scale[1], scale[2]);
     transform.matrix.multiply(scaleMatrix);
@@ -971,44 +1242,36 @@ export class Converter {
     return shape;
   }
 
-  private convertExtrude(node: ExtrudeNode): THREE.Mesh {
-    if (!node.path) {
-      return this.buildFromChildren({ children: node.children ?? [], properties: node.properties }, (meshes) => {
-        const shapes = meshes.map((mesh) => this.planarShape(mesh));
-        if (!shapes.length) throw new Error("Extrude requires a path or planar shape");
-        const size = node.properties.size ? this.evaluateVector3(node.properties.size) : [1, 1, 1];
-        for (const shape of shapes) this.chargePathEstimate(shape, 1, 12);
-        return new THREE.ExtrudeGeometry(shapes, { depth: size[2] ?? 1, bevelEnabled: false, curveSegments: 1 });
-      });
-    }
-    const shape = this.requireEnclosedArea(this.buildPath(node.path), "extrude");
-
-    // Get extrusion depth from size property
-    const size = node.properties.size ? this.evaluateVector3(node.properties.size) : [1, 1, 1];
+  /** `size` on an extrude: X and Y scale the profile, Z is the depth. The
+   *  depth goes into the geometry (centred on the profile plane, as
+   *  upstream), so the mesh keeps a unit Z scale. */
+  private extrudeProperties(node: ExtrudeNode): { depth: number; properties: ShapeProperties } {
+    const size = node.properties.size ? this.evaluateSize(node.properties.size) : [1, 1, 1];
     const depth = size[2] || 1;
+    return { depth, properties: { ...node.properties, size: [size[0] ?? 1, size[1] ?? 1, 1] } };
+  }
 
-    // Create extruded geometry
-    const curveSegments = Math.max(1, Math.floor(this.detailLevel / 4));
-    this.chargePathEstimate(shape, curveSegments, EXTRUDE_VERTICES_PER_POINT);
+  private convertExtrude(node: ExtrudeNode): THREE.Mesh {
+    return this.withShapeOptions(node.properties, () => {
+      const { depth, properties } = this.extrudeProperties(node);
+      if (!node.path) {
+        return this.buildFromChildren({ children: node.children ?? [], properties }, (meshes) => {
+          const shapes = meshes.map((mesh) => this.planarShape(mesh));
+          if (!shapes.length) throw new Error("Extrude requires a path or planar shape");
+          for (const shape of shapes) this.chargePathEstimate(shape, 1, 12);
+          return new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 }).translate(0, 0, -depth / 2);
+        });
+      }
+      const shape = this.requireEnclosedArea(this.buildPath(node.path), "extrude");
 
-    const geometry = this.placePath(
-      new THREE.ExtrudeGeometry(shape, {
-        depth,
-        bevelEnabled: false,
-        curveSegments,
-      }),
-      node.path,
-    );
+      // Create extruded geometry
+      const curveSegments = Math.max(1, Math.floor(this.detailLevel / 4));
+      this.chargePathEstimate(shape, curveSegments, EXTRUDE_VERTICES_PER_POINT);
 
-    // Create material
-    const material = this.createMaterial(node);
-
-    const mesh = this.makeMesh(geometry, material);
-
-    this.applyExplicitTransforms(mesh, node.properties);
-    this.applyCurrentTransform(mesh);
-
-    return mesh;
+      // Centred on the profile plane (±depth / 2), as upstream extrudes.
+      const geometry = this.placePath(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments }).translate(0, 0, -depth / 2), node.path);
+      return this.finishMesh(geometry, { properties });
+    });
   }
 
   private buildPath(pathNode: PathNode): THREE.Shape {
@@ -1022,11 +1285,9 @@ export class Converter {
   private placePath<T extends THREE.BufferGeometry>(geometry: T, pathNode: PathNode): T {
     const properties = pathNode.properties;
     if (!properties) return geometry;
-    const position = new THREE.Vector3(...this.evaluateVector3(properties.position));
-    const rotation = properties.orientation ?? properties.rotation;
-    const quaternion = rotation ? this.rotationOf(rotation) : new THREE.Quaternion();
-    const scale = new THREE.Vector3(...(properties.size ? this.evaluateVector3(properties.size) : [1, 1, 1]));
-    return geometry.applyMatrix4(new THREE.Matrix4().compose(position, quaternion, scale));
+    const frame = new THREE.Matrix4();
+    this.applyPlacement(frame, properties);
+    return geometry.applyMatrix4(frame);
   }
 
   /** Run the path's commands and return its points in path space.
@@ -1042,9 +1303,10 @@ export class Converter {
     const points: PathPoint[] = [];
 
     const place = (command: PointCommand | CurveCommand) => {
-      const position = new THREE.Vector3(this.evaluateNumber(command.x), this.evaluateNumber(command.y), 0).applyMatrix4(frame);
-      if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error("Path coordinates overflowed to a non-finite value");
-      points.push({ x: position.x, y: position.y, curved: command.type === "curve" });
+      if (command.z !== undefined && Math.abs(this.evaluateNumber(command.z)) > PATH_POINT_EPSILON) {
+        throw new Error("Paths here are planar — a `point` / `curve` may not have a nonzero third coordinate");
+      }
+      this.placePathPoint(frame, points, this.evaluateNumber(command.x), this.evaluateNumber(command.y), command.type === "curve");
     };
     const move = (step: THREE.Matrix4) => {
       frame.multiply(step);
@@ -1065,6 +1327,9 @@ export class Converter {
         case "point":
         case "curve":
           place(command);
+          break;
+        case "arc":
+          this.placeArc(frame, points, command);
           break;
         case "rotate":
           // Half-turns, clockwise positive — the same convention as `rotate` on a shape.
@@ -1090,17 +1355,41 @@ export class Converter {
     return points;
   }
 
+  private placePathPoint(frame: THREE.Matrix4, points: PathPoint[], x: number, y: number, curved: boolean): void {
+    const position = new THREE.Vector3(x, y, 0).applyMatrix4(frame);
+    if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) throw new Error("Path coordinates overflowed to a non-finite value");
+    points.push({ x: position.x, y: position.y, curved });
+  }
+
+  /** `arc { angle a }`: `a` half-turns clockwise from +Y at radius `size / 2`,
+   *  placed by its own position/orientation, sampled as corners at the current
+   *  detail (upstream's own segment count for the span). */
+  private placeArc(frame: THREE.Matrix4, points: PathPoint[], command: ArcCommand): void {
+    const angle = command.angle === undefined ? 1 : this.evaluateNumber(command.angle);
+    const span = Math.min(2, Math.abs(angle));
+    if (span === 0) throw new Error("`arc` needs a nonzero angle");
+    const segments = Math.max(span < 0.5 ? 1 : span < 1 ? 2 : 3, Math.ceil((span / 2) * this.detailLevel));
+    const radius = (command.size === undefined ? 1 : this.evaluateSize(command.size)[0]) / 2;
+    const local = new THREE.Matrix4();
+    this.applyPlacement(local, {
+      ...(command.position ? { position: command.position } : {}),
+      ...(command.orientation ? { orientation: command.orientation } : {}),
+    });
+    const placed = frame.clone().multiply(local);
+    const sign = Math.sign(angle);
+    for (let i = 0; i <= segments; i++) {
+      const theta = ((sign * span * i) / segments) * Math.PI;
+      this.placePathPoint(placed, points, Math.sin(theta) * radius, Math.cos(theta) * radius, false);
+    }
+  }
+
   private runPathLoop(command: ForLoopPathCommand, processCommand: (command: PathCommand) => void): void {
     this.symbols.pushScope();
     try {
-      const from = this.evaluateNumber(command.from);
-      const to = this.evaluateNumber(command.to);
-      const step = command.step ? this.evaluateNumber(command.step) : 1;
-
       // Path commands never reach `convertNode`, so `maxNodes` cannot stop
       // this one — the shared bounded iterator is the only ceiling here.
-      for (const i of this.rangeIterations(from, to, step)) {
-        this.symbols.set(command.variable, i);
+      for (const value of this.iterations(command.iterable)) {
+        this.symbols.set(command.variable, value);
         for (const bodyCmd of command.commands) {
           processCommand(bodyCmd);
         }
@@ -1179,69 +1468,80 @@ export class Converter {
 
   private buildLathe(node: LatheNode): THREE.Object3D {
     // Lathe rotates a 2D profile around an axis to create a 3D shape.
-    // In ShapeScript, the path defines the profile.
-
-    // Find path node in children
+    // In ShapeScript, the path defines the profile. The other children are
+    // state commands (`material steel`, `detail 64`) that apply to the result.
     let pathNode: PathNode | null = null;
     for (const child of node.children) {
       if (child.type === "path") {
-        pathNode = child as PathNode;
-        break;
+        if (pathNode) throw new Error("`lathe` takes one profile path");
+        pathNode = child;
+      } else {
+        const object = this.convertNode(child);
+        if (object) {
+          // Never reaches the scene, so nothing downstream would free it.
+          disposeObject3D(object);
+          throw new Error("`lathe` takes a path, not a shape — give it `path { … }`");
+        }
       }
     }
 
     if (!pathNode) {
-      // No path found, return empty group
       throw new Error("Lathe requires a path child");
     }
     // Upstream transforms the profile before revolving it; a 3D orientation
     // on a profile has no 2D equivalent here, so refuse rather than guess.
     if (pathNode.properties) throw new Error("`lathe` does not support position/orientation/size on its profile path — place the lathe itself instead");
 
-    const shape = this.buildPath(pathNode);
-    this.chargePathEstimate(shape, this.detailLevel, this.detailLevel + 1);
-    const points = shape.getPoints(this.detailLevel);
+    return this.withShapeOptions(node.properties, () => {
+      const shape = this.buildPath(pathNode);
+      this.chargePathEstimate(shape, this.detailLevel, this.detailLevel + 1);
+      const points = shape.getPoints(this.detailLevel);
 
-    if (points.length < 2) {
-      throw new Error("Lathe path must have at least 2 points");
-    }
-    this.requireLatheProfile(points);
+      if (points.length < 2) {
+        throw new Error("Lathe path must have at least 2 points");
+      }
+      this.requireLatheProfile(points);
+      // A profile drawn on the -X side (upstream's examples do this) revolves
+      // to the same solid; LatheGeometry needs it on +X to face outward.
+      if (points.every((point) => point.x <= PATH_POINT_EPSILON)) for (const point of points) point.x = -point.x;
 
-    // What `LatheGeometry` is about to allocate: one ring of `detail + 1`
-    // vertices per profile point. Checked BEFORE the constructor runs, since by
-    // the time `makeMesh` could measure it the memory is already committed.
-    this.chargeEstimate(points.length * (this.detailLevel + 1));
+      // What `LatheGeometry` is about to allocate: one ring of `detail + 1`
+      // vertices per profile point. Checked BEFORE the constructor runs, since by
+      // the time `makeMesh` could measure it the memory is already committed.
+      this.chargeEstimate(points.length * (this.detailLevel + 1));
 
-    // Create lathe geometry
-    const geometry = new THREE.LatheGeometry(
-      points,
-      this.detailLevel, // Number of segments around the axis
-    );
-
-    // Create material
-    const material = this.createMaterial(node);
-    const mesh = this.makeMesh(geometry, material);
-
-    this.applyExplicitTransforms(mesh, node.properties);
-    this.applyCurrentTransform(mesh);
-
-    return mesh;
+      // LatheGeometry winds its faces from the profile's direction, so a
+      // profile drawn top-down (upstream's chess pieces all are) comes out
+      // inside out — which three-bvh-csg then drops from a union. Orient it
+      // outward by the signed volume, as Euclid does from the profile plane.
+      const geometry = orientOutward(new THREE.LatheGeometry(points, this.detailLevel));
+      return this.finishMesh(geometry, node, true, this.currentTransform().material);
+    });
   }
 
   /** Build `children` into a throwaway group at the block's own origin and hand
    *  back every mesh in it, world matrices already resolved. The group stays
    *  owned by the caller, which disposes it. */
-  private buildOperands(temporary: THREE.Group, children: SceneNode[]): THREE.Mesh[] {
-    this.inScope(temporary, () => {
-      this.currentTransform().matrix.identity();
-      this.addChildren(temporary, children);
-    });
+  private buildOperands(temporary: THREE.Group, children: SceneNode[]): { meshes: THREE.Mesh[]; material: MaterialState } {
+    let material = this.currentTransform().material;
+    this.operandDepth++;
+    try {
+      this.inScope(temporary, () => {
+        this.currentTransform().matrix.identity();
+        this.addChildren(temporary, children);
+        // The material the block ends with is the builder's own — upstream a
+        // `material steel` inside `lathe { … }` colours the lathe.
+        material = cloneMaterialState(this.currentTransform().material);
+      });
+    } finally {
+      this.operandDepth--;
+    }
     temporary.updateMatrixWorld(true);
     const meshes: THREE.Mesh[] = [];
     temporary.traverse((object) => {
       if ((object as THREE.Mesh).isMesh) meshes.push(object as THREE.Mesh);
     });
-    return meshes;
+    return { meshes, material };
   }
 
   private buildFromChildren(node: { children: SceneNode[]; properties: ShapeProperties }, build: (meshes: THREE.Mesh[]) => THREE.BufferGeometry): THREE.Mesh {
@@ -1253,16 +1553,23 @@ export class Converter {
     // trips the ceiling while the scene it draws is far beneath it.
     const chargedBeforeOperands = this.vertexCount;
     let geometry: THREE.BufferGeometry;
+    let material: MaterialState;
     try {
-      geometry = build(this.buildOperands(temporary, node.children));
+      const operands = this.buildOperands(temporary, node.children);
+      material = operands.material;
+      geometry = build(operands.meshes);
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = chargedBeforeOperands;
     }
-    return this.finishMesh(geometry, node);
+    return this.finishMesh(geometry, node, true, material);
   }
 
   private convertLoft(node: LoftNode): THREE.Object3D {
+    return this.withShapeOptions(node.properties, () => this.buildLoft(node));
+  }
+
+  private buildLoft(node: LoftNode): THREE.Object3D {
     return this.buildFromChildren(node, (meshes) => {
       const profiles = meshes.map(profileOf);
       const vertices = profiles.length * Math.max(0, ...profiles.map((ring) => ring.length));
@@ -1281,7 +1588,7 @@ export class Converter {
     // Fill creates a solid 2D shape from a path
     // Similar to extrude but with zero depth
     return this.inFrame(() => {
-      const pathNode = node.children.find((child): child is PathNode => child.type === "path");
+      const pathNode = node.children.length === 1 ? node.children.find((child): child is PathNode => child.type === "path") : undefined;
       if (!pathNode) {
         return this.buildFromChildren(node, (meshes) => {
           const shapes = meshes.map((mesh) => this.planarShape(mesh));
@@ -1296,12 +1603,7 @@ export class Converter {
       this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
       this.requireEnclosedArea(shape, "fill");
       const geometry = this.placePath(new THREE.ShapeGeometry(shape), pathNode);
-      const mesh = this.makeMesh(geometry, this.createMaterial(node));
-
-      this.applyExplicitTransforms(mesh, node.properties);
-      this.applyCurrentTransform(mesh);
-
-      return mesh;
+      return this.finishMesh(geometry, node);
     });
   }
 
@@ -1345,6 +1647,23 @@ export class Converter {
     return result;
   }
 
+  /** A `size`: one value is uniform, two are `x y x` (a cylinder's diameter
+   *  and height), three are as given — Euclid's `Vector(size:)`. */
+  private evaluateSize(value: Vector3 | Expression | undefined): Vector3 {
+    if (value === undefined) return [1, 1, 1];
+    const raw: Value = Array.isArray(value) && typeof value[0] === "number" ? (value as number[]) : this.evaluator.evaluate(value as Expression);
+    const components = (Array.isArray(raw) ? raw : [raw]).map((component) => {
+      if (typeof component !== "number" || !Number.isFinite(component)) throw new Error("Expected finite size components");
+      return component;
+    });
+    const [x = 1, y = x, z = x] = components;
+    return [x, y, z];
+  }
+
+  private evaluateRGBA(value: Color | Expression): RGBA {
+    return this.requireFiniteColor(this.evaluator.evaluateToRGBA(value));
+  }
+
   private evaluateTranslateVector(value: Expression): Vector3 {
     const result = this.evaluator.evaluate(value);
 
@@ -1362,14 +1681,6 @@ export class Converter {
     return [0, 0, 0];
   }
 
-  private evaluateColor(value: Color | Expression | undefined): Color {
-    if (value === undefined) return [0.8, 0.8, 0.8];
-    if (Array.isArray(value) && typeof value[0] === "number") {
-      return value as Color;
-    }
-    return this.requireFiniteColor(this.evaluator.evaluateToColor(value as Expression));
-  }
-
   /** Colour channels get the same treatment as sizes and translations.
    *  `new THREE.Color(Infinity, …)` throws nothing — it serialises as
    *  `[null, null, null]`, so validation reported success and the browser was
@@ -1378,51 +1689,31 @@ export class Converter {
     if (!channels.every(Number.isFinite)) throw new Error("Expected finite color channels");
     return channels;
   }
+}
 
-  private evaluateVector3OrColor(value: Expression): Vector3 {
-    // This helper is used for color commands which can accept a single number or a tuple
-    const result = this.evaluator.evaluate(value);
+/** The keys a custom block call places or colours with, rather than passing
+ *  to the block as option values. */
+const STANDARD_KEYS: Record<string, true> = {
+  position: true,
+  orientation: true,
+  rotation: true,
+  size: true,
+  color: true,
+  opacity: true,
+  material: true,
+  metallicity: true,
+  roughness: true,
+  glow: true,
+  texture: true,
+  detail: true,
+  smoothing: true,
+};
 
-    // Helper to convert Value to number. Strict, because the fallbacks it used
-    // to have made `color "bad" cube` render default grey and VALIDATE clean,
-    // while the identical `cube { color "bad" }` returned a diagnostic.
-    const toNum = (v: Value | undefined): number => {
-      if (typeof v === "number") return v;
-      if (typeof v === "boolean") return v ? 1 : 0;
-      if (Array.isArray(v) && v.length > 0) return toNum(v[0]);
-      throw new Error("Expected numeric color channels");
-    };
-
-    if (typeof result === "number") {
-      // Single value - use as grayscale
-      return this.requireFiniteColor([result, result, result]);
-    } else if (typeof result === "boolean") {
-      return this.requireFiniteColor([toNum(result), toNum(result), toNum(result)]);
-    } else if (Array.isArray(result)) {
-      // Tuple - ensure it's a 3-element vector
-      if (result.length === 1) {
-        return this.requireFiniteColor([toNum(result[0]), toNum(result[0]), toNum(result[0])]);
-      } else if (result.length === 2) {
-        return this.requireFiniteColor([toNum(result[0]), toNum(result[1]), 0]);
-      } else if (result.length >= 3) {
-        return this.requireFiniteColor([toNum(result[0]), toNum(result[1]), toNum(result[2])]);
-      }
-    }
-
-    throw new Error("Expected numeric color channels");
-  }
-
-  private valuesEqual(a: unknown, b: unknown): boolean {
-    if (typeof a !== typeof b) return false;
-    if (Array.isArray(a) && Array.isArray(b)) {
-      if (a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) {
-        if (!this.valuesEqual(a[i], b[i])) return false;
-      }
-      return true;
-    }
-    return a === b;
-  }
+/** `print` output, one value per space, tuples in parentheses. */
+function printable(value: Value): string {
+  if (Array.isArray(value)) return value.map((item) => (Array.isArray(item) ? `(${printable(item)})` : printable(item))).join(" ");
+  if (typeof value === "object") return value.kind === "range" ? `${value.from} to ${value.to} step ${value.step}` : `<${value.kind}>`;
+  return String(value);
 }
 
 // Main export function

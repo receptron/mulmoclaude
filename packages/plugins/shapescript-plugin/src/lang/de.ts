@@ -12,6 +12,8 @@ const de: Messages = {
   saveError: "Speichern fehlgeschlagen:",
   downloadUsdz: "USDZ herunterladen",
   exportError: "Export fehlgeschlagen:",
+  sceneWarnings: "Nicht gerendert:",
+  printOutput: "Ausgabe:",
 };
 
 export default de;

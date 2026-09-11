@@ -1,9 +1,9 @@
 # ShapeScript plugin: upstream parity tracker
 
-**Status**: phase 1 in progress (semantic mismatches)
+**Status**: phase 1 shipped in 2.0.0 (#3069); phase 2 and the first phase-3 batch in 2.1.0
 **Upstream**: [nicklockwood/ShapeScript](https://github.com/nicklockwood/ShapeScript) 1.11.4 (2026-09-04)
 **Ours**: `packages/plugins/shapescript-plugin` (ported from `@gui-chat-plugin/present3d`)
-**Last updated**: 2026-09-10
+**Last updated**: 2026-09-11
 
 The plugin ships its own ShapeScript parser / evaluator / Three.js converter. It was ported
 from the present3D plugin, which had invented its own unit conventions. The result is that a
@@ -42,31 +42,64 @@ Known remaining deviations inside phase 1 scope (documented in the README):
 - `torus` is a plugin extension (upstream has none). Its `size` is now the outer diameter so it
   follows the same rule as the other curved primitives.
 
-## Phase 2 — commands that parse but fail to render
+Found while running the upstream examples (fixed in 2.1.0, also phase-1 class):
 
-- `background` and `texture` parse into AST nodes but the converter throws
-  "Unsupported command". Upstream scripts use `background` routinely. Accept `background` as
-  a scene-level colour and ignore `texture` with a diagnostic rather than an error.
+| # | Feature | Upstream | Ours (before) | Status |
+|---|---|---|---|---|
+| 14 | scope of `for` / `if` / `switch` | symbols only; transforms and materials carry on after the body (scope.md) | reset at the closing brace, so Chessboard's pieces marched off the board | fixed in 2.1.0 |
+| 15 | bare `path` at scene level | drawn as a line | filled face | fixed in 2.1.0 |
+| 16 | `size 1 2` | `1 2 1` (Euclid `Vector(size:)`) | `1 2 0`, refused by `cube` | fixed in 2.1.0 |
+| 17 | `size` on a builder / group, `material` inside a builder block | scales the result; sets its material | ignored | fixed in 2.1.0 |
+| 18 | options on a custom block call (`post { position 1 orientation 0.5 }`) | place the block's output | bound as symbols; `orientation` was a parse error | fixed in 2.1.0 |
+| 19 | lathe profile on the −X side | same solid | inside-out | fixed in 2.1.0 |
+| 20 | lathe profile drawn top-down | oriented outward (Euclid) | inside out, so `union` dropped it (Chessboard queens) | fixed in 2.1.0 |
+| 21 | `extrude` depth placement | centred: ±depth/2 around the profile plane | 0…depth (Train running board offset) | fixed in 2.1.0 |
+
+## Phase 2 — commands that parse but fail to render — DONE (2.1.0)
+
+- `background R G B` is kept on the root group (`sceneInfoOf(group).background`) and both the
+  View and the server render page paint it. A background image, `texture`, `camera` and
+  `light` are accepted and skipped; the warnings travel on `userData`, in the tool result
+  message ("Not rendered: …") and in the View.
 
 ## Phase 3 — missing language features (by likely impact on generated scripts)
 
-- **Materials**: hex colours (`#FF0000`), HSB colours, named colours (`red`, `green`, …),
-  `material` blocks, `glow`, `metallicity`, `roughness`, `opacity` textures, `normals`.
-- **Primitives**: `icosphere` (1.11.0).
+Test fixtures: the upstream `Examples/` directory (`test/fixtures/upstream-examples/`, MIT).
+Ball, Chessboard, Cog, Earth, Spring and Train render; Dodecahedron, Fillet and Spirals are
+refused by name (see "open" below).
+
+Done in 2.1.0:
+
+- **Materials**: hex, HSB (`hsb()`), named colours, alpha by count and `color red 0.5`,
+  scoped multiplicative `opacity`, `metallicity` / `roughness` (PBR), `glow` (emissive),
+  `material { … }` bundles and `material NAME`, `smoothing` (0 = flat), `name`.
+- **Primitives**: `icosphere` (upstream's subdivision rule from `detail`).
+- **Paths**: `arc { angle position orientation size }`, `roundrect { radius }`, builders
+  taking one unwrapped child (`extrude circle`), 3D path points accepted when z = 0.
+- **Expressions**: ranges as values (`1 to 5 step 2`, re-stepping, `in`), bare calls
+  (`max 0 1`, `sin pi / 2`), custom functions with parameters and local defines, `split`,
+  negative / named subscripts, size / rotation / HSB members.
+- **Scene**: `print` (returned with the tool result), `assert`, `smoothing`, `name`;
+  `camera` / `light` skipped with a warning; `import`, `text`, `font`, `mesh`, `minkowski`,
+  `inset`, `svgpath`, `along`, `object`, `normals`, `focus`, `debug` refused by name.
+
+Open:
+
 - **Builders**: `minkowski`; `extrude` options `along`, `twist`, `axisAligned`, `miterLimit`;
-  `inset` (1.11.0).
-- **Paths**: `arc`, `roundrect`, `svgpath`, `angle`, nested / compound paths with holes,
-  `path.color`, 3D path points.
-- **Rotation values**: `rotation` function, quaternion-style multiplication of rotations,
-  `{ yaw 0.5 }` / `{ axis … angle … }` block syntax (1.11.0 – 1.11.2).
-- **Object syntax** for `color`, `size`, `point`, `path`, `polygon`, `mesh` (1.11.0).
-- **Expressions**: ranges as values (`1 to 5`), partial ranges, bare function calls without
-  parentheses (`max 0 1`), `if` / `switch` / `for` inside expressions (1.10.0), `split`,
-  `bounds` members, mesh members (`polygons`, `triangles`), string `lines` / `words` /
-  `characters`.
-- **Custom functions** with return values (we only have custom shapes with `option`s).
-- **Scene**: `text` / `font`, `light`, `camera`, `import`, raw `mesh`, `smoothing`, `name`,
-  `debug`, `print`, `assert`, `focus`.
+  `inset` (Fillet, Spirals).
+- **Values**: shapes as values (`define s sphere { … }`, functions returning meshes, mesh
+  members `polygons` / `triangles` / `bounds` / `volume`, `for` as an expression) — Dodecahedron.
+  Would need a mesh value type in the evaluator; the largest remaining item.
+- **Paths**: `svgpath`, nested / compound paths with holes, `path.color` gradients, 3D path
+  points with z ≠ 0, `arc` outside a path.
+- **Materials**: texture images (`texture`, `opacity` / `metallicity` / `roughness` textures,
+  `normals`), `smoothing` as an angle threshold.
+- **Rotation values**: `rotation` function, rotation multiplication, `{ yaw 0.5 }` /
+  `{ axis … angle … }` block syntax (1.11.0 – 1.11.2).
+- **Object syntax** for `color`, `size`, `point`, `path`, `polygon`, `mesh` (1.11.0); `object`
+  values; partial ranges (`from 5`); range subscripts (`v[0 to 2]`); `if` / `switch` inside
+  expressions; string `lines` / `words` / `characters`; `text` / `font`; `light` / `camera`
+  rendering.
 
 ## Things we have that upstream does not
 

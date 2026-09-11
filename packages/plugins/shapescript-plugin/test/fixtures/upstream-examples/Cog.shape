@@ -1,0 +1,33 @@
+// ShapeScript document
+
+camera {
+    position 0 -1.5 1.75
+    orientation 0 0 -0.2
+    width 1400
+    height 1000
+}
+
+define cog {
+    option teeth 6
+    path {
+        define step 1 / teeth
+        for 1 to teeth {
+            point -0.02 0.8
+            point 0.05 1
+            rotate step
+            point -0.05 1
+            point 0.02 0.8
+            rotate step
+        }
+        point -0.02 0.8
+    }
+}
+
+difference {
+    extrude {
+        size 1 1 0.5
+        cog { teeth 8 }
+    }
+    rotate 0 0 0.5
+    cylinder
+}
