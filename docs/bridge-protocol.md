@@ -90,8 +90,10 @@ Connect with `auth: { transportId, token }`:
 
 ```ts
 import { io } from "socket.io-client";
+import { resolveApiUrl } from "@mulmobridge/client"; // or resolve it yourself —
+                                                    // see "Minimal TypeScript bridge"
 
-const socket = io(apiUrl, {   // see "Finding the server" — never a hardcoded 3001
+const socket = io(resolveApiUrl(), {
   path: "/ws/chat",
   auth: {
     transportId: "cli",     // required — identifies your bridge
