@@ -480,15 +480,16 @@ export const DEFAULT_RANDOM_SEED = 0;
  *  JavaScript stack, which surfaces as a RangeError with no script context. */
 const MAX_CALL_DEPTH = 256;
 
-/** Same ceiling as a `for` statement; the converter's option is not reachable
- *  from here, so the default stands. */
-const MAX_FOR_EXPRESSION_ITERATIONS = 100_000;
+/** Default ceiling for a `for` expression; the converter sets its own option. */
+const DEFAULT_MAX_FOR_EXPRESSION_ITERATIONS = 100_000;
 
 export class Evaluator {
   private symbols: SymbolTable;
   private callDepth = 0;
   /** Set by the converter, which owns geometry. */
   hooks: EvaluatorHooks | undefined;
+  /** The same per-loop ceiling the converter applies to `for` statements. */
+  maxLoopIterations = DEFAULT_MAX_FOR_EXPRESSION_ITERATIONS;
 
   constructor(symbols?: SymbolTable, seed?: number) {
     this.symbols = symbols || new SymbolTable(seed);
@@ -712,8 +713,8 @@ export class Evaluator {
       case "for": {
         const values = iterationValues(
           this.evaluate(expr.iterable),
-          MAX_FOR_EXPRESSION_ITERATIONS,
-          () => new Error(`\`for\` expression exceeds ${MAX_FOR_EXPRESSION_ITERATIONS} iterations`),
+          this.maxLoopIterations,
+          () => new Error(`\`for\` expression exceeds ${this.maxLoopIterations} iterations`),
         );
         this.symbols.pushScope();
         try {

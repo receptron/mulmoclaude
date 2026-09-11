@@ -284,6 +284,7 @@ export class Converter {
     this.symbols.set("detail", this.detailLevel);
     // Shapes as values and shape-building functions are built here.
     this.evaluator.hooks = { shape: (node) => this.shapeValue(node), call: (fn, args) => this.callShapeFunction(fn, args) };
+    this.evaluator.maxLoopIterations = this.maxLoopIterations;
     // Initialize with identity transform
     this.pushTransform();
   }
@@ -686,7 +687,7 @@ export class Converter {
   private buildScratch(
     nodes: readonly SceneNode[],
     after?: (captured: Value[]) => void,
-  ): { captured: Value[]; geometries: THREE.BufferGeometry[]; name: string | undefined } {
+  ): { captured: Value[]; geometries: THREE.BufferGeometry[]; name: string | undefined; polygons: PolygonValue[] | undefined } {
     const temporary = new THREE.Group();
     const captured: Value[] = [];
     const charged = this.vertexCount;
@@ -700,7 +701,16 @@ export class Converter {
       );
       const meshes = this.meshesIn(temporary);
       const geometries = meshes.map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
-      return { captured, geometries, name: meshes.length === 1 && meshes[0]!.name ? meshes[0]!.name : undefined };
+      const single = meshes.length === 1 ? meshes[0] : undefined;
+      const faces = single?.geometry.userData.polygons as PolygonValue[] | undefined;
+      const polygons =
+        single && faces
+          ? faces.map((face) => ({
+              ...face,
+              points: face.points.map((point) => new THREE.Vector3(...point).applyMatrix4(single.matrixWorld).toArray() as Point3),
+            }))
+          : undefined;
+      return { captured, geometries, name: single?.name || undefined, polygons };
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = charged;
@@ -717,6 +727,9 @@ export class Converter {
     const parts = [...(polygons.length ? [geometryFromPolygons(polygons, colored)] : []), ...meshes.map((mesh) => mesh.geometry), ...geometries];
     if (parts.length === 0) throw new Error("`mesh` needs at least one polygon");
     const geometry = mergeMeshGeometries(parts);
+    // The faces as written, so `.polygons` on this mesh as a value returns
+    // them rather than their triangles.
+    if (meshes.length === 0 && geometries.length === 0) geometry.userData = { polygons };
     const mesh = this.makeMesh(geometry, this.createMaterial({ properties: {} }, undefined, geometry.hasAttribute("color")));
     this.applyCurrentTransform(mesh);
     return mesh;
@@ -761,6 +774,13 @@ export class Converter {
       this.symbols.popScope();
     }
     if (points.length < 3) throw new Error("`polygon` needs at least three points");
+    // The block's own position / orientation / size place its points.
+    const { position, orientation, rotation, size } = node.properties;
+    if (position || orientation || rotation || size) {
+      const frame = new THREE.Matrix4();
+      this.applyPlacement(frame, node.properties);
+      for (const point of points) new THREE.Vector3(...point).applyMatrix4(frame).toArray(point);
+    }
     return { kind: "polygon", points, ...(colored ? { colors } : {}) };
   }
 
@@ -788,7 +808,7 @@ export class Converter {
    *  merged into one geometry the script can read members of and place. A
    *  polygon block or a function that returned one is that value itself. */
   private shapeValue(node: SceneNode): Value {
-    const { captured, geometries, name } = this.buildScratch([node]);
+    const { captured, geometries, name, polygons } = this.buildScratch([node]);
     if (geometries.length === 0) {
       if (captured.length === 1) return captured[0]!;
       if (captured.length > 1) return captured;
@@ -796,7 +816,7 @@ export class Converter {
     }
     const geometry = mergeMeshGeometries(geometries);
     this.chargeEstimate(geometry.getAttribute("position").count);
-    return { kind: "mesh", geometry, ...(name === undefined ? {} : { name }) };
+    return { kind: "mesh", geometry, ...(name === undefined ? {} : { name }), ...(polygons === undefined ? {} : { polygons }) };
   }
 
   /** A function whose body builds shapes: run it at the origin with its
@@ -1250,9 +1270,10 @@ export class Converter {
       });
     }
 
-    if (!definition || typeof definition !== "object" || !("type" in definition)) {
-      throw new Error(`Unknown shape: ${node.name}`);
-    }
+    if (definition === undefined) throw new Error(`Unknown shape: ${node.name}`);
+    // A plain value named as a statement: the result a function body ends
+    // with, collected there; anywhere else an unused value.
+    if (typeof definition !== "object" || Array.isArray(definition) || !("type" in definition)) return this.placeValue(definition);
 
     const defineNode = definition as unknown as DefineNode;
 

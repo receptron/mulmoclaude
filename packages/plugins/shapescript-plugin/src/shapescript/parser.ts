@@ -621,6 +621,30 @@ const STATEMENT_TOKENS = new Set([
   TokenType.SIZE,
 ]);
 
+/** Tokens that can only begin a value, never a statement. */
+const VALUE_START_TOKENS = new Set([TokenType.NUMBER, TokenType.STRING, TokenType.HEXCOLOR, TokenType.LPAREN, TokenType.MINUS, TokenType.PLUS]);
+
+/** After a bare symbol, these mean an expression rather than a block call. */
+const EXPRESSION_CONTINUATION_TOKENS = new Set([
+  TokenType.DOT,
+  TokenType.LBRACKET,
+  TokenType.PLUS,
+  TokenType.MINUS,
+  TokenType.STAR,
+  TokenType.DIVIDE,
+  TokenType.PERCENT,
+  TokenType.EQUALS,
+  TokenType.NOT_EQUALS,
+  TokenType.LESS,
+  TokenType.LESS_EQUAL,
+  TokenType.GREATER,
+  TokenType.GREATER_EQUAL,
+  TokenType.AND,
+  TokenType.OR,
+  TokenType.IN,
+  TokenType.TO,
+]);
+
 /** Tokens that open a standard shape property inside a custom block call. */
 const STANDARD_PROPERTY_TOKENS = new Set([
   TokenType.POSITION,
@@ -811,9 +835,28 @@ export class Parser {
    *  Both a grouped expression and a space- or comma-separated tuple live here,
    *  so its elements are read as a VALUE LIST: `(1 +2 +3)` is three components,
    *  the same as `1 +2 +3` written without the parens. */
+  /** Line breaks inside parentheses carry no meaning (literals.md): a tuple of
+   *  tuples may be laid out one row per line, and an expression may continue
+   *  on the next line. Dropping the NEWLINE tokens up to the matching `)` lets
+   *  the one-line rules decide, with the break counted as whitespace. */
+  private stripNewlinesInParens(): void {
+    let depth = 1;
+    for (let i = this.pos; i < this.tokens.length && depth > 0;) {
+      const token = this.tokens[i]!;
+      if (token.type === TokenType.EOF) break;
+      if (token.type === TokenType.LPAREN) depth++;
+      else if (token.type === TokenType.RPAREN) depth--;
+      if (token.type === TokenType.NEWLINE) {
+        this.tokens.splice(i, 1);
+        const next = this.tokens[i];
+        if (next) next.precedingWhitespace = true;
+        continue;
+      }
+      i++;
+    }
+  }
+
   private parseParenthesized(): Expression {
-    // Line breaks inside parentheses carry no meaning (literals.md), so a
-    // tuple of tuples may be laid out one row per line.
     this.skipNewlines();
     if (this.current().type === TokenType.RPAREN) {
       this.advance();
@@ -872,6 +915,7 @@ export class Parser {
     // Parenthesized expression or tuple
     if (token.type === TokenType.LPAREN) {
       this.advance();
+      this.stripNewlinesInParens();
       return this.withValueList(true, () => this.parseParenthesized());
     }
 
@@ -936,8 +980,8 @@ export class Parser {
         // `max(0 (j - 1))` is upstream's C-like spelling and `max(0, j - 1)`
         // the one this plugin always took. Reading both through the tuple
         // rules means a script can be written once for either parser.
+        this.stripNewlinesInParens();
         this.withValueList(true, () => {
-          this.skipNewlines();
           if (this.current().type === TokenType.RPAREN) return;
           args.push(this.parseExpression());
           if (this.current().type === TokenType.COMMA) {
@@ -993,7 +1037,7 @@ export class Parser {
     this.advance();
     const { variable, iterable } = this.parseLoopHeader();
     const body = this.scoped(() => {
-      this.callable.delete(variable);
+      this.bindName(variable);
       return this.parseBracedExpression();
     });
     return { type: "for", variable, iterable, body };
@@ -1278,16 +1322,30 @@ export class Parser {
     const { variable, iterable } = this.parseLoopHeader();
     // The loop variable shadows a function of the same name inside the body.
     const body = this.scoped(() => {
-      this.callable.delete(variable);
+      this.bindName(variable);
       return this.parseBlock();
     });
     return { type: "for", variable, iterable, body };
   }
 
+  /** A shape keyword that a binding in scope has claimed as a value. */
+  private isBoundKeyword(token: Token): boolean {
+    return SHAPE_VALUE_TOKENS.has(token.type) && typeof token.value === "string" && this.values.has(token.value);
+  }
+
+  /** A name bound in the current scope — loop variable, parameter, option —
+   *  is a value there: not a callable, and not the shape it may spell. */
+  private bindName(name: string): void {
+    this.callable.delete(name);
+    this.values.add(name);
+  }
+
   private parseLoopHeader(): { variable: string; iterable: Expression } {
     let variable = "_i";
-    if (this.current().type === TokenType.IDENTIFIER && this.peek().type === TokenType.IN) {
-      variable = this.current().value as string;
+    // Any symbol name may be the loop variable, a keyword's spelling included.
+    const token = this.current();
+    if (typeof token.value === "string" && /^[a-zA-Z_][a-zA-Z_0-9]*$/.test(token.value) && this.peek().type === TokenType.IN) {
+      variable = token.value;
       this.advance();
       this.advance();
     }
@@ -1440,7 +1498,7 @@ export class Parser {
             const optionName = this.expectIdentifier().value as string;
             const defaultValue = this.parseVectorOrExpression();
             // An option is a symbol in the body, shadowing a function of that name.
-            this.callable.delete(optionName);
+            this.bindName(optionName);
 
             options.push({
               type: "option",
@@ -1491,6 +1549,7 @@ export class Parser {
   /** Whether `token` opens a statement rather than an expression — used where
    *  either may appear, such as a function body. */
   private startsStatement(token: Token): boolean {
+    if (this.isBoundKeyword(token)) return false;
     if (STATEMENT_TOKENS.has(token.type)) return !(token.type === TokenType.MATERIAL && this.peek().type === TokenType.LBRACE);
     if (token.type !== TokenType.IDENTIFIER) return false;
     const name = String(token.value);
@@ -1516,7 +1575,7 @@ export class Parser {
     this.callable.add(name);
     this.expect(TokenType.LBRACE);
     const { body, value } = this.scoped(() => {
-      for (const param of params) this.callable.delete(param);
+      for (const param of params) this.bindName(param);
       this.skipNewlines();
       const statements: SceneNode[] = [];
       let result: Expression | undefined;
@@ -1818,7 +1877,7 @@ export class Parser {
     const { variable, iterable } = this.parseLoopHeader();
     // The loop is expanded during rendering.
     const commands = this.scoped(() => {
-      this.callable.delete(variable);
+      this.bindName(variable);
       return this.parsePathBody("path for loop");
     });
     return { type: "for", variable, iterable, commands };
@@ -1882,6 +1941,11 @@ export class Parser {
       this.advance();
       return this.parseCustomShapeCall(token.value);
     }
+
+    // A value as a statement: the result a function body ends with (`a * a`,
+    // `data.last`, `1`, a parameter named `cube`), which the converter
+    // collects; elsewhere an error.
+    if (VALUE_START_TOKENS.has(token.type) || this.isBoundKeyword(token)) return { type: "expression", value: this.parseVectorOrExpression() };
 
     // Check mapped operations first
     const shape = shapeMap[token.type];
@@ -1969,8 +2033,11 @@ export class Parser {
           const unsupported = unsupportedMessage(name);
           if (unsupported !== undefined) throw new ParseError(unsupported, token.line, token.column);
           // A function called as a statement (`face data`), whose result is a
-          // shape to place — or, inside `mesh`, a polygon to add.
-          if (this.callable.has(name)) return { type: "expression", value: this.parseVectorOrExpression() };
+          // shape to place — or, inside `mesh`, a polygon to add; or an
+          // expression that starts with a symbol (`i / 3`, `data.last`).
+          if (this.callable.has(name) || EXPRESSION_CONTINUATION_TOKENS.has(this.peek().type)) {
+            return { type: "expression", value: this.parseVectorOrExpression() };
+          }
         }
         this.advance();
         return this.parseCustomShapeCall(name);

@@ -847,7 +847,27 @@ describe("shapes as values", () => {
     );
     assert.throws(() => objectsOf("define nothing(a) { define b a }\nnothing 1"), /returns nothing|produced no value/);
   });
+  it("keeps a mesh block's faces as its polygons, places a point polygon, and bounds `for` expressions", () => {
+    withMesh(
+      "define s mesh {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 1 1 0\n  point 0 1 0\n }\n}\ncube { size s.polygons.count s.triangles.count 1 }",
+      (mesh) => near(extent(mesh).toArray(), [1, 2, 1]),
+    );
+    withMesh("polygon {\n position 5 0 0\n size 2\n point 0 0\n point 1 0\n point 0 1\n}", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.x, box.max.x, box.max.y], [5, 7, 2]);
+    });
+    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("define v for i in 1 to 3 { i }\ncube"), { maxLoopIterations: 2 })), /iterations/);
+  });
+  it("lets a function end in `if`, `for` or a bare symbol, and treats keyword-named bindings as values", () => {
+    withMesh("define choose(x) { if x { 1 } else { 2 } }\ncube { size choose(true) choose(false) 1 }", (mesh) => near(extent(mesh).toArray(), [1, 2, 1]));
+    withMesh("define sc(n) { for i in 1 to n { i / n } }\ncube { size sc(2) }", (mesh) => near(extent(mesh).toArray(), [0.5, 1, 0.5]));
+    withMesh("define last(v) {\n define l v.last\n l\n}\ncube { size last((1 2 3)) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
+    withMesh("define f(cube) { cube }\ncube { size f(3) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
+    withMesh("define b {\n option sphere 2\n cube { size sphere }\n}\nb", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("for cone in 2 to 2 { cube { size cone } }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+  });
   it("accepts line breaks inside parentheses", () => {
+    withMesh("cube { size (1\n + 2) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
     withMesh("define rows (\n (1 2 3)\n (4 5 6)\n)\ncube { position rows.first size rows.last }", (mesh) => {
       near(mesh.position.toArray(), [1, 2, 3]);
       near(extent(mesh).toArray(), [4, 5, 6]);
