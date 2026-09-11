@@ -1090,19 +1090,37 @@ export class Parser {
   }
 
   private parseBlockContents(): SceneNode[] {
-    this.skipNewlines();
-
-    const nodes: SceneNode[] = [];
-
-    while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-      const node = this.parseNode();
-      if (node) {
-        nodes.push(node);
-      }
+    return this.scoped(() => {
       this.skipNewlines();
-    }
 
-    return nodes;
+      const nodes: SceneNode[] = [];
+
+      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+        const node = this.parseNode();
+        if (node) {
+          nodes.push(node);
+        }
+        this.skipNewlines();
+      }
+
+      return nodes;
+    });
+  }
+
+  /** Run `parse` with the callable and block name sets scoped to it, so a
+   *  `define max 5` inside a block stops shadowing the built-in at the
+   *  block's closing brace — the parser-side mirror of the runtime scope. */
+  private scoped<T>(parse: () => T): T {
+    const callable = this.callable;
+    const blocks = this.blocks;
+    this.callable = new Set(callable);
+    this.blocks = new Set(blocks);
+    try {
+      return parse();
+    } finally {
+      this.callable = callable;
+      this.blocks = blocks;
+    }
   }
 
   private parseBlock(): SceneNode[] {
@@ -1202,62 +1220,64 @@ export class Parser {
     const cases: Array<{ values: Expression[]; body: SceneNode[] }> = [];
     let defaultCase: SceneNode[] | undefined;
 
-    while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-      if (this.current().type === TokenType.CASE) {
-        this.advance();
+    this.scoped(() => {
+      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+        if (this.current().type === TokenType.CASE) {
+          this.advance();
 
-        const caseValues: Expression[] = [];
-        caseValues.push(this.parseExpression());
-
-        // Multiple values for same case
-        while (this.current().type !== TokenType.NEWLINE && this.current().type !== TokenType.LBRACE && this.current().type !== TokenType.EOF) {
+          const caseValues: Expression[] = [];
           caseValues.push(this.parseExpression());
-        }
 
-        this.skipNewlines();
+          // Multiple values for same case
+          while (this.current().type !== TokenType.NEWLINE && this.current().type !== TokenType.LBRACE && this.current().type !== TokenType.EOF) {
+            caseValues.push(this.parseExpression());
+          }
 
-        // Case body can be a block or statements until next case
-        let caseBody: SceneNode[];
-        if (this.current().type === TokenType.LBRACE) {
-          caseBody = this.parseBlock();
+          this.skipNewlines();
+
+          // Case body can be a block or statements until next case
+          let caseBody: SceneNode[];
+          if (this.current().type === TokenType.LBRACE) {
+            caseBody = this.parseBlock();
+          } else {
+            caseBody = [];
+            while (
+              this.current().type !== TokenType.CASE &&
+              this.current().type !== TokenType.ELSE &&
+              this.current().type !== TokenType.RBRACE &&
+              this.current().type !== TokenType.EOF
+            ) {
+              const node = this.parseNode();
+              if (node) caseBody.push(node);
+              this.skipNewlines();
+            }
+          }
+
+          cases.push({ values: caseValues, body: caseBody });
+        } else if (this.current().type === TokenType.ELSE) {
+          this.advance();
+          this.skipNewlines();
+
+          if (this.current().type === TokenType.LBRACE) {
+            defaultCase = this.parseBlock();
+          } else {
+            defaultCase = [];
+            while (this.current().type !== TokenType.CASE && this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+              const node = this.parseNode();
+              if (node) defaultCase.push(node);
+              this.skipNewlines();
+            }
+          }
         } else {
-          caseBody = [];
-          while (
-            this.current().type !== TokenType.CASE &&
-            this.current().type !== TokenType.ELSE &&
-            this.current().type !== TokenType.RBRACE &&
-            this.current().type !== TokenType.EOF
-          ) {
-            const node = this.parseNode();
-            if (node) caseBody.push(node);
-            this.skipNewlines();
+          this.skipNewlines();
+          if (this.current().type !== TokenType.CASE && this.current().type !== TokenType.ELSE && this.current().type !== TokenType.RBRACE) {
+            this.advance(); // skip unexpected token
           }
         }
 
-        cases.push({ values: caseValues, body: caseBody });
-      } else if (this.current().type === TokenType.ELSE) {
-        this.advance();
         this.skipNewlines();
-
-        if (this.current().type === TokenType.LBRACE) {
-          defaultCase = this.parseBlock();
-        } else {
-          defaultCase = [];
-          while (this.current().type !== TokenType.CASE && this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-            const node = this.parseNode();
-            if (node) defaultCase.push(node);
-            this.skipNewlines();
-          }
-        }
-      } else {
-        this.skipNewlines();
-        if (this.current().type !== TokenType.CASE && this.current().type !== TokenType.ELSE && this.current().type !== TokenType.RBRACE) {
-          this.advance(); // skip unexpected token
-        }
       }
-
-      this.skipNewlines();
-    }
+    });
 
     this.expect(TokenType.RBRACE);
 
@@ -1290,33 +1310,35 @@ export class Parser {
       const options: OptionNode[] = [];
       const body: SceneNode[] = [];
 
-      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-        // Each `option` / body statement sits on its own line, and NEWLINE
-        // tokens now survive to the parser (they carry the case boundaries the
-        // switch form needs), so consume them here rather than handing one to
-        // `parseNode()`.
-        this.skipNewlines();
-        if (this.current().type === TokenType.RBRACE || this.current().type === TokenType.EOF) break;
-        // Check for option declarations
-        if (this.current().type === TokenType.OPTION) {
-          this.advance(); // consume 'option'
+      this.scoped(() => {
+        while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+          // Each `option` / body statement sits on its own line, and NEWLINE
+          // tokens now survive to the parser (they carry the case boundaries the
+          // switch form needs), so consume them here rather than handing one to
+          // `parseNode()`.
+          this.skipNewlines();
+          if (this.current().type === TokenType.RBRACE || this.current().type === TokenType.EOF) break;
+          // Check for option declarations
+          if (this.current().type === TokenType.OPTION) {
+            this.advance(); // consume 'option'
 
-          const optionName = this.expectIdentifier().value as string;
-          const defaultValue = this.parseVectorOrExpression();
+            const optionName = this.expectIdentifier().value as string;
+            const defaultValue = this.parseVectorOrExpression();
 
-          options.push({
-            type: "option",
-            name: optionName,
-            defaultValue,
-          });
-        } else {
-          // Parse regular scene nodes
-          const node = this.parseNode();
-          if (node) {
-            body.push(node);
+            options.push({
+              type: "option",
+              name: optionName,
+              defaultValue,
+            });
+          } else {
+            // Parse regular scene nodes
+            const node = this.parseNode();
+            if (node) {
+              body.push(node);
+            }
           }
         }
-      }
+      });
 
       this.expect(TokenType.RBRACE);
 
@@ -1371,19 +1393,22 @@ export class Parser {
     // Registered before the body so a function may call itself.
     this.callable.add(name);
     this.expect(TokenType.LBRACE);
-    this.skipNewlines();
-    const body: DefineNode[] = [];
-    while (this.current().type === TokenType.DEFINE) {
-      body.push(this.parseDefine());
+    const { body, value } = this.scoped(() => {
       this.skipNewlines();
-    }
-    const token = this.current();
-    if (token.type === TokenType.RBRACE) throw new ParseError(`Function \`${name}\` must end with the expression it returns`, token.line, token.column);
-    this.refuseShapeValue(
-      `Function \`${name}\` builds a shape — functions here may only compute values (numbers, tuples, strings); use \`define ${name} { … }\` with options for a reusable shape`,
-    );
-    const value = this.parseVectorOrExpression();
-    this.skipNewlines();
+      const defines: DefineNode[] = [];
+      while (this.current().type === TokenType.DEFINE) {
+        defines.push(this.parseDefine());
+        this.skipNewlines();
+      }
+      const token = this.current();
+      if (token.type === TokenType.RBRACE) throw new ParseError(`Function \`${name}\` must end with the expression it returns`, token.line, token.column);
+      this.refuseShapeValue(
+        `Function \`${name}\` builds a shape — functions here may only compute values (numbers, tuples, strings); use \`define ${name} { … }\` with options for a reusable shape`,
+      );
+      const result = this.parseVectorOrExpression();
+      this.skipNewlines();
+      return { body: defines, value: result };
+    });
     this.expect(TokenType.RBRACE);
     return { type: "define", name, params, body, value };
   }
@@ -1463,16 +1488,18 @@ export class Parser {
     this.skipNewlines();
     const properties: ShapeProperties = {};
     const children: SceneNode[] = [];
-    while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-      const token = this.current();
-      if ([TokenType.SIZE, TokenType.COLOR, TokenType.POSITION, TokenType.ROTATION, TokenType.ORIENTATION].includes(token.type)) {
-        Object.assign(properties, this.parseProperties());
-      } else {
-        const node = this.parseNode();
-        if (node) children.push(node);
+    this.scoped(() => {
+      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+        const token = this.current();
+        if ([TokenType.SIZE, TokenType.COLOR, TokenType.POSITION, TokenType.ROTATION, TokenType.ORIENTATION].includes(token.type)) {
+          Object.assign(properties, this.parseProperties());
+        } else {
+          const node = this.parseNode();
+          if (node) children.push(node);
+        }
+        this.skipNewlines();
       }
-      this.skipNewlines();
-    }
+    });
     this.expect(TokenType.RBRACE);
     if (builderType === "extrude" && children.length === 1 && children[0]?.type === "path") {
       return { type: "extrude", path: children[0], properties };
@@ -1538,16 +1565,19 @@ export class Parser {
    *  options, which land in `properties`. */
   private parsePathBody(where: string, properties?: ShapeProperties): PathCommand[] {
     this.expect(TokenType.LBRACE);
-    this.skipNewlines();
-    const commands: PathCommand[] = [];
-    while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-      if (properties !== undefined && this.parsePathProperty(properties)) {
-        this.skipNewlines();
-        continue;
-      }
-      commands.push(this.parsePathCommand(where));
+    const commands = this.scoped(() => {
       this.skipNewlines();
-    }
+      const parsed: PathCommand[] = [];
+      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+        if (properties !== undefined && this.parsePathProperty(properties)) {
+          this.skipNewlines();
+          continue;
+        }
+        parsed.push(this.parsePathCommand(where));
+        this.skipNewlines();
+      }
+      return parsed;
+    });
     this.expect(TokenType.RBRACE);
     return commands;
   }

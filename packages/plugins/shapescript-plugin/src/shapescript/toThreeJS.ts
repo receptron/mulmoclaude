@@ -420,7 +420,11 @@ export class Converter {
     this.vertexCount += points.length;
     const geometry = this.placePath(new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, 0))), node);
     const material = this.currentTransform().material;
-    const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: material.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8) }));
+    const opacity = Math.min(1, Math.max(0, material.alpha * material.opacity));
+    const line = new THREE.Line(
+      geometry,
+      new THREE.LineBasicMaterial({ color: material.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8), opacity, transparent: opacity < 1 }),
+    );
     this.applyCurrentTransform(line);
     return line;
   }
@@ -1005,8 +1009,8 @@ export class Converter {
         if (!(key in STANDARD_KEYS)) this.symbols.set(key, this.evaluator.evaluate(value as Expression));
       }
 
-      // Convert the body
-      this.addChildren(group, body);
+      // Convert the body, under the call's own `detail` / `smoothing`.
+      this.withShapeOptions(rest as ShapeProperties, () => this.addChildren(group, body));
     });
   }
 

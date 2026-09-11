@@ -600,6 +600,12 @@ describe("upstream shapes and paths", () => {
     assert.equal(objectsOf("path {\n point 0 0\n point 1 0\n point 0 1\n point 0 0\n}").filter((o) => (o as THREE.Mesh).isMesh).length, 0);
     withMesh("fill path {\n point 0 0\n point 1 0\n point 0 1\n point 0 0\n}", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count >= 3));
     assert.throws(() => objectsOf("path { point 0 0 }"), /two points/);
+    // A stroke takes the scope's colour and opacity like a mesh does.
+    const [stroke] = objectsOf("opacity 0.5\ncolor #ff000080\npath {\n point 0 0\n point 1 0\n}") as THREE.Line[];
+    const lineMaterial = stroke!.material as THREE.LineBasicMaterial;
+    near(lineMaterial.color.toArray(), [1, 0, 0]);
+    near([lineMaterial.opacity], [0.5 * (128 / 255)]);
+    assert.ok(lineMaterial.transparent);
     assert.throws(() => objectsOf("path { point 0 0 1 point 1 0 }"), /planar/);
   });
   it("revolves a lathe profile drawn on the −X side like one on +X", () => {
@@ -619,6 +625,11 @@ describe("upstream shapes and paths", () => {
       near(m.color.toArray(), [1, 0, 0]);
     });
     withMesh("define post { cube { size 1 2 1 } }\npost { orientation 0 0 0.5 }", (mesh) => near(extent(mesh).toArray(), [1, 1, 2]));
+    // `detail` / `smoothing` on the call apply to the block's body.
+    materialOf("define bead { sphere }\nbead {\n detail 4\n smoothing 0\n}", (m, mesh) => {
+      assert.ok(mesh.geometry.getAttribute("position").count < 60);
+      assert.equal(m.flatShading, true);
+    });
   });
   it("applies a per-shape `detail`", () => {
     withMesh("sphere { detail 8 }", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count < 100));
@@ -666,8 +677,10 @@ describe("control flow, ranges and functions", () => {
     withMesh("translate (cos 0) 1\ncube", (mesh) => near(mesh.position.toArray(), [1, 1, 0]));
     withMesh("cube { size (sqrt 9) + (sqrt 16) }", (mesh) => near(extent(mesh).toArray(), [7, 7, 7]));
     withMesh("cube { size max(1 2) 3 }", (mesh) => near(extent(mesh).toArray(), [2, 3, 2]));
-    // A `define` of the same name shadows the function.
+    // A `define` of the same name shadows the function — within its block only.
     withMesh("define max 5\ncube { size max }", (mesh) => near(extent(mesh).toArray(), [5, 5, 5]));
+    withMesh("group { define max 5 }\ncube { size max 1 2 }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("define f(a) {\n define max a\n max\n}\ncube { size max 1 f(3) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
   });
   it("defines functions with parameters, local defines and a result", () => {
     withMesh("define sq(a) { a * a }\ncube { size sq(3) }", (mesh) => near(extent(mesh).toArray(), [9, 9, 9]));
