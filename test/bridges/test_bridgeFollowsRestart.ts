@@ -190,6 +190,34 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
     }
   });
 
+  // Resource safety: one replaced socket per restart is fine, a manager that
+  // keeps hammering the dead port after being replaced is a leak that grows.
+  it("stops the socket it replaced", async () => {
+    const first = await startGeneration("gen-old", "token-old");
+    publish(first);
+    const client = createBridgeClient({ transportId: "cli", options: {} });
+    try {
+      assert.equal(await waitForGeneration(client, "gen-old"), "gen-old");
+      const replaced = client.socket;
+
+      await first.stop();
+      unpublish();
+      const second = await startGeneration("gen-new", "token-new");
+      publish(second);
+      try {
+        assert.equal(await waitForGeneration(client, "gen-new"), "gen-new");
+        assert.notEqual(client.socket, replaced, "precondition: the socket was actually replaced");
+        await sleep(2000);
+        assert.equal(replaced.connected, false, "the replaced socket must not be connected");
+        assert.equal(replaced.active, false, "the replaced socket must not still be reconnecting");
+      } finally {
+        await second.stop();
+      }
+    } finally {
+      client.close();
+    }
+  });
+
   it("does not replace the socket while the pair is unchanged", async () => {
     const only = await startGeneration("gen-solo", "token-solo");
     publish(only);
