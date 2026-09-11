@@ -58,6 +58,8 @@ describe("parsePublishedPort", () => {
     ["  3099  ", 3099],
     ["1", 1],
     ["65535", 65535],
+    // The server never writes one, but a leading zero is still a decimal port.
+    ["03002", 3002],
   ];
   accepted.forEach(([raw, expected]) => {
     it(`accepts ${JSON.stringify(raw)} → ${expected}`, async () => {
@@ -68,7 +70,25 @@ describe("parsePublishedPort", () => {
 
   // A port nothing can be addressed on, text a corrupted file might hold, and
   // the shapes `Number.parseInt` would happily truncate into a valid port.
-  const rejected = [null, "", "   ", "0", "65536", "-1", "3002abc", "80@attacker.example", "0x1f", "3e3", "3002.0", "+3002", "NaN"];
+  const rejected = [
+    null,
+    "",
+    "   ",
+    "0",
+    "65536",
+    "999999999999",
+    "-1",
+    "3002abc",
+    "80@attacker.example",
+    "0x1f",
+    "3e3",
+    "3002.0",
+    "+3002",
+    "NaN",
+    // Full-width digits: `\d` is ASCII-only, and `Number("３００２")` is NOT
+    // — it coerces to 3002, so a looser check would accept these.
+    "３００２",
+  ];
   rejected.forEach((raw) => {
     it(`rejects ${JSON.stringify(raw)}`, async () => {
       const { parsePublishedPort } = await loadFresh();
