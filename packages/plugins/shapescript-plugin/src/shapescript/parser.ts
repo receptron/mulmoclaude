@@ -783,8 +783,13 @@ export class Parser {
     const previous = this.tokens[this.pos - 1];
     // A block's parser may already have stepped past the line break (an `if`
     // looking for its `else`), so the test is the line, not the token.
-    if (!previous || token.type === TokenType.NEWLINE || token.type === TokenType.RBRACE || token.type === TokenType.EOF || token.line !== previous.line) return;
-    throw new ParseError(`Unexpected \`${String(token.value)}\` after a statement — ShapeScript takes one statement per line; start a new line here`, token.line, token.column);
+    if (!previous || token.type === TokenType.NEWLINE || token.type === TokenType.RBRACE || token.type === TokenType.EOF || token.line !== previous.line)
+      return;
+    throw new ParseError(
+      `Unexpected \`${String(token.value)}\` after a statement — ShapeScript takes one statement per line; start a new line here`,
+      token.line,
+      token.column,
+    );
   }
 
   private skipNewlines(): void {
@@ -1802,6 +1807,7 @@ export class Parser {
           Object.assign(properties, this.parseProperties());
         } else if (this.isAlongOption(token)) {
           along = this.parseAlong(builderType, along);
+          this.expectEndOfStatement();
         } else {
           const node = this.parseStatementLine();
           if (node) children.push(node);
@@ -1896,6 +1902,7 @@ export class Parser {
       const parsed: PathCommand[] = [];
       while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
         if (properties !== undefined && this.parsePathProperty(properties)) {
+          this.expectEndOfStatement();
           this.skipNewlines();
           continue;
         }
@@ -1993,6 +2000,7 @@ export class Parser {
       } else {
         throw new ParseError(`Unexpected token in arc: ${token.type}`, token.line, token.column);
       }
+      this.expectEndOfStatement();
       this.skipNewlines();
     }
     this.expect(TokenType.RBRACE);

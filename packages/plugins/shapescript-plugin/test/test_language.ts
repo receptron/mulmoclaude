@@ -110,21 +110,31 @@ describe("geometry builders", () => {
   it("keeps a state-only command as a CSG child, which produces no object", () => {
     // `color`, `translate`, `define` and friends convert to null — reading a
     // mesh flag off one used to throw a TypeError out of the CSG collector.
-    for (const script of ["difference {\n cube\n color 1 0 0\n sphere\n}", "difference {\n cube\n translate 0.5 0 0\n sphere\n}", "union {\n detail 8\n cube\n}"]) {
+    for (const script of [
+      "difference {\n cube\n color 1 0 0\n sphere\n}",
+      "difference {\n cube\n translate 0.5 0 0\n sphere\n}",
+      "union {\n detail 8\n cube\n}",
+    ]) {
       withMesh(script, (mesh) => assert.ok(mesh.geometry.getAttribute("position")));
     }
   });
   it("refuses a volumeless path as a CSG operand instead of feeding it to the evaluator", () => {
-    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("difference {\n cube\n path {\n  point 0 0\n  point 1 0\n  point 0 1\n }\n}"))), /no volume/);
+    assert.throws(
+      () => disposeObject3D(astToThreeJS(parseShapeScript("difference {\n cube\n path {\n  point 0 0\n  point 1 0\n  point 0 1\n }\n}"))),
+      /no volume/,
+    );
   });
   it("refunds the vertex budget for builder operands that never enter the scene", () => {
     // Each `hull` builds its two spheres, charges them, then disposes them —
     // they never reach the scene, so their charge must not accumulate. The
     // budget here holds the 24,000 vertices this actually draws with room to
     // spare, but not the ~8,800 of discarded operands on top of them.
-    const group = astToThreeJS(parseShapeScript("detail 20\nfor i in 1 to 10 {\n hull {\n  sphere {\n   position i 0 0\n  }\n  sphere {\n   position i 2 0\n  }\n }\n}"), {
-      maxVertices: 30_000,
-    });
+    const group = astToThreeJS(
+      parseShapeScript("detail 20\nfor i in 1 to 10 {\n hull {\n  sphere {\n   position i 0 0\n  }\n  sphere {\n   position i 2 0\n  }\n }\n}"),
+      {
+        maxVertices: 30_000,
+      },
+    );
     try {
       let vertices = 0;
       group.traverse((object) => {
@@ -188,7 +198,11 @@ describe("geometry builders", () => {
     }
   });
   it("refuses a degenerate inline path instead of presenting an empty mesh", () => {
-    for (const script of ["fill path { point 0 0 }", "fill path {\n point 0 0\n point 1 0\n}", "extrude path {\n point 0 0\n point 1 0\n point 2 0\n point 0 0\n}"]) {
+    for (const script of [
+      "fill path { point 0 0 }",
+      "fill path {\n point 0 0\n point 1 0\n}",
+      "extrude path {\n point 0 0\n point 1 0\n point 2 0\n point 0 0\n}",
+    ]) {
       assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script))), /encloses an area/, script);
     }
     // A bare path is a stroke, so it needs a segment rather than an area.
@@ -288,7 +302,9 @@ describe("expressions", () => {
     }
     withMesh("cube { position -1 -2 -3 }", (mesh) => assert.deepEqual(mesh.position.toArray(), [-1, -2, -3]));
     withMesh("extrude path {\n point +0 +0\n point +1 +0\n point +0 +1\n point -1 +0\n point +0 +0\n}", (mesh) => assert.ok(Math.abs(volume(mesh) - 1) < 1e-5));
-    withMesh("extrude path {\n point 0 0\n point (1 + 2 * 3) 0\n point 0 1\n point -7 0\n point 0 0\n}", (mesh) => assert.ok(Math.abs(volume(mesh) - 7) < 1e-5));
+    withMesh("extrude path {\n point 0 0\n point (1 + 2 * 3) 0\n point 0 1\n point -7 0\n point 0 0\n}", (mesh) =>
+      assert.ok(Math.abs(volume(mesh) - 7) < 1e-5),
+    );
   });
   it("evaluates `rnd` the same way twice, so validation and rendering agree", () => {
     // The server validates the script and the browser renders it from source;
@@ -753,6 +769,9 @@ describe("control flow, ranges and functions", () => {
       "post { height 3 size 1 }",
       'text {\n "Hi" size 0.5\n}',
       "extrude {\n square along circle\n}",
+      "extrude {\n along circle square\n}",
+      "fill path { position 0 0 1 size 2 point 0 0 point 1 0 point 0 1 }",
+      "fill path {\n arc { angle 1 size 2 }\n}",
     ]) {
       assert.throws(() => objectsOf(script), /one statement per line/, script);
     }
@@ -876,8 +895,9 @@ describe("shapes as values", () => {
       near(extent(mesh).toArray(), [1, 1, 1]);
       assert.equal(mesh.geometry.getAttribute("position").count, 6);
     });
-    withMesh("define pair {\n cube {\n  position -1\n }\n cube {\n  position 1\n }\n}\ndefine both(s) {\n pair\n}\ncube {\n size both(1).count 1 1\n}", (mesh) =>
-      near(extent(mesh).toArray(), [2, 1, 1]),
+    withMesh(
+      "define pair {\n cube {\n  position -1\n }\n cube {\n  position 1\n }\n}\ndefine both(s) {\n pair\n}\ncube {\n size both(1).count 1 1\n}",
+      (mesh) => near(extent(mesh).toArray(), [2, 1, 1]),
     );
     assert.throws(() => objectsOf("define nothing(a) { define b a }\nnothing 1"), /returns nothing|produced no value/);
   });
