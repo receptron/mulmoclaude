@@ -7,7 +7,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { FileOps } from "gui-chat-protocol";
 
-import { shapeScriptToUsdz, USDZ_MIME_TYPE } from "../src/export/usdz";
+import * as THREE from "three";
+import { sceneToUsdz, shapeScriptToUsdz, USDZ_MIME_TYPE } from "../src/export/usdz";
+import { parseShapeScript } from "../src/shapescript/parser";
+import { astToThreeJS } from "../src/shapescript/toThreeJS";
+import { disposeObject3D } from "../src/shapescript/dispose";
 import { executeExportShapeScriptUsdz, EXPORT_USDZ_SCHEMA, EXPORT_USDZ_TOOL_NAME, EXPORT_USDZ_TOOL_TIMEOUT_MS } from "../src/export/tool";
 import { usdzArtifactPath } from "../src/core/paths";
 import { DEFAULT_MAX_DURATION_MS } from "../src/shapescript/toThreeJS";
@@ -103,6 +107,24 @@ describe("shapeScriptToUsdz", () => {
     const [cube] = zipEntries(await shapeScriptToUsdz("cube {\n color 0 1 0\n}"));
     assert.equal((cube?.text.match(/def Material /g) ?? []).length, 1);
     assert.match(cube?.text ?? "", /diffuseColor = \(0, 1, 0\)/);
+    // A face whose vertices differ in colour (a geometry from elsewhere; a
+    // polygon block gives all its points one colour) gets their mean.
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute([1, 0, 0, 0, 1, 0, 0, 0, 1], 3));
+    const mixed = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true }));
+    const [blend] = zipEntries(await sceneToUsdz(mixed));
+    mixed.geometry.dispose();
+    (mixed.material as THREE.Material).dispose();
+    assert.equal((blend?.text.match(/def Material /g) ?? []).length, 1);
+    const [r, g, b] = (/diffuseColor = \(([^)]*)\)/.exec(blend?.text ?? "")?.[1] ?? "").split(", ").map(Number);
+    assert.ok([r, g, b].every((c) => Math.abs((c ?? 0) - 1 / 3) < 1e-6), `blend ${r} ${g} ${b}`);
+    // A hidden mesh stays hidden.
+    const group = astToThreeJS(parseShapeScript("mesh {\n polygon {\n  color 1 0 0\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}"));
+    group.traverse((object) => void (object !== group && (object.visible = false)));
+    const [hidden] = zipEntries(await sceneToUsdz(group));
+    assert.equal((hidden?.text.match(/def Material /g) ?? []).length, 0);
+    disposeObject3D(group);
   });
 
   it("names the MIME type AR Quick Look expects", () => {

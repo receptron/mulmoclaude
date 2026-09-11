@@ -44,7 +44,9 @@ const COLOUR_KEY_SCALE = 1000;
  *  coloured model came out white. Geometries and materials created here are
  *  released by `dispose`; the originals are shared and untouched. */
 function withPlainColours(object: THREE.Object3D): { root: THREE.Object3D; dispose: () => void } {
-  const root = object.clone();
+  // Wrapped so a vertex-coloured mesh handed in on its own has a parent to be
+  // swapped out of.
+  const root = new THREE.Group().add(object.clone());
   const created: { dispose(): void }[] = [];
   const meshes: THREE.Mesh[] = [];
   root.traverse((child) => {
@@ -54,6 +56,7 @@ function withPlainColours(object: THREE.Object3D): { root: THREE.Object3D; dispo
   for (const mesh of meshes) {
     const replacement = new THREE.Group();
     replacement.name = mesh.name;
+    replacement.visible = mesh.visible;
     replacement.position.copy(mesh.position);
     replacement.quaternion.copy(mesh.quaternion);
     replacement.scale.copy(mesh.scale);
@@ -67,26 +70,39 @@ function withPlainColours(object: THREE.Object3D): { root: THREE.Object3D; dispo
   return { root, dispose: () => created.forEach((item) => item.dispose()) };
 }
 
-/** One mesh per distinct vertex colour, each face going with its first
- *  vertex's colour (a polygon's vertices share one colour). */
+/** One mesh per distinct face colour. A polygon's vertices normally share one
+ *  colour; a face whose vertices differ (`polygon { color red point a color
+ *  blue point b … }`) gets the mean of the three, since a plain material has
+ *  no gradient and the exporter's vertex colours are what viewers ignore. */
 function splitByColour(mesh: THREE.Mesh): THREE.Mesh[] {
   const source = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
   const colours = source.getAttribute("color");
-  const groups = new Map<string, number[]>();
+  const groups = new Map<string, { colour: THREE.Color; faces: number[] }>();
   for (let face = 0; face * 3 < colours.count; face++) {
-    const key = [colours.getX(face * 3), colours.getY(face * 3), colours.getZ(face * 3)].map((c) => Math.round(c * COLOUR_KEY_SCALE)).join(",");
-    (groups.get(key) ?? groups.set(key, []).get(key)!).push(face);
+    const colour = faceColour(colours, face);
+    const key = colour
+      .toArray()
+      .map((c) => Math.round(c * COLOUR_KEY_SCALE))
+      .join(",");
+    (groups.get(key) ?? groups.set(key, { colour, faces: [] }).get(key)!).faces.push(face);
   }
   const base = mesh.material as THREE.MeshStandardMaterial;
-  const parts = [...groups.values()].map((faces) => {
+  const parts = [...groups.values()].map(({ colour, faces }) => {
     const geometry = facesOf(source, faces);
     const material = base.clone();
     material.vertexColors = false;
-    material.color.copy(base.color).multiply(new THREE.Color(colours.getX(faces[0]! * 3), colours.getY(faces[0]! * 3), colours.getZ(faces[0]! * 3)));
+    material.color.copy(base.color).multiply(colour);
     return new THREE.Mesh(geometry, material);
   });
   if (source !== mesh.geometry) source.dispose();
   return parts;
+}
+
+/** The mean of a face's three vertex colours. */
+function faceColour(colours: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, face: number): THREE.Color {
+  const colour = new THREE.Color(0, 0, 0);
+  for (let v = 0; v < 3; v++) colour.add(new THREE.Color(colours.getX(face * 3 + v), colours.getY(face * 3 + v), colours.getZ(face * 3 + v)));
+  return colour.multiplyScalar(1 / 3);
 }
 
 /** The listed faces of a non-indexed geometry, every attribute but colour. */
