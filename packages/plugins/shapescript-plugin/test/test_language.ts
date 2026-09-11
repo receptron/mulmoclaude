@@ -540,6 +540,9 @@ describe("colours and materials", () => {
   });
   it("accepts textures, cameras and lights with a warning instead of an error", () => {
     assert.deepEqual(infoOf('texture "earth.png"\nsphere').warnings, ['texture "earth.png" is not supported — the shape is drawn with its colour instead']);
+    // Deduplicated and capped, so a loop of textures reports each once and stops at the bound.
+    assert.equal(infoOf('for i in 1 to 500 {\n texture "t.png"\n}\ncube').warnings.length, 1);
+    assert.equal(infoOf('for i in 1 to 500 {\n texture join("t" i ".png")\n}\ncube').warnings.length, 200);
     assert.match(infoOf("camera {\n position 1 2 3\n orientation 0 0.5\n}\ncube").warnings[0]!, /camera/);
     assert.match(infoOf("light { position 1 1 1 }\ncube").warnings[0]!, /light/);
     // A block the script defines itself is invoked, not skipped.
@@ -647,6 +650,7 @@ describe("upstream shapes and paths", () => {
       near(m.color.toArray(), [1, 0, 0]);
     });
     withMesh("define post { cube { size 1 2 1 } }\npost { orientation 0 0 0.5 }", (mesh) => near(extent(mesh).toArray(), [1, 1, 2]));
+    withMesh('define post { cube }\npost { name "left" }', (mesh) => assert.equal(mesh.parent?.name, "left"));
     // `detail` / `smoothing` on the call apply to the block's body.
     materialOf("define bead { sphere }\nbead {\n detail 4\n smoothing 0\n}", (m, mesh) => {
       assert.ok(mesh.geometry.getAttribute("position").count < 60);

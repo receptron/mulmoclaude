@@ -198,6 +198,8 @@ function cloneMaterialState(material: MaterialState): MaterialState {
 /** How many print statements are kept. A `print` inside a 100k-iteration loop
  *  should not turn the tool result into a transcript. */
 const MAX_LOGS = 200;
+/** Same bound for distinct warnings; they are deduplicated first. */
+const MAX_WARNINGS = 200;
 
 /** Signed volume of an indexed or unindexed triangle geometry. */
 function signedVolume(geometry: THREE.BufferGeometry): number {
@@ -262,6 +264,7 @@ export class Converter {
    *  flat mesh for `profileOf`; at the scene level it draws as a line. */
   private operandDepth = 0;
   private readonly warnings: string[] = [];
+  private readonly warningSet = new Set<string>();
   private readonly logs: string[] = [];
   private background: RGBA | undefined;
   private sceneDepth = 0;
@@ -468,8 +471,12 @@ export class Converter {
     return line;
   }
 
+  /** Deduplicated and capped: a `texture` inside a 100k-iteration loop must
+   *  not turn the warning list into a transcript, nor the check into a scan. */
   private warn(message: string): void {
-    if (!this.warnings.includes(message)) this.warnings.push(message);
+    if (this.warningSet.has(message) || this.warnings.length >= MAX_WARNINGS) return;
+    this.warningSet.add(message);
+    this.warnings.push(message);
   }
 
   /** `background` at the root: a colour is kept for the viewer, a texture
@@ -1031,7 +1038,7 @@ export class Converter {
     // nothing downstream ever sees it) or leave the frames behind.
     const group = new THREE.Group();
     const body = defineNode.body;
-    const { position, orientation, rotation, size, ...rest } = node.properties as ShapeProperties & Record<string, unknown>;
+    const { position, orientation, rotation, size, name, ...rest } = node.properties as ShapeProperties & Record<string, unknown>;
     return this.inScope(group, () => {
       // The standard options place the block's output, as on any shape; the
       // material ones set the scope its body runs in.
@@ -1047,6 +1054,8 @@ export class Converter {
       for (const [key, value] of Object.entries(rest)) {
         if (!(key in STANDARD_KEYS)) this.symbols.set(key, this.evaluator.evaluate(value as Expression));
       }
+
+      if (name !== undefined) group.name = String(this.evaluator.evaluate(name as Expression));
 
       // Convert the body, under the call's own `detail` / `smoothing`.
       this.withShapeOptions(rest as ShapeProperties, () => this.addChildren(group, body));
