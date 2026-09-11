@@ -76,10 +76,34 @@ guards は注入するので、プラグインのランタイム無しで駆動�
 であること。最初はファイル単位（「どこかで parser に触れているか」）にしたが、Codex が4通りで
 素通りした —— 同じファイルの別の正当な parse が `getOptionalStringQuery` を隠していた。
 
-**既知の限界**（docblock に明記）: 別ファイルのヘルパー経由で洗った root、`ops["movieStatusOp"]`
-のような綴り。本当の封じは `parseSuppliedRoot` だけが作れる branded type だが、パッケージの
+**このガードは round 3〜5 で3回締め直し、そこで止めた。** regex には天井があり、
+2回の拡張はどちらも誤爆した —— すべての member read（`\w+.root`）は `const { … root … } = parsed`
+を、素の `query.root` は `beatImageOp(query.filePath, query.beatIndex, query.root)` を報告した
+（`query` は `parseBeatQuery` の**解析済み**結果であって `req.query` ではない）。
+
+いま断言するのは、**このループが実際に見つけた fold の形**だけ:
+直接代入 `const root = <parser 以外>`、および **request から直に** op へ渡す形
+（`req.query.root` / `req.body.root`）。
+
+**報告しない形は列挙してある**（docblock）: 別ファイルのヘルパー経由、`ops["movieStatusOp"]` 等の
+綴り、destructure された root（来歴が見えない）、上記以外の1式で読んで渡す形。
+4つとも本当の封じは `parseSuppliedRoot` だけが作れる branded type だが、パッケージの
 シグネチャ変更になるのでこの PR には入れない。コメントは走査前に除去しているので
 `// parseSuppliedRoot` で偽装はできない。
+
+### SSE の生成2ルート（round 5 で追加）
+
+`generateMovie` / `generatePdf` は root で story を解決していたが、**パッケージの
+`guardStoryGenerationRoot` を迂回**し、さらに生成イベントと成果物 ref から root を落としていた。
+
+このガードは「このホストは2つの root の生成状態を区別できるか」を判定するもので、
+`rootScopedGenerationState` を宣言していないホストでは**名前付き root の生成を拒否**する ——
+生成の start イベントは story を解決する前に publish されるので、未対応の root は
+「存在しない作業の start/finish ペア」を出してしまう（#3020）。迂回していた以上、
+rooted な生成はそのまま走っていた。
+
+いまは ffmpeg ガードより**前に** root を parse して `guardStoryGenerationRoot` を通し、
+`publishGeneration(..., { root })` と `outputRef(..., root)` にも渡す。
 
 ### `/save` は触らない
 

@@ -299,10 +299,26 @@ interface GenerationRequestBody {
 function resolveStoryRequest(
   req: Request<object, object, GenerationRequestBody>,
   res: Response,
-): { filePath: string; absoluteFilePath: string; chatSessionId?: string | undefined } | null {
+): { filePath: string; absoluteFilePath: string; root: string | undefined; chatSessionId?: string | undefined } | null {
   const { filePath, chatSessionId } = req.body;
   if (typeof filePath !== "string" || !filePath) {
     badRequest(res, "filePath is required");
+    return null;
+  }
+  // The PAIR, not the path: the same `stories/…` spelling exists in every root (#3014).
+  //
+  // Parsed and guarded BEFORE `ffmpegGuard` and before any work: `guardStoryGenerationRoot` is
+  // the package op that encodes the root-scoped generation rules, and it refuses a named root
+  // unless the host declared `rootScopedGenerationState` — because the start event is published
+  // before the story is even resolved, so an unsupported root would emit a start/finish pair for
+  // work that never existed (#3020). This host declares no extra roots, so in practice every
+  // request here is the default; resolving with the root and skipping this guard is how a
+  // rooted generation would have run anyway (#3077 round 5, Codex P2).
+  const root = suppliedRoot(req.body.root, res);
+  if (root === null) return null;
+  const generationRootGuard = mulmoScriptOps.guardStoryGenerationRoot(root);
+  if (generationRootGuard) {
+    sendOpFailure(res, generationRootGuard);
     return null;
   }
   const ffmpeg = mulmoScriptOps.ffmpegGuard();
@@ -310,15 +326,12 @@ function resolveStoryRequest(
     sendOpFailure(res, ffmpeg);
     return null;
   }
-  // The PAIR, not the path: the same `stories/…` spelling exists in every root (#3014).
-  const root = suppliedRoot(req.body.root, res);
-  if (root === null) return null;
   const resolved = mulmoScriptOps.resolveStory(filePath, root);
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return null;
   }
-  return { filePath, absoluteFilePath: resolved.absolutePath, chatSessionId };
+  return { filePath, absoluteFilePath: resolved.absolutePath, root, chatSessionId };
 }
 
 // SSE movie generation. Retained for wire compatibility (the extracted
@@ -328,7 +341,7 @@ function resolveStoryRequest(
 bindRoute(router, API_ROUTES.mulmoScript.generateMovie, async (req: Request<object, object, { filePath: string; chatSessionId?: string }>, res: Response) => {
   const parsed = resolveStoryRequest(req, res);
   if (!parsed) return;
-  const { filePath, absoluteFilePath, chatSessionId } = parsed;
+  const { filePath, absoluteFilePath, root, chatSessionId } = parsed;
 
   if (mulmoScriptOps.inFlightMovies.has(absoluteFilePath)) {
     badRequest(res, "Movie generation is already in progress for this script");
@@ -338,7 +351,9 @@ bindRoute(router, API_ROUTES.mulmoScript.generateMovie, async (req: Request<obje
   const send = beginSse(res);
 
   mulmoScriptOps.inFlightMovies.add(absoluteFilePath);
-  mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.movie, filePath, "", false);
+  // The root rides on the event and on the artifact ref: a subscriber routes by the PAIR
+  // `(root, filePath)`, and `outputRef` relativizes against the root's own directory (#3014).
+  mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.movie, filePath, "", false, { root });
   let genError: string | undefined;
   try {
     const result = await mulmoScriptOps.runMovieGeneration(absoluteFilePath, (event) => {
@@ -349,13 +364,13 @@ bindRoute(router, API_ROUTES.mulmoScript.generateMovie, async (req: Request<obje
       send({ type: "error", message: result.error });
       return;
     }
-    send({ type: "done", moviePath: mulmoScriptOps.outputRef(result.outputPath, filePath) });
+    send({ type: "done", moviePath: mulmoScriptOps.outputRef(result.outputPath, filePath, root) });
   } catch (err) {
     genError = errorMessage(err);
     send({ type: "error", message: genError });
   } finally {
     mulmoScriptOps.inFlightMovies.delete(absoluteFilePath);
-    mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.movie, filePath, "", true, { error: genError });
+    mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.movie, filePath, "", true, { error: genError, root });
     res.end();
   }
 });
@@ -511,7 +526,7 @@ bindRoute(
 async function handleGeneratePdf(req: Request<object, object, { filePath: string; chatSessionId?: string }>, res: Response): Promise<void> {
   const parsed = resolveStoryRequest(req, res);
   if (!parsed) return;
-  const { filePath, absoluteFilePath, chatSessionId } = parsed;
+  const { filePath, absoluteFilePath, root, chatSessionId } = parsed;
 
   if (mulmoScriptOps.inFlightPdfs.has(absoluteFilePath)) {
     badRequest(res, "PDF generation is already in progress for this script");
@@ -521,7 +536,7 @@ async function handleGeneratePdf(req: Request<object, object, { filePath: string
   const send = beginSse(res);
 
   mulmoScriptOps.inFlightPdfs.add(absoluteFilePath);
-  mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.pdf, filePath, "", false);
+  mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.pdf, filePath, "", false, { root });
   let genError: string | undefined;
   try {
     const context = await buildContext(absoluteFilePath);
@@ -536,13 +551,13 @@ async function handleGeneratePdf(req: Request<object, object, { filePath: string
       send({ type: "error", message: genError });
       return;
     }
-    send({ type: "done", pdfPath: mulmoScriptOps.outputRef(result.outputPath, filePath) });
+    send({ type: "done", pdfPath: mulmoScriptOps.outputRef(result.outputPath, filePath, root) });
   } catch (err) {
     genError = errorMessage(err);
     send({ type: "error", message: genError });
   } finally {
     mulmoScriptOps.inFlightPdfs.delete(absoluteFilePath);
-    mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.pdf, filePath, "", true, { error: genError });
+    mulmoScriptOps.publishGeneration(chatSessionId, GENERATION_KINDS.pdf, filePath, "", true, { error: genError, root });
     res.end();
   }
 }

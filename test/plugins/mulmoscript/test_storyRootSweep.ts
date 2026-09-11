@@ -62,6 +62,20 @@ const ROOT_TAKING_OPS = [
 ] as const;
 
 /**
+ * An op call handed a root straight off the REQUEST — `movieStatusOp(p, req.query.root)` and its
+ * siblings (Codex, round 5).
+ *
+ * Narrow on purpose. A request read is unambiguously unparsed; an arbitrary `x.root` may well be
+ * an already-parsed root coming out of a helper's result, and telling those apart is provenance,
+ * which a regex cannot do. Two widenings were tried and both misfired: every member read
+ * (`\\w+\\.root`) reported `const { … root … } = parsed`, and a bare `query.root` reported
+ * `beatImageOp(query.filePath, query.beatIndex, query.root)` — where `query` is the PARSED result
+ * of `parseBeatQuery`, not `req.query`. Only `req.query.root` / `req.body.root` name the request
+ * without ambiguity.
+ */
+const OPS_RECEIVING_A_REQUEST_ROOT = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*?[(,]\\s*req\\.(?:query|body)\\.root\\b`);
+
+/**
  * Call sites that may address a story by path alone, and why.
  *
  * Keyed by `<path-from-repo-root>:<the call's own line text, trimmed>` so moving a file or
@@ -170,11 +184,19 @@ describe("a story is addressed by the pair, not the path", () => {
     // legitimate parse blinded it to `getOptionalStringQuery(req, "root")` in the same file,
     // which was a live fold in the download routes.
     //
-    // KNOWN LIMITS, said out loud: this is textual, so a root laundered through a helper in
-    // ANOTHER file, or an op reached by `ops["movieStatusOp"]`, is not seen. The real closure is
-    // a branded `ParsedStoryRoot` that only the parser can produce — a package-signature change,
-    // so it is not in this PR. Comments are stripped before scanning, so a `// parseSuppliedRoot`
-    // cannot forge compliance.
+    // KNOWN LIMITS — enumerated rather than implied, because this guard was tightened three
+    // times in one review loop and a regex has a ceiling. NOT reported:
+    //
+    //   1. a root laundered through a helper in ANOTHER file;
+    //   2. an op reached by `ops["movieStatusOp"]`, `?.()`, or an alias;
+    //   3. a DESTRUCTURED root — its provenance is not visible here (see below);
+    //   4. a root read and passed in one expression other than a direct request read.
+    //
+    // The real closure for all four is a branded `ParsedStoryRoot` that only `parseSuppliedRoot`
+    // can produce, with the host's op wrappers typed to require it — a package signature change,
+    // so not this PR. What this DOES assert is the shape every fold in this loop actually took:
+    // a direct `const root = <something that is not the parser>`. Comments are stripped before
+    // scanning, so a `// parseSuppliedRoot` cannot forge compliance.
     const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
     const offenders: string[] = [];
     sourceFiles().forEach((file) => {
@@ -193,19 +215,19 @@ describe("a story is addressed by the pair, not the path", () => {
         // A plain `const root = …` carries its initialiser in group 1; a destructure carries the
         // brace body there and the initialiser in group 2.
         const initialiser = binding[2] ?? binding[1] ?? "";
-        // `const { filePath, root } = entry.result.data` is a raw read, and legal — but only if
-        // the RAW value never reaches an op. The first version of this exemption trusted the
-        // file to contain `parseSuppliedRoot(root)` somewhere, which proves nothing about what
-        // was passed (Codex, round 4). It now proves the safe property instead: no op call in
-        // this file may receive the bare identifier `root`.
+        // A DESTRUCTURE is permitted, and listed as a limit below: `const { filePath, root } =
+        // parsed` may be taking an already-parsed root out of a helper's result, and a regex
+        // cannot tell that from `= entry.result.data`. Two earlier drafts tried — one trusted the
+        // file to mention the parser anywhere, one demanded that no op receive a bare `root` —
+        // and each was wrong in its own direction (Codex, rounds 4 and 5). What IS assertable is
+        // the direct assignment, and that is where every fold this loop actually found lived.
         const parsed = /\b(parseSuppliedRoot|suppliedRoot)\(/.test(initialiser);
-        // `root` as an argument, with whatever decoration follows it up to the next separator —
-        // a cast, a `!`, a comment — so `movieStatusOp(p, root as string | undefined)` counts as
-        // passing the raw value and not as something else.
-        const passesBareRoot = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*?[(,]\\s*root\\b[^,)]*[),]`).test(source);
-        const safeDestructure = binding[0].includes("{") && !passesBareRoot;
-        if (!parsed && !safeDestructure) offenders.push(`${relative(REPO_ROOT, file)}: ${binding[0].trim()}`);
+        if (!parsed && !binding[0].includes("{")) offenders.push(`${relative(REPO_ROOT, file)}: ${binding[0].trim()}`);
       });
+      // The one member read that needs no provenance chase: straight off the request.
+      if (OPS_RECEIVING_A_REQUEST_ROOT.test(source)) {
+        offenders.push(`${relative(REPO_ROOT, file)}: an op is handed a root straight off the request`);
+      }
     });
     assert.deepEqual(offenders, [], `these bind a root without parsing it: ${offenders.join(" | ")}`);
   });
