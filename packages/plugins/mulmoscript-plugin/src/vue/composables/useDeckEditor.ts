@@ -68,17 +68,20 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
   const deckSaveError: Ref<string | null> = ref(null);
 
   /**
-   * Which save is the current one.
+   * Which edit the in-flight save is answering for.
    *
-   * Two writes can be in flight at once: the debounce only spaces their STARTS 300ms apart, and
-   * the failing kind is the slow kind — a timeout costs the whole budget. If the older one
-   * answers last, its answer wins: a red banner over a save that actually landed, or the older
-   * script committed over the newer one. Only the newest save's answer is acted on.
+   * Advanced when an edit is QUEUED, not when its save is dispatched — those are up to 300ms
+   * apart, and a write can outlive the gap (the failing kind is the slow kind: a timeout costs
+   * the whole budget). An answer about superseded content must not be acted on either way
+   * round: committing it puts the older script back over what the user is typing, and its
+   * verdict is about text that is no longer on screen — a green light for an edit that never
+   * reached the server, or a red banner for one already replaced.
    */
-  let latestSaveId = 0;
+  let editRevision = 0;
 
   function scheduleDeckSave(next: MulmoScript): void {
     pendingDeckScript = next;
+    editRevision += 1;
     if (deckSaveTimer) clearTimeout(deckSaveTimer);
     deckSaveTimer = setTimeout(() => {
       void flushDeckSave();
@@ -90,9 +93,9 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
     const next = pendingDeckScript;
     pendingDeckScript = null;
     if (!next || !filePath.value) return;
-    const saveId = ++latestSaveId;
+    const revision = editRevision;
     const response = await api.call("updateScript", { filePath: filePath.value, script: next, origin: EDITOR_ORIGIN });
-    if (saveId !== latestSaveId) return;
+    if (revision !== editRevision) return;
     if (!response.ok) {
       // The deck editor still holds the latest edit in its props until the next refresh, so
       // the view doesn't snap back on a transient failure — which is why the failure has to be
@@ -139,5 +142,18 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
     });
   }
 
-  return { canEditBeats, deckScriptInput, deckSaveError, onDeckUpdate, flushPendingDeckSave, watchForeignWrites };
+  /**
+   * Forget a failed save — the View has moved to a different script, or this one was written
+   * whole by another route.
+   *
+   * Without it the banner outlives what it is about: this View re-initializes in place on a
+   * result switch rather than remounting (`watch(() => props.selectedResult, initializeScript)`),
+   * so the message would sit over someone else's deck. The per-beat errors beside it are reset
+   * the same way, in the same function.
+   */
+  function clearDeckSaveError(): void {
+    deckSaveError.value = null;
+  }
+
+  return { canEditBeats, deckScriptInput, deckSaveError, clearDeckSaveError, onDeckUpdate, flushPendingDeckSave, watchForeignWrites };
 }

@@ -123,18 +123,24 @@ describe("two saves in flight at once", () => {
     });
 
     function startSave(title: string): void {
-      editor.onDeckUpdate({ title, beats: [{ text: "one" }] });
+      queueEdit(title);
       editor.flushPendingDeckSave();
     }
 
-    async function answer(index: number, outcome: SaveOutcome): Promise<void> {
+    /** An edit sitting in the 300ms debounce: queued, no request sent. */
+    function queueEdit(title: string): void {
+      editor.onDeckUpdate({ title, beats: [{ text: "one" }] });
+    }
+
+    async function answer(index: number, outcome: SaveOutcome, options?: { alreadyAnswered: boolean }): Promise<void> {
       const resolve = pending[index];
       assert.ok(resolve, `save ${index} is in flight`);
+      assert.ok(options?.alreadyAnswered !== true || index === 0, "only the first save is answered twice");
       resolve(outcome);
       await new Promise((settled) => setImmediate(settled));
     }
 
-    return { ...editor, startSave, answer, committed, inFlight: () => pending.length };
+    return { ...editor, startSave, queueEdit, answer, committed, inFlight: () => pending.length };
   }
 
   it("ignores the older save's failure when the newer one already succeeded", async () => {
@@ -150,6 +156,16 @@ describe("two saves in flight at once", () => {
       committed.map((script) => script.title),
       ["second"],
     );
+  });
+
+  it("ignores an in-flight save once a newer edit is merely QUEUED — it has not been dispatched yet", async () => {
+    const { deckSaveError, startSave, queueEdit, answer, committed } = overlappingHarness();
+    startSave("first");
+    queueEdit("second");
+    await answer(0, OK);
+    assert.deepEqual(committed, [], "the older script must not be put back over what the user is typing");
+    await answer(0, failedWith("File not found"), { alreadyAnswered: true });
+    assert.equal(deckSaveError.value, null, "and its verdict is about text that is no longer on screen");
   });
 
   it("ignores the older save's success when the newer one already failed", async () => {
@@ -174,6 +190,16 @@ describe("a deck save that succeeds", () => {
   });
 });
 
+describe("moving to a different script", () => {
+  it("forgets the failure — the banner must not sit over someone else's deck", async () => {
+    const { deckSaveError, clearDeckSaveError, edit } = harness([failedWith("File not found")]);
+    await edit("renamed");
+    assert.equal(deckSaveError.value, "File not found");
+    clearDeckSaveError();
+    assert.equal(deckSaveError.value, null);
+  });
+});
+
 /**
  * The View is where the message becomes visible. Read from source rather than mounted: mounting
  * it needs a gui-chat-protocol runtime, a transport and a host adapter to assert one element.
@@ -183,6 +209,14 @@ describe("the View's save-failure banner", () => {
 
   it("takes deckSaveError off the composable", () => {
     assert.match(viewSource, /const \{[^}]*\bdeckSaveError\b[^}]*\} = useDeckEditor\(/);
+  });
+
+  it("resets the failure in initializeScript, beside the per-beat errors it already resets", () => {
+    assert.match(viewSource, /const \{[^}]*\bclearDeckSaveError\b[^}]*\} = useDeckEditor\(/);
+    const initialize = /async function initializeScript\(\)[\s\S]*?\n {2}await refreshScriptFromDisk\(\);/.exec(viewSource);
+    assert.ok(initialize, "initializeScript is found");
+    assert.match(initialize[0], /beatSaveErrors,/);
+    assert.match(initialize[0], /clearDeckSaveError\(\);/);
   });
 
   it("renders it as an alert carrying the server's message", () => {
