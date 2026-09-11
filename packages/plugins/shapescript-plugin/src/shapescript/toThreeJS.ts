@@ -2090,12 +2090,14 @@ export class Converter {
     return result;
   }
 
+  /** A `position`: one value is X alone (`position 1` is `1 0 0`, as
+   *  upstream and as `translate` here), the rest are padded with zeros. */
   private evaluateVector3(value: Vector3 | Expression | undefined): Vector3 {
     if (value === undefined) return [0, 0, 0];
     if (Array.isArray(value) && typeof value[0] === "number") {
       return value as Vector3;
     }
-    const result = this.evaluator.evaluateToVector3(value as Expression);
+    const result = this.evaluateTranslateVector(value as Expression);
     if (!result.every(Number.isFinite)) throw new Error("Expected finite vector components");
     return result;
   }

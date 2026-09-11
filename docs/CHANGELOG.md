@@ -55,7 +55,9 @@ curve points as corners; a `detail` inside a path no longer leaks past it. A sha
 value keeps the one colour it was given (the filleted cone stays blue); a mesh whose vertices
 differ in colour gives an uncoloured `minkowski` result. **Behaviour change** toward
 upstream: `extrude` no longer closes an open path for you — repeat the first point to get a
-solid, otherwise the path extrudes to a wall.
+solid, otherwise the path extrudes to a wall; and a lone `position` value is X alone
+(`position 1` is `1 0 0`, as `translate 1` already was — it padded to `1 1 1`, which laid the
+Spirals out diagonally and hung Fillet's cylinder off a cube corner).
 
 #### `@mulmoclaude/shapescript-plugin@2.2.0` — shapes as values, meshes from polygons, Dodecahedron
 

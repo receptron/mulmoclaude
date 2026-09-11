@@ -39,10 +39,11 @@ const RENDERS: Record<string, Rendered> = {
   // A cone and a cube-plus-cylinder union, each inset and summed with a
   // sphere: the rounded cone is lower than the sharp one (0.4, not 0.5) and
   // narrower at the base, as a true fillet is.
-  "Fillet.shape": { objects: 2, bounds: { min: [-0.949, -0.888, -0.449], max: [1.039, 0.4, 0.539] }, warnings: [] },
+  "Fillet.shape": { objects: 2, bounds: { min: [-0.949, -0.84, -0.449], max: [0.948, 0.4, 0.449] }, warnings: [] },
   // An open spiral path drawn as a line, extruded as a wall 0.1 deep, and
-  // swept with a 0.03 circle: three objects, at positions 0, 1 and 2.
-  "Spirals.shape": { objects: 3, bounds: { min: [-0.375, -0.417, 0], max: [2.488, 2.515, 2.015] }, warnings: [] },
+  // swept with a 0.03 circle: three objects in a row along X (`position 1`
+  // is X alone), all in the XY plane.
+  "Spirals.shape": { objects: 3, bounds: { min: [-0.375, -0.459, -0.05], max: [2.488, 0.515, 0.05] }, warnings: [] },
 };
 
 const REFUSED: Record<string, RegExp> = {};

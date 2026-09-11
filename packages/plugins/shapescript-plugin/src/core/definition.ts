@@ -188,6 +188,7 @@ group scales it. Not supported: extrude twist, svgpath, text.
 
 ### Additional Expressions:
 - Constants: pi, true, false (tau exists here but NOT in the upstream app; write 2 * pi)
+- A lone position / translate value is X alone (position 1 = 1 0 0); a lone size is uniform; a lone orientation is a roll.
 - Scientific notation and unary plus: 1e-3, +2
 - Ranges as values: define loops 1 to 5 step 2, then for i in loops { … }, for i in loops step 1, and
   "if 3 in loops"; the in operator also tests tuples (2 in (1 2 3)) and strings.

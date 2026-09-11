@@ -1007,6 +1007,15 @@ describe("minkowski, inset and extrude along", () => {
     withMesh("define w {\n path { point 0 0 point 0 1 }\n}\nextrude {\n size 1 1 0.2\n w\n}", (mesh) => near(extent(mesh).toArray(), [0, 1, 0.2]));
     assert.throws(() => objectsOf("extrude { path { point 0 0 } }"), /at least two/);
   });
+  it("reads a lone `position` value as X alone, on shapes, builders and groups", () => {
+    for (const script of ["cube { position 1 }", "extrude { position 1 square }", "group { position 1\n cube }", "extrude {\n position 1\n square\n along path { point 0 0 point 0 1 }\n}"]) {
+      withMesh(script, (mesh) => {
+        const box = new THREE.Box3().setFromObject(mesh);
+        near([box.min.x, box.max.x], [0.5, 1.5], 0.01);
+        assert.ok(box.max.y <= 1.01 && box.min.y >= -0.51 && box.max.z <= 0.51, `${script}: ${box.min.toArray()} ${box.max.toArray()}`);
+      });
+    }
+  });
   it("reads `detail` as a value, scopes it to a path, and draws curves as corners at `detail 0`", () => {
     withMesh("cube { size detail / 32 }", (mesh) => near(extent(mesh).toArray(), [1, 1, 1]));
     const corners = objectsOf("path {\n detail 0\n curve 0 0\n curve 1 0\n curve 1 1\n}")[0] as THREE.Line;
