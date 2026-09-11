@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/mulmoscript-plugin",
-  "version": "4.6.0",
+  "version": "4.7.0",
   "description": "presentMulmoScript — MulmoScript storyboard tool for MulmoClaude and MulmoTerminal. Browser-safe core (tool definition + save/reopen/update logic against the generic gui-chat-protocol files.artifacts capability) on `.`, Vue View/Preview on `./vue`, and the Node-only ops layer (mulmocast render/movie/PDF orchestration + dispatch router, host backends injected) on `./server`.",
   "type": "module",
   "main": "./dist/index.js",

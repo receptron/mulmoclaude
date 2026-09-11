@@ -8,6 +8,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Fixed
+
+#### `@mulmoclaude/mulmoscript-plugin@4.7.0` — a failed deck save is on screen, not only in the console (PR #3071, closes #3070)
+
+The Canvas deck editor swallowed a failed save. `console.error` was the only trace, and the
+editor keeps showing the user's edit either way — deliberately, so a transient failure does not
+eat keystrokes — which made a silent refusal look exactly like a success until the next reload
+put the old value back. Reported from receptron/mulmoterminal#1970.
+
+The server's own message now appears as a red `role="alert"` banner under the tab row, using the
+existing `saveErrorSaveFailed` key, so all 8 locales are unchanged. Within one script only the
+next successful save clears it — never a keystroke, which would blank it for the debounce window
+and bring it back. The foreign-write reload deliberately does NOT clear it: there the user's edit
+is definitively lost and the banner is its only trace.
+
+Making that banner truthful turned up three async defects around it, all fixed here:
+
+- **Two saves could be in flight at once.** The 300ms debounce spaces the STARTS of two writes,
+  not their answers, and the failing kind is the slow kind — a timeout costs the whole budget. An
+  older answer arriving last put a red banner over a save that had landed, or committed the older
+  script over the newer one.
+- **A queued edit did not supersede an in-flight save.** The revision now advances when an edit is
+  QUEUED rather than when its save is dispatched; those are up to 300ms apart and a write outlives
+  the gap.
+- **A script switch left the previous script's save lifecycle running.** This View re-initializes
+  in place rather than remounting, so an answer still in flight could repopulate the banner or
+  commit the old script into the new result — and an edit still queued would be written out by its
+  own timer against the NEW `filePath`, putting one deck's beats into another deck.
+  `resetForScriptChange()` now advances the revision, drops the queued edit and its timer, and
+  clears the banner, beside the `beatSaveErrors` reset already in `initializeScript`.
+
+Also sweeps the `@mulmoclaude/core` peer and dev range to `^4.8.0` (PR #3056).
+
 ### Added
 
 #### `@mulmoclaude/shapescript-plugin@2.2.0` — shapes as values, meshes from polygons, Dodecahedron
@@ -46,7 +79,7 @@ Dodecahedron, Fillet and Spirals are refused with a message naming the missing f
 - **Expressions**: bare calls (`max 0 1`, `sqrt 9`, `sin pi / 2`), custom functions
   (`define hyp(a b) { sqrt(a * a + b * b) }`), ranges as values with `step` and the `in`
   operator, `split`, negative and named subscripts (`v[-1]`, `v["y"]`), and the `.width/.height/
-  .depth`, `.roll/.yaw/.pitch`, `.hue/.saturation/.brightness` members.
+.depth`, `.roll/.yaw/.pitch`, `.hue/.saturation/.brightness` members.
 - Unsupported upstream commands (`import`, `text`, `mesh`, `minkowski`, `inset`, `svgpath`,
   `along`, shapes as values) are refused by name instead of with a parse error on a brace.
 
@@ -126,7 +159,6 @@ with it as `executeRenderShapeScript`, leaving each host only what is genuinely 
 `.shape` through its file layer, saving into its image store, and its logger. 1.2.0 shared the
 renderer but left the tool wrapper behind, and porting to MulmoTerminal made that immediately
 visible: the parts a MODEL sees would have been the duplicated ones.
-
 
 ### Added
 
@@ -212,7 +244,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@2.2.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.2.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 
@@ -250,7 +282,6 @@ core だけがそれを見て server ops が見ていない、という半分だ
 からで、絶対パスはそれ自体が `filePath` として一意なのでこの衝突は起きない。
 
 新規 export: `isAbsoluteStoryPath`, `STORY_SCRIPT_EXTENSIONS`, `STORY_TARGET_EXTENSIONS`。
-
 
 ### Fixed
 
@@ -356,7 +387,7 @@ Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`,
 A `schema.icon` that is not a Material Symbols name — an emoji, most often — was handed to the
 icon font anyway. The font drew it at its own metrics, which pushed the glyph outside its box
 and over whatever sat next to it. Icons are now classified before anything renders them:
-`iconGlyph.ts` decides what a given string *is*, and the shared `IconGlyph` component is the one
+`iconGlyph.ts` decides what a given string _is_, and the shared `IconGlyph` component is the one
 path every surface goes through — the collections index, the collection header, the related
 menu, action buttons, feeds, the roles screen and the launcher's shortcut rail.
 
