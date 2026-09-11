@@ -729,7 +729,7 @@ function commitScript(next: MulmoScript): void {
 // interactive deck editor (@mulmocast/beat-editor). Mixed scripts (any non-slide
 // beat) fall back to the existing list. The debounce + flush-on-unmount live
 // in the composable.
-const { canEditBeats, deckScriptInput, deckSaveError, clearDeckSaveError, onDeckUpdate, flushPendingDeckSave, watchForeignWrites } = useDeckEditor({
+const { canEditBeats, deckScriptInput, deckSaveError, resetForScriptChange, onDeckUpdate, flushPendingDeckSave, watchForeignWrites } = useDeckEditor({
   api,
   filePath,
   effectiveScript,
@@ -1187,8 +1187,9 @@ async function initializeScript() {
     beatDragOver,
   );
   // Same reason as `beatSaveErrors` above: this View re-initializes in place on a result
-  // switch, so a deck-save failure left on screen would sit over a different script.
-  clearDeckSaveError();
+  // switch, so anything the previous script left behind — the failure banner, an answer still
+  // in flight, an edit still queued — would land on the new one.
+  resetForScriptChange();
   resetCharacters();
   resetBeatMovies();
   resetMedia();

@@ -38,9 +38,14 @@ Media タブの既存の扱い（ビート保存の失敗はそのビートに�
      revision は保存を投げたときではなく**編集をキューに入れたとき**に進める —— その2点は最大 300ms
      離れていて、その隙間を write が生き延びる。古い内容についての応答は、通ったなら画面で打っている
      テキストの上に古い script を commit し、落ちたならもう画面に無いテキストについて赤を出す。
-   - **別の script に移ったら忘れる**（`clearDeckSaveError()`）。この View は result 切替で
-     remount せずその場で再初期化する（`watch(() => props.selectedResult, initializeScript)`）ので、
-     残したままだと他人のデッキの上にメッセージが居座る。`beatSaveErrors` と同じ関数で同じ理由でリセット。
+   - **別の script に移ったら、その script が残したものを全部捨てる**（`resetForScriptChange()`）。
+     この View は result 切替で remount せずその場で再初期化する
+     （`watch(() => props.selectedResult, initializeScript)`）ので、バナーを消すだけでは足りない:
+     **飛んでいる途中の応答**は（新しい編集がキューされていない以上 revision が現役のままなので）
+     バナーを復活させるか古い script を新しい result に commit するし、**キューされたままの編集**は
+     自分のタイマーで `filePath.value` —— そのときには**新しいファイル**を指している —— に書き出される。
+     なので revision を進め（飛んでいる応答を全部 stale にする）、キューとタイマーを捨てる。
+     `beatSaveErrors` と同じ関数で同じ理由でリセット。
 2. `View.vue` のタブ行直下に赤いバナーを出す。文言は既存の i18n キー
    `m.saveErrorSaveFailed(error)`（「⚠ Save failed: …」）を再利用 —— 新しいキーは足さない。
    - `role="alert"`、`data-testid="mulmo-script-deck-save-error"`
@@ -70,9 +75,11 @@ Media タブの既存の扱い（ビート保存の失敗はそのビートに�
 - **debounce 中にキューされただけの編集**でも、飛んでいる古い保存の応答は捨てる
   （成功を commit しない / 失敗をバナーに出さない、を別々のケースで —— 1つの promise を
   2度 resolve しても no-op なので、まとめると失敗側が何も見ないテストになる）
-- `clearDeckSaveError()` で消える
+- `resetForScriptChange()` で消える
+- script 切替で、**飛んでいる途中の応答**は採用されない（バナーも commit も）
+- script 切替で、**キューされただけの編集**は書き出されない（新しい filePath に書くのを防ぐ）
 
-View 側は `data-testid` と `deckSaveError` / `clearDeckSaveError` の結線をソース読み取りで検証
+View 側は `data-testid` と `deckSaveError` / `resetForScriptChange` の結線をソース読み取りで検証
 （`test_beatPaneDefault.ts` と同じ手法 —— View を mount するにはランタイム一式が要る）。
 
 ## バージョン

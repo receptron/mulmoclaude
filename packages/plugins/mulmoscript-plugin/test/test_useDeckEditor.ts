@@ -58,6 +58,75 @@ function harness(outcomes: SaveOutcome[]) {
   return { ...editor, edit, settle, committed, sentTitles };
 }
 
+/**
+ * A harness whose saves are answered by hand, so a test can build an interleaving.
+ *
+ * The debounce spaces the STARTS of two writes 300ms apart, not their answers — and the failing
+ * kind is the slow kind. An older answer arriving last must not overwrite a newer one, or a save
+ * that landed shows a red banner over it.
+ */
+function overlappingHarness() {
+  const script: MulmoScript = { title: "deck", beats: [{ text: "one" }] };
+  const committed: MulmoScript[] = [];
+  const pending: ((outcome: SaveOutcome) => void)[] = [];
+
+  const api: DeckEditorTransport = {
+    call: () => new Promise<SaveOutcome>((resolve) => pending.push(resolve)),
+    onScriptChanged: () => () => {},
+  };
+
+  const editor = useDeckEditor({
+    api,
+    filePath: computed(() => "stories/deck/launch.json"),
+    effectiveScript: computed(() => script),
+    commitScript: (next) => committed.push(next),
+  });
+
+  function startSave(title: string): void {
+    queueEdit(title);
+    editor.flushPendingDeckSave();
+  }
+
+  /** An edit sitting in the 300ms debounce: queued, no request sent. */
+  function queueEdit(title: string): void {
+    editor.onDeckUpdate({ title, beats: [{ text: "one" }] });
+  }
+
+  /**
+   * Answer one in-flight save.
+   *
+   * Answering the same one twice is refused rather than ignored: resolving a settled promise
+   * is a silent no-op, so a test that did it would assert against a branch it never reached
+   * and pass (Codex P3, round 2).
+   */
+  const answered = new Set<number>();
+  async function answer(index: number, outcome: SaveOutcome): Promise<void> {
+    const resolve = pending[index];
+    assert.ok(resolve, `save ${index} is in flight`);
+    assert.ok(!answered.has(index), `save ${index} has not been answered yet`);
+    answered.add(index);
+    resolve(outcome);
+    await new Promise((settled) => setImmediate(settled));
+  }
+
+  return { ...editor, startSave, queueEdit, answer, committed, inFlight: () => pending.length };
+}
+
+it("ignores the older save's failure when the newer one already succeeded", async () => {
+  const { deckSaveError, startSave, answer, committed, inFlight } = overlappingHarness();
+  startSave("first");
+  startSave("second");
+  assert.equal(inFlight(), 2);
+  await answer(1, OK);
+  assert.equal(deckSaveError.value, null);
+  await answer(0, failedWith("ETIMEDOUT"));
+  assert.equal(deckSaveError.value, null, "a save that landed does not get a red banner over it");
+  assert.deepEqual(
+    committed.map((script) => script.title),
+    ["second"],
+  );
+});
+
 describe("a deck save that failed", () => {
   it("starts with nothing to report", () => {
     const { deckSaveError } = harness([]);
@@ -100,73 +169,6 @@ describe("a deck save that failed", () => {
 });
 
 describe("two saves in flight at once", () => {
-  /**
-   * The debounce spaces the STARTS of two writes 300ms apart, not their answers — and the
-   * failing kind is the slow kind. An older answer arriving last must not overwrite a newer one,
-   * or a save that landed shows a red banner over it.
-   */
-  function overlappingHarness() {
-    const script: MulmoScript = { title: "deck", beats: [{ text: "one" }] };
-    const committed: MulmoScript[] = [];
-    const pending: ((outcome: SaveOutcome) => void)[] = [];
-
-    const api: DeckEditorTransport = {
-      call: () => new Promise<SaveOutcome>((resolve) => pending.push(resolve)),
-      onScriptChanged: () => () => {},
-    };
-
-    const editor = useDeckEditor({
-      api,
-      filePath: computed(() => "stories/deck/launch.json"),
-      effectiveScript: computed(() => script),
-      commitScript: (next) => committed.push(next),
-    });
-
-    function startSave(title: string): void {
-      queueEdit(title);
-      editor.flushPendingDeckSave();
-    }
-
-    /** An edit sitting in the 300ms debounce: queued, no request sent. */
-    function queueEdit(title: string): void {
-      editor.onDeckUpdate({ title, beats: [{ text: "one" }] });
-    }
-
-    /**
-     * Answer one in-flight save.
-     *
-     * Answering the same one twice is refused rather than ignored: resolving a settled promise
-     * is a silent no-op, so a test that did it would assert against a branch it never reached
-     * and pass (Codex P3, round 2).
-     */
-    const answered = new Set<number>();
-    async function answer(index: number, outcome: SaveOutcome): Promise<void> {
-      const resolve = pending[index];
-      assert.ok(resolve, `save ${index} is in flight`);
-      assert.ok(!answered.has(index), `save ${index} has not been answered yet`);
-      answered.add(index);
-      resolve(outcome);
-      await new Promise((settled) => setImmediate(settled));
-    }
-
-    return { ...editor, startSave, queueEdit, answer, committed, inFlight: () => pending.length };
-  }
-
-  it("ignores the older save's failure when the newer one already succeeded", async () => {
-    const { deckSaveError, startSave, answer, committed, inFlight } = overlappingHarness();
-    startSave("first");
-    startSave("second");
-    assert.equal(inFlight(), 2);
-    await answer(1, OK);
-    assert.equal(deckSaveError.value, null);
-    await answer(0, failedWith("ETIMEDOUT"));
-    assert.equal(deckSaveError.value, null, "a save that landed does not get a red banner over it");
-    assert.deepEqual(
-      committed.map((script) => script.title),
-      ["second"],
-    );
-  });
-
   it("does not commit an in-flight save once a newer edit is merely QUEUED — it has not been dispatched yet", async () => {
     const { startSave, queueEdit, answer, committed } = overlappingHarness();
     startSave("first");
@@ -207,11 +209,34 @@ describe("a deck save that succeeds", () => {
 
 describe("moving to a different script", () => {
   it("forgets the failure — the banner must not sit over someone else's deck", async () => {
-    const { deckSaveError, clearDeckSaveError, edit } = harness([failedWith("File not found")]);
+    const { deckSaveError, resetForScriptChange, edit } = harness([failedWith("File not found")]);
     await edit("renamed");
     assert.equal(deckSaveError.value, "File not found");
-    clearDeckSaveError();
+    resetForScriptChange();
     assert.equal(deckSaveError.value, null);
+  });
+
+  it("ignores an answer that was already in flight — it is about the script that is gone", async () => {
+    const { deckSaveError, resetForScriptChange, startSave, answer, committed } = overlappingHarness();
+    startSave("first");
+    resetForScriptChange();
+    await answer(0, failedWith("File not found"));
+    assert.equal(deckSaveError.value, null, "no banner from the previous script's save");
+
+    const second = overlappingHarness();
+    second.startSave("first");
+    second.resetForScriptChange();
+    await second.answer(0, OK);
+    assert.deepEqual(second.committed, [], "and the old script is not committed into the new result");
+    assert.deepEqual(committed, []);
+  });
+
+  it("drops an edit that was only queued — its timer would write it to the NEW file path", async () => {
+    const { resetForScriptChange, queueEdit, flushPendingDeckSave, inFlight } = overlappingHarness();
+    queueEdit("typed just before switching");
+    resetForScriptChange();
+    flushPendingDeckSave();
+    assert.equal(inFlight(), 0, "nothing may be written out for the script that is gone");
   });
 });
 
@@ -227,11 +252,11 @@ describe("the View's save-failure banner", () => {
   });
 
   it("resets the failure in initializeScript, beside the per-beat errors it already resets", () => {
-    assert.match(viewSource, /const \{[^}]*\bclearDeckSaveError\b[^}]*\} = useDeckEditor\(/);
+    assert.match(viewSource, /const \{[^}]*\bresetForScriptChange\b[^}]*\} = useDeckEditor\(/);
     const initialize = /async function initializeScript\(\)[\s\S]*?\n {2}await refreshScriptFromDisk\(\);/.exec(viewSource);
     assert.ok(initialize, "initializeScript is found");
     assert.match(initialize[0], /beatSaveErrors,/);
-    assert.match(initialize[0], /clearDeckSaveError\(\);/);
+    assert.match(initialize[0], /resetForScriptChange\(\);/);
   });
 
   it("renders it as an alert carrying the server's message", () => {

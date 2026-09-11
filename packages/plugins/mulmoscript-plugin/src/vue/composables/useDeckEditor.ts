@@ -143,17 +143,28 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
   }
 
   /**
-   * Forget a failed save — the View has moved to a different script, or this one was written
-   * whole by another route.
+   * The script this composable was editing is gone — the View moved to a different result, or
+   * this one was rewritten whole by another route.
    *
-   * Without it the banner outlives what it is about: this View re-initializes in place on a
-   * result switch rather than remounting (`watch(() => props.selectedResult, initializeScript)`),
-   * so the message would sit over someone else's deck. The per-beat errors beside it are reset
-   * the same way, in the same function.
+   * Clearing the banner is not enough, because this View re-initializes in place rather than
+   * remounting (`watch(() => props.selectedResult, initializeScript)`), so everything the old
+   * script left behind survives the switch and lands on the new one:
+   *
+   * - an answer still IN FLIGHT would repopulate the banner, or commit the old script into the
+   *   new result — its revision is still current, since no new edit has been queued;
+   * - an edit still QUEUED would be written out by its own timer against `filePath.value`,
+   *   which by then names the NEW file. That one writes one deck's beats into another deck.
+   *
+   * So the revision advances (every in-flight answer becomes stale) and the queue is dropped.
+   * The per-beat errors beside this are reset the same way, in the same function.
    */
-  function clearDeckSaveError(): void {
+  function resetForScriptChange(): void {
+    if (deckSaveTimer) clearTimeout(deckSaveTimer);
+    deckSaveTimer = null;
+    pendingDeckScript = null;
+    editRevision += 1;
     deckSaveError.value = null;
   }
 
-  return { canEditBeats, deckScriptInput, deckSaveError, clearDeckSaveError, onDeckUpdate, flushPendingDeckSave, watchForeignWrites };
+  return { canEditBeats, deckScriptInput, deckSaveError, resetForScriptChange, onDeckUpdate, flushPendingDeckSave, watchForeignWrites };
 }
