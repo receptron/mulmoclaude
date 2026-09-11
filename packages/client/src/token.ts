@@ -15,10 +15,11 @@
 
 import { readSidecarFile, SIDECAR_FILES, sidecarPath } from "./workspace.js";
 
-/** Resolved once at module load, so the error message a bridge prints names a
- *  stable path. `MULMOCLAUDE_WORKSPACE_PATH` is read here (#3078) — it was
- *  hardcoded to `<homedir>/mulmoclaude` before, so anyone who had moved their
- *  workspace was told to look in a directory the server never writes. */
+/** Public since #272, kept as a module-load constant for callers that print it.
+ *  It now honours `MULMOCLAUDE_WORKSPACE_PATH` (#3078) instead of hardcoding
+ *  `<homedir>/mulmoclaude` — but a constant freezes the root at import time, so
+ *  code that needs the answer AFTER `dotenv/config` has run should call
+ *  `sidecarPath(SIDECAR_FILES.token)` instead, as `requireBearerToken` does. */
 export const TOKEN_FILE_PATH = sidecarPath(SIDECAR_FILES.token);
 
 export function readBridgeToken(): string | null {
