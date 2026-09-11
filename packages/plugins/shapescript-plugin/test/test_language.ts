@@ -943,6 +943,30 @@ describe("minkowski, inset and extrude along", () => {
     withMesh("define c cube { size -1 1 1 }\ninset(c 0.1)", (mesh) => near(extent(mesh).toArray(), [0.8, 0.8, 0.8], 1e-5));
     assert.throws(() => objectsOf("inset(1 2)"), /mesh/);
     assert.throws(() => objectsOf("define c cube\ninset(c 1 / 0)"), /finite/);
+    // A value's geometry is released once the conversion is over; the scene
+    // holds its own clone.
+    {
+      const disposed = new Set<THREE.BufferGeometry>();
+      const original = THREE.BufferGeometry.prototype.dispose;
+      THREE.BufferGeometry.prototype.dispose = function (this: THREE.BufferGeometry) {
+        disposed.add(this);
+        return original.call(this);
+      };
+      let group: THREE.Group;
+      try {
+        group = astToThreeJS(parseShapeScript("define c cube\ndefine d inset(c 0.1)\nd"));
+      } finally {
+        THREE.BufferGeometry.prototype.dispose = original;
+      }
+      let placed: THREE.Mesh | undefined;
+      group.traverse((object) => {
+        if ((object as THREE.Mesh).isMesh) placed = object as THREE.Mesh;
+      });
+      // The cube value and the inset value were released; the scene's clone was not.
+      assert.ok(disposed.size >= 2, `${disposed.size} disposed`);
+      assert.equal(disposed.has(placed!.geometry), false);
+      disposeObject3D(group);
+    }
     // Every inset result is a retained allocation, charged against the budget.
     assert.throws(
       () => disposeObject3D(astToThreeJS(parseShapeScript("define c cube\ndefine d inset(c 0.1)\ndefine e inset(d 0.1)\ncube"), { maxVertices: 60 })),

@@ -299,6 +299,10 @@ export class Converter {
    *  collected here instead of entering the scene: the body of `mesh { }`,
    *  and a function body whose result is what it built. */
   private valueSink: Value[] | null = null;
+  /** Geometries that live on as values (defined shapes, function results,
+   *  `inset` results). Never in the scene themselves — placing one clones it —
+   *  so they are released together once the conversion is over. */
+  private retained: THREE.BufferGeometry[] = [];
 
   constructor(options: ConversionOptions = {}) {
     this.options = options;
@@ -331,6 +335,10 @@ export class Converter {
       // budget would stay allocated, once per rejected render.
       disposeObject3D(group);
       throw error;
+    } finally {
+      // Every value has been placed (as a clone) by now; the originals go.
+      this.retained.forEach((geometry) => geometry.dispose());
+      this.retained = [];
     }
 
     return group;
@@ -746,6 +754,7 @@ export class Converter {
     const count = geometry.getAttribute("position").count;
     this.chargeEstimate(count);
     this.vertexCount += count;
+    this.retained.push(geometry);
   }
 
   /** Build `nodes` at the origin in a throwaway group, collecting the values
