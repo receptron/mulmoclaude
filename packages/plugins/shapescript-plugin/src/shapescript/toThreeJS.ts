@@ -27,6 +27,7 @@ import {
   ArcCommand,
   ForLoopPathCommand,
   CustomShapeNode,
+  ShapePrimitive,
   ColorNode,
   RotateNode,
   OrientationNode,
@@ -98,6 +99,32 @@ function linePoints(line: THREE.Line): THREE.Vector3[] {
     const previous = points[points.length - 1];
     if (previous === undefined || previous.distanceToSquared(point) > PATH_POINT_EPSILON ** 2) points.push(point);
   }
+  return points;
+}
+
+/** Upstream's `loft` takes `path` values only — a `fill` is a mesh there and
+ *  is refused. This evaluator builds every operand into a mesh or a line first,
+ *  so the ones that stand in for a path (a `path` block, the flat primitives
+ *  `square` / `circle` / `roundrect` / `polygon`, `text`) are marked, and
+ *  `loft` refuses anything else. */
+const PATH_VALUE_KEY = "pathValue";
+function markPathValue<T extends THREE.Object3D>(object: T): T {
+  object.userData[PATH_VALUE_KEY] = true;
+  return object;
+}
+function isPathValue(object: THREE.Object3D): boolean {
+  return object.userData[PATH_VALUE_KEY] === true;
+}
+const FLAT_PRIMITIVES: ReadonlySet<ShapePrimitive> = new Set(["circle", "square", "roundrect", "polygon"]);
+
+/** A `loft` operand's ring. An open path reaches the builder as a line and is
+ *  closed implicitly, as upstream lofts it (its `loft` of four unrepeated
+ *  square corners is a watertight box). */
+function loftSection(operand: THREE.Mesh | THREE.Line): THREE.Vector3[] {
+  if (!isPathValue(operand)) throw new Error("`loft` expects `path` cross-sections, not meshes — pass the path itself rather than a `fill` of it");
+  if ((operand as THREE.Mesh).isMesh) return profileOf(operand as THREE.Mesh);
+  const points = linePoints(operand as THREE.Line);
+  if (points.length < 3) throw new Error("A `loft` cross-section needs at least three points");
   return points;
 }
 
@@ -505,12 +532,12 @@ export class Converter {
       const shape = this.shapeFromPathPoints(points);
       // An open path has no face: it reaches the builder as a stroke, which
       // `extrude` walls and `extrude … along` follows.
-      if (!isClosedPath(points)) return this.lineFromPath(node, shape);
+      if (!isClosedPath(points)) return markPathValue(this.lineFromPath(node, shape));
       this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
       this.requireEnclosedArea(shape, "path");
       const mesh = this.makeMesh(this.placePath(new THREE.ShapeGeometry(shape), node), this.createMaterial({ properties: {} }));
       this.applyCurrentTransform(mesh);
-      return mesh;
+      return markPathValue(mesh);
     });
   }
 
@@ -669,7 +696,10 @@ export class Converter {
 
   private convertShape(node: ShapeNode): THREE.Mesh | null {
     if (node.points !== undefined) return this.placeValue(this.polygonValue(node));
-    return this.withShapeOptions(node.properties, () => this.finishMesh(this.createGeometry(node), node, false));
+    return this.withShapeOptions(node.properties, () => {
+      const mesh = this.finishMesh(this.createGeometry(node), node, false);
+      return FLAT_PRIMITIVES.has(node.primitive) ? markPathValue(mesh) : mesh;
+    });
   }
 
   /** Run `build` with produced values going to `sink` rather than the scene. */
@@ -1952,7 +1982,10 @@ export class Converter {
   /** Build `children` into a throwaway group at the block's own origin and hand
    *  back every mesh in it, world matrices already resolved. The group stays
    *  owned by the caller, which disposes it. */
-  private buildOperands(temporary: THREE.Group, children: SceneNode[]): { meshes: THREE.Mesh[]; lines: THREE.Line[]; material: MaterialState } {
+  private buildOperands(
+    temporary: THREE.Group,
+    children: SceneNode[],
+  ): { meshes: THREE.Mesh[]; lines: THREE.Line[]; operands: (THREE.Mesh | THREE.Line)[]; material: MaterialState } {
     let material = this.currentTransform().material;
     this.operandDepth++;
     try {
@@ -1973,16 +2006,21 @@ export class Converter {
     temporary.updateMatrixWorld(true);
     const meshes: THREE.Mesh[] = [];
     const lines: THREE.Line[] = [];
+    // `operands` keeps the source order across both kinds — a loft's sections
+    // must stay in the order they were written.
+    const operands: (THREE.Mesh | THREE.Line)[] = [];
     temporary.traverse((object) => {
       if ((object as THREE.Mesh).isMesh) meshes.push(object as THREE.Mesh);
       else if ((object as THREE.Line).isLine) lines.push(object as THREE.Line);
+      else return;
+      operands.push(object as THREE.Mesh | THREE.Line);
     });
-    return { meshes, lines, material };
+    return { meshes, lines, operands, material };
   }
 
   private buildFromChildren(
     node: { children: SceneNode[]; properties: ShapeProperties },
-    build: (meshes: THREE.Mesh[], lines: THREE.Line[]) => THREE.BufferGeometry,
+    build: (meshes: THREE.Mesh[], lines: THREE.Line[], operands: (THREE.Mesh | THREE.Line)[]) => THREE.BufferGeometry,
   ): THREE.Mesh {
     const temporary = new THREE.Group();
     // The operand meshes are charged as they are built — the budget has to hold
@@ -1996,7 +2034,7 @@ export class Converter {
     try {
       const operands = this.buildOperands(temporary, node.children);
       material = operands.material;
-      geometry = build(operands.meshes, operands.lines);
+      geometry = build(operands.meshes, operands.lines, operands.operands);
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = chargedBeforeOperands;
@@ -2009,8 +2047,8 @@ export class Converter {
   }
 
   private buildLoft(node: LoftNode): THREE.Object3D {
-    return this.buildFromChildren(node, (meshes) => {
-      const profiles = meshes.map(profileOf);
+    return this.buildFromChildren(node, (_meshes, _lines, operands) => {
+      const profiles = operands.map(loftSection);
       const vertices = profiles.length * Math.max(0, ...profiles.map((ring) => ring.length));
       this.chargeEstimate(vertices);
       return loftGeometry(profiles);
@@ -2042,7 +2080,7 @@ export class Converter {
       if (layout.shapes.length === 0) return null;
       if (this.operandDepth > 0 || this.valueSink !== null) {
         this.chargeEstimate(points);
-        return this.finishMesh(new THREE.ShapeGeometry(layout.shapes, 1), node, true);
+        return markPathValue(this.finishMesh(new THREE.ShapeGeometry(layout.shapes, 1), node, true));
       }
       return this.textOutline(node, layout, points);
     });

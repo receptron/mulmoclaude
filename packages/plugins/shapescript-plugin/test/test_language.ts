@@ -453,6 +453,30 @@ describe("upstream conventions", () => {
 });
 
 describe("path transform options", () => {
+  it("refuses a `fill` as a loft section, as upstream does (a mesh is not a path)", () => {
+    // Native ShapeScript 1.11.4: "A mesh value was not expected in this context."
+    const square = "path {\n point -1 -1\n point 1 -1\n point 1 1\n point -1 1\n point -1 -1\n}";
+    const script = `loft {\nfill {\n position 0 0 0\n ${square}\n}\nfill {\n position 0 0 2\n ${square}\n}\n}`;
+    assert.throws(() => astToThreeJS(parseShapeScript(script)), /`loft` expects `path` cross-sections/);
+    // The same value through a definition is refused too — the check is on the value, not the spelling.
+    assert.throws(() => astToThreeJS(parseShapeScript(`define disc fill { ${square} }\nloft {\n disc\n translate 0 0 2\n disc\n}`)), /`loft` expects `path`/);
+    // A `fill` stays legal where a mesh belongs.
+    withMesh(`fill { ${square} }`, (mesh) => near(extent(mesh).toArray(), [2, 2, 0]));
+    withMesh(`hull {\n fill { ${square} }\n translate 0 0 2\n fill { ${square} }\n}`, (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+  });
+
+  it("lofts open paths, closing each section implicitly as upstream does", () => {
+    // Native 1.11.4 builds a watertight 2×2×2 box from four unrepeated corners per section.
+    const open = (z: number) => `path {\n position 0 0 ${z}\n point -1 -1\n point 1 -1\n point 1 1\n point -1 1\n}`;
+    withMesh(`loft {\n${open(0)}\n${open(2)}\n}`, (mesh) => {
+      near(extent(mesh).toArray(), [2, 2, 2]);
+      assert.ok(Math.abs(volume(mesh) - 8) < 1e-5, `volume ${volume(mesh)}`);
+    });
+    // Sections keep their written order when open and closed paths are mixed.
+    const closed = "path {\n position 0 0 1\n point -0.5 -0.5\n point 0.5 -0.5\n point 0.5 0.5\n point -0.5 0.5\n point -0.5 -0.5\n}";
+    withMesh(`loft {\n${open(0)}\n${closed}\n${open(2)}\n}`, (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+  });
+
   it("places a path with its own position/orientation/size, as upstream does for loft sections", () => {
     // Two placed unit squares, 2 apart along Z, loft into a 1×1×2 slab.
     const loft =
