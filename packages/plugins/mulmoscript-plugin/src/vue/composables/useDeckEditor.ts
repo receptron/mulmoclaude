@@ -60,10 +60,11 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
    *
    * A failed save leaves the editor showing the user's edit (see `flushDeckSave`), which is
    * right for a transient failure and indistinguishable from success without this: #3070 was
-   * filed after edits that only reverted on the next reload. Cleared by the next SUCCESSFUL
-   * save, not by the next keystroke — clearing on edit blanks the message for the debounce
-   * window and then brings it back, and an edit that is still unsaved has not stopped being
-   * unsaved.
+   * filed after edits that only reverted on the next reload. Within one script the only thing
+   * that clears it is the next SUCCESSFUL save — never the next keystroke, which would blank
+   * the message for the debounce window and then bring it back, and an edit that is still
+   * unsaved has not stopped being unsaved. Leaving the script clears it too, for a different
+   * reason: see `resetForScriptChange`.
    */
   const deckSaveError: Ref<string | null> = ref(null);
 
