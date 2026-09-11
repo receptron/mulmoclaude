@@ -10,6 +10,11 @@
 //
 // This is the same class as #2650 (Vite's proxy target) and #2981
 // (`wait-for-backend`); both were fixed by reading the published port.
+//
+// A leftover `.server-port` cannot mislead here the way it can mislead
+// `yarn dev`: the file is not removed on shutdown, but the server REWRITES it
+// on every startup, so a running server's entry is always current — and with
+// no server running, the old hardcoded 3001 was just as dead.
 
 import { readSidecarFile, SIDECAR_FILES } from "./workspace.js";
 
