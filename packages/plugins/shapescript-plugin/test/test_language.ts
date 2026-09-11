@@ -742,7 +742,6 @@ describe("control flow, ranges and functions", () => {
   });
   it("names the upstream features it lacks", () => {
     for (const [script, message] of [
-      ['text "hi"', /text/],
       ['import "other.shape"', /import/],
       ["define p path { point 0 0 point 1 1 }", /path.*value/],
       ['fill svgpath "M 0 0 L 1 0 L 0 1 z"', /svgpath/],
@@ -1073,5 +1072,102 @@ describe("minkowski, inset and extrude along", () => {
     ] as const) {
       assert.throws(() => objectsOf(script), message, script);
     }
+  });
+});
+
+describe("text", () => {
+  // Helvetica's cap height at point size 1, the face upstream sets text in.
+  const CAP = 0.718;
+  function boxOf(object: THREE.Object3D): THREE.Box3 {
+    object.updateMatrixWorld(true);
+    return new THREE.Box3().setFromObject(object);
+  }
+  function faceArea(mesh: THREE.Mesh): number {
+    const p = mesh.geometry.getAttribute("position");
+    const index = mesh.geometry.getIndex();
+    let area = 0;
+    for (let i = 0; i < (index?.count ?? p.count); i += 3) {
+      const [a, b, c] = [0, 1, 2].map((j) => new THREE.Vector3().fromBufferAttribute(p, index ? index.getX(i + j) : i + j));
+      area += new THREE.Vector3().crossVectors(b!.clone().sub(a!), c!.clone().sub(a!)).length() / 2;
+    }
+    return area;
+  }
+  it("lays glyphs out from the left margin and baseline at upstream's size", () => {
+    // In the scene, text is its outlines; a capital is CAP tall, starting at x = 0 on y = 0.
+    const [outline] = objectsOf('text "H"') as [THREE.LineSegments];
+    assert.ok(outline.isLineSegments);
+    const box = boxOf(outline);
+    near([box.min.x, box.min.y, box.max.y, box.max.z], [0, 0, CAP, 0], 0.01);
+    withMesh('fill text "H"', (mesh) => near([boxOf(mesh).min.x, boxOf(mesh).min.y, boxOf(mesh).max.y], [0, 0, CAP], 0.01));
+    // `size` scales the line height, in one or two dimensions.
+    withMesh('fill text {\n size 0.5\n "H"\n}', (mesh) => near([extent(mesh).y], [CAP / 2], 0.01));
+    withMesh('fill text {\n size 2 0.5\n "H"\n}', (mesh) => near([extent(mesh).y, boxOf(mesh).min.x], [CAP / 2, 0], 0.01));
+    // A wider string is wider; `position` and the current material apply.
+    const [hello] = objectsOf('fill text "Hello"') as [THREE.Mesh];
+    assert.ok(extent(hello).x > 2 && extent(hello).x < 2.5, `width ${extent(hello).x}`);
+    withMesh('color red\nfill text {\n position 2 1\n "H"\n}', (mesh) => {
+      near([boxOf(mesh).min.x, boxOf(mesh).min.y], [2, 1], 0.01);
+      near((mesh.material as THREE.MeshStandardMaterial).color.toArray(), [1, 0, 0]);
+    });
+  });
+  it("interpolates values as upstream does", () => {
+    const widthOf = (script: string) => extent(objectsOf(script)[0] as THREE.Mesh).x;
+    // Non-text values are spaced out; an empty string between them removes the space.
+    assert.ok(widthOf("fill text 1 2 3") > widthOf('fill text 1 "" 2 "" 3'));
+    near([widthOf('fill text 1 "" 2 "" 3')], [widthOf('fill text "123"')], 1e-6);
+    near([widthOf('define apples 5\nfill text "Bob has " apples " apples"')], [widthOf('fill text "Bob has 5 apples"')], 1e-6);
+    near([widthOf("fill text 2 * 3")], [widthOf('fill text "6"')], 1e-6);
+    // `extrude text i` makes one solid per number.
+    assert.equal(objectsOf("for i in 1 to 5 {\n extrude text i\n translate 1\n}").length, 5);
+  });
+  it("breaks, spaces and wraps lines one unit apart", () => {
+    const [two] = objectsOf('text {\n "H"\n "H"\n}');
+    near([boxOf(two!).min.y, boxOf(two!).max.y], [-1, CAP], 0.01);
+    const [escaped] = objectsOf('text "H\\nH"');
+    near([boxOf(escaped!).min.y], [-1], 0.01);
+    const [spaced] = objectsOf('text {\n linespacing 0.5\n "H"\n "H"\n}');
+    near([boxOf(spaced!).min.y], [-1.5], 0.01);
+    const [tight] = objectsOf('text {\n linespacing -0.5\n "H"\n "H"\n}');
+    near([boxOf(tight!).min.y], [-0.5], 0.01);
+    // `wrapwidth` is in world units: "H H H" is wider than one unit, so three lines.
+    const [wrapped] = objectsOf('text {\n wrapwidth 1\n "H H H"\n}');
+    near([boxOf(wrapped!).min.y], [-2], 0.01);
+    assert.throws(() => objectsOf('text {\n wrapwidth 0\n "H"\n}'), /wrapwidth/);
+  });
+  it("fills and extrudes letters with their counters", () => {
+    // An "o" is a ring: it covers well under half of its box; a "1" has no hole.
+    withMesh('fill text "o"', (mesh) => assert.ok(faceArea(mesh) < 0.5 * extent(mesh).x * extent(mesh).y, `area ${faceArea(mesh)}`));
+    withMesh('fill text "1"', (mesh) => assert.ok(faceArea(mesh) > 0.1 * extent(mesh).x * extent(mesh).y));
+    withMesh('extrude {\n size 1 1 0.2\n text "o"\n}', (mesh) => {
+      near([extent(mesh).z], [0.2], 1e-6);
+      assert.ok(volume(mesh) > 0 && volume(mesh) < 0.5 * 0.2 * extent(mesh).x * extent(mesh).y, `volume ${volume(mesh)}`);
+    });
+    // Many letters in one builder: one mesh, one shape per glyph.
+    withMesh('fill text "Hello, World!"', (mesh) => assert.ok(extent(mesh).x > 5));
+  });
+  it("is a value with bounds, and a function may return one", () => {
+    // Upstream's recipe for centring text (exact for glyphs that sit on the baseline).
+    withMesh('define hello text "HILL"\ntranslate -hello.bounds.width/2 -hello.bounds.height/2\nfill hello', (mesh) => {
+      const box = boxOf(mesh);
+      near([box.min.x + box.max.x, box.min.y + box.max.y], [0, 0], 1e-6);
+    });
+    // A parameter spelled like a property (`name`) on its own line is a line of text.
+    withMesh('define label(name) {\n text {\n  size 0.18\n  name\n }\n}\nfill label("Cube")', (mesh) => near([extent(mesh).y], [CAP * 0.18], 0.01));
+    withMesh('define label(name) {\n text {\n  size 0.18\n  name\n }\n}\ntranslate -label("Cube").bounds.width/2 0\nfill label("Cube")', (mesh) => {
+      const box = boxOf(mesh);
+      near([box.min.x + box.max.x], [0], 1e-6);
+    });
+    // A `name` property still names the object when nothing binds `name`.
+    assert.equal(objectsOf('text {\n name "caption"\n "H"\n}')[0]!.name, "caption");
+  });
+  it("keeps the built-in font, substitutes missing glyphs and bounds the text", () => {
+    assert.match(infoOf('font "Zapfino"\nfill text "Hi"').warnings[0]!, /font/);
+    assert.match(infoOf('fill text {\n font "Zapfino"\n "Hi"\n}').warnings[0]!, /font/);
+    assert.deepEqual(infoOf('define font 1\nfill text "Hi"\ncube { size font }').warnings, []);
+    assert.match(infoOf('fill text "日本"').warnings[0]!, /"日" "本".*\?/);
+    assert.equal(objectsOf('text "   "').length, 0);
+    assert.throws(() => objectsOf('fill text "   "'), /Fill requires/);
+    assert.throws(() => objectsOf(`fill text "${"x".repeat(2001)}"`), /2000 characters/);
+    assert.throws(() => objectsOf("text"), /needs a string/);
   });
 });

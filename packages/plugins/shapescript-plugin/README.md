@@ -273,8 +273,13 @@ corners, capped at the ends of an open path); an open path extrudes to a two-sid
 upstream. `minkowski { a b }` is the hull of two convex solids' vertex sums, and for a
 non-convex operand the merged per-face hulls (overlapping shells, not a boolean union — fine to
 draw, not to feed to another boolean); `inset(mesh d)` slides every vertex to where its faces'
-offset planes meet. `import`, `text` / `font`, `svgpath`, `object` values and paths as values
-are refused with a message naming the feature. Textures,
+offset planes meet. `text "Hello"` lays glyph outlines out as upstream does — left margin at
+x = 0, first baseline at y = 0, one world unit per line, `size` scaling it, `wrapwidth` and
+`linespacing` as options, values interpolated (`text "Bob has " apples " apples"`) — in a bundled
+Helvetica-like face (Helvetiker; `font` is accepted and skipped with a warning, and a character
+the face lacks draws as `?`). Bare `text` draws outlines; `fill` and `extrude` turn it into faces
+and solids, holes included, and it is a value with `.bounds`. `import`, `svgpath`, `object` values
+and paths as values are refused with a message naming the feature. Textures,
 normal maps, `camera` and `light` blocks are accepted and skipped with a warning that the
 tool result and the View both report. Unsupported commands and failed CSG operations return
 errors instead of silently substituting different geometry. As with other polygonal CSG

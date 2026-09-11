@@ -96,8 +96,17 @@ Done in 2.3.0 (Fillet, Spirals):
   corners), `extrude … along` (mitred sweep, caps on open paths), open paths extruded to walls,
   `detail` as a value and `detail 0` in a path, shape values keep their colour.
 
+Done in 2.4.0 (text):
+
+- **Text**: `text` with upstream's layout (Helvetica metrics, one unit per line, `size`,
+  `wrapwidth`, `linespacing`, interpolation) in a bundled Helvetiker face; `fill` / `extrude` of
+  profiles with holes; `font` accepted and skipped. `Platonic Solids.shape` still needs
+  `children` inside a custom block and `import`.
+
 Open:
 
+- **Blocks**: `children` in a custom block (`define solid { children … }` with shapes passed at
+  the call site), `import`.
 - **Builders**: `extrude` options `twist`, `axisAligned`, `miterLimit`; a boolean union of
   `minkowski` pieces for non-convex operands (they are merged shells today).
 - **Values**: paths as values (`define p path { … }`, `path.points`), per-vertex colours between
@@ -110,8 +119,8 @@ Open:
   `{ axis … angle … }` block syntax (1.11.0 – 1.11.2).
 - **Object syntax** for `color`, `size`, `point`, `path`, `polygon`, `mesh` (1.11.0); `object`
   values; partial ranges (`from 5`); range subscripts (`v[0 to 2]`); `if` / `switch` inside
-  expressions; string `lines` / `words` / `characters`; `text` / `font`; `light` / `camera`
-  rendering.
+  expressions; string `lines` / `words` / `characters`; `font` (a chosen face; one face is
+  bundled), `fonts`; `light` / `camera` rendering.
 
 ## Things we have that upstream does not
 

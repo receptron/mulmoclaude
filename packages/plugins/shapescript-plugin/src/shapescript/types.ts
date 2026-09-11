@@ -133,6 +133,7 @@ export type SceneNode =
   | FillNode
   | HullNode
   | MinkowskiNode
+  | TextNode
   | GroupNode
   | DetailNode
   | SeedNode
@@ -380,6 +381,21 @@ export interface MinkowskiNode {
   children: SceneNode[];
 }
 
+/** `text "Hello"` / `text { size 0.5 … "Hello" }`: glyph outlines laid out
+ *  from the origin — the left margin at x = 0, the first baseline at y = 0. */
+export interface TextNode {
+  type: "text";
+  /** One expression per line of text; a tuple's values are interpolated. */
+  lines: Expression[];
+  properties: ShapeProperties;
+  /** `wrapwidth`: wrap lines to this width in world units. */
+  wrapWidth?: Expression;
+  /** `linespacing`: extra distance between lines, in world units. */
+  lineSpacing?: Expression;
+  /** `font` inside the block: accepted and skipped with a warning. */
+  font?: Expression;
+}
+
 export interface GroupNode {
   type: "group";
   children: SceneNode[];
@@ -494,6 +510,7 @@ export enum TokenType {
   FILL = "FILL",
   HULL = "HULL",
   MINKOWSKI = "MINKOWSKI",
+  TEXT = "TEXT",
   GROUP = "GROUP",
   MESH = "MESH",
   PATH = "PATH",
