@@ -608,13 +608,35 @@ describe("upstream shapes and paths", () => {
     assert.ok(lineMaterial.transparent);
     assert.throws(() => objectsOf("path { point 0 0 1 point 1 0 }"), /planar/);
   });
-  it("revolves a lathe profile drawn on the −X side like one on +X", () => {
+  it("revolves a lathe profile drawn on the −X side like one on +X, always facing outward", () => {
     const right = "lathe path {\n point 0 1\n point 0.5 1\n point 0.5 0\n point 0 0\n}";
     const left = "lathe path {\n point 0 1\n point -0.5 1\n point -0.5 0\n point 0 0\n}";
-    withMesh(right, (a) => withMesh(left, (b) => near([volume(b)], [volume(a)], 1e-6)));
+    const upward = "lathe path {\n point 0 0\n point 0.5 0\n point 0.5 1\n point 0 1\n}";
+    withMesh(right, (a) => {
+      assert.ok(volume(a) > 0, "a top-down profile must not come out inside out");
+      withMesh(left, (b) => near([volume(b)], [volume(a)], 1e-6));
+      withMesh(upward, (c) => near([volume(c)], [volume(a)], 1e-6));
+    });
+    // Two lathes drawn top-down union into one solid (upstream's chess queen).
+    withMesh(
+      "union {\n lathe path {\n  point 0 1.2\n  point 0.15 1.05\n  point 0 0.9\n }\n lathe path {\n  point 0 0.85\n  point 0.2 0.85\n  point 0.3 0.1\n  point 0 0\n }\n}",
+      (mesh) => {
+        const box = new THREE.Box3().setFromObject(mesh);
+        near([box.min.y, box.max.y], [0, 1.2], 1e-3);
+        assert.ok(volume(mesh) > 0.05, `volume ${volume(mesh)}`);
+      },
+    );
   });
-  it("scales a builder's result by its `size`, with an extrude's Z as the depth", () => {
-    withMesh("extrude { size 2 3 4 square }", (mesh) => near(extent(mesh).toArray(), [2, 3, 4]));
+  it("scales a builder's result by its `size`, with an extrude's Z as the depth, centred on the profile", () => {
+    withMesh("extrude { size 2 3 4 square }", (mesh) => {
+      near(extent(mesh).toArray(), [2, 3, 4]);
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.z, box.max.z], [-2, 2]);
+    });
+    withMesh("extrude path {\n point 0 0\n point 1 0\n point 0 1\n point 0 0\n}", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.z, box.max.z], [-0.5, 0.5]);
+    });
     withMesh("extrude { size 0.5 square }", (mesh) => near(extent(mesh).toArray(), [0.5, 0.5, 0.5]));
     withMesh("hull { size 2 cube }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
   });

@@ -199,6 +199,45 @@ function cloneMaterialState(material: MaterialState): MaterialState {
  *  should not turn the tool result into a transcript. */
 const MAX_LOGS = 200;
 
+/** Signed volume of an indexed or unindexed triangle geometry. */
+function signedVolume(geometry: THREE.BufferGeometry): number {
+  const position = geometry.getAttribute("position");
+  const index = geometry.getIndex();
+  const count = index?.count ?? position.count;
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  let volume = 0;
+  for (let i = 0; i < count; i += 3) {
+    a.fromBufferAttribute(position, index ? index.getX(i) : i);
+    b.fromBufferAttribute(position, index ? index.getX(i + 1) : i + 1);
+    c.fromBufferAttribute(position, index ? index.getX(i + 2) : i + 2);
+    volume += a.dot(b.cross(c));
+  }
+  return volume / 6;
+}
+
+/** Flip a closed geometry whose faces point inward, so booleans and lighting
+ *  treat it as the solid it encloses. */
+function orientOutward<T extends THREE.BufferGeometry>(geometry: T): T {
+  if (signedVolume(geometry) >= 0) return geometry;
+  const index = geometry.getIndex();
+  if (index) {
+    for (let i = 0; i < index.count; i += 3) {
+      const b = index.getX(i + 1);
+      index.setX(i + 1, index.getX(i + 2));
+      index.setX(i + 2, b);
+    }
+    index.needsUpdate = true;
+  }
+  const normal = geometry.getAttribute("normal");
+  if (normal) {
+    for (let i = 0; i < normal.count; i++) normal.setXYZ(i, -normal.getX(i), -normal.getY(i), -normal.getZ(i));
+    normal.needsUpdate = true;
+  }
+  return geometry;
+}
+
 /** Upstream's icosphere subdivision level for a detail setting. */
 function icosphereSubdivisions(detail: number): number {
   return Math.max(0, Math.round(Math.log2(Math.max(4, detail))) - 2);
@@ -1195,7 +1234,8 @@ export class Converter {
   }
 
   /** `size` on an extrude: X and Y scale the profile, Z is the depth. The
-   *  depth goes into the geometry, so the mesh keeps a unit Z scale. */
+   *  depth goes into the geometry (centred on the profile plane, as
+   *  upstream), so the mesh keeps a unit Z scale. */
   private extrudeProperties(node: ExtrudeNode): { depth: number; properties: ShapeProperties } {
     const size = node.properties.size ? this.evaluateSize(node.properties.size) : [1, 1, 1];
     const depth = size[2] || 1;
@@ -1210,7 +1250,7 @@ export class Converter {
           const shapes = meshes.map((mesh) => this.planarShape(mesh));
           if (!shapes.length) throw new Error("Extrude requires a path or planar shape");
           for (const shape of shapes) this.chargePathEstimate(shape, 1, 12);
-          return new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 });
+          return new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 }).translate(0, 0, -depth / 2);
         });
       }
       const shape = this.requireEnclosedArea(this.buildPath(node.path), "extrude");
@@ -1219,7 +1259,8 @@ export class Converter {
       const curveSegments = Math.max(1, Math.floor(this.detailLevel / 4));
       this.chargePathEstimate(shape, curveSegments, EXTRUDE_VERTICES_PER_POINT);
 
-      const geometry = this.placePath(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments }), node.path);
+      // Centred on the profile plane (±depth / 2), as upstream extrudes.
+      const geometry = this.placePath(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments }).translate(0, 0, -depth / 2), node.path);
       return this.finishMesh(geometry, { properties });
     });
   }
@@ -1460,7 +1501,11 @@ export class Converter {
       // the time `makeMesh` could measure it the memory is already committed.
       this.chargeEstimate(points.length * (this.detailLevel + 1));
 
-      const geometry = new THREE.LatheGeometry(points, this.detailLevel);
+      // LatheGeometry winds its faces from the profile's direction, so a
+      // profile drawn top-down (upstream's chess pieces all are) comes out
+      // inside out — which three-bvh-csg then drops from a union. Orient it
+      // outward by the signed volume, as Euclid does from the profile plane.
+      const geometry = orientOutward(new THREE.LatheGeometry(points, this.detailLevel));
       return this.finishMesh(geometry, node, true, this.currentTransform().material);
     });
   }

@@ -26,11 +26,12 @@ const RENDERS: Record<string, Rendered> = {
   // The board is 8.8 wide; every piece stands on it. `translate` inside the
   // `for` loops carries on after them, which is what keeps the pieces on it.
   "Chessboard.shape": { objects: 33, bounds: { min: [-4.4, -0.2, -4.4], max: [4.4, 1.42, 4.4] }, warnings: [/camera/] },
-  "Cog.shape": { objects: 1, bounds: { min: [-1, -1, 0], max: [1, 1, 0.5] }, warnings: [/camera/] },
+  // Extrusions are centred on their profile plane, as upstream: ±0.25 for a 0.5 depth.
+  "Cog.shape": { objects: 1, bounds: { min: [-1, -1, -0.25], max: [1, 1, 0.25] }, warnings: [/camera/] },
   // The sphere draws; its texture and the background image are reported.
   "Earth.shape": { objects: 1, bounds: { min: [-0.5, -0.5, -0.5], max: [0.5, 0.5, 0.5] }, warnings: [/background image "Stars.jpg"/, /texture "Earth.png"/] },
   "Spring.shape": { objects: 1, bounds: { min: [-0.55, -0.65, -0.55], max: [0.55, 0.65, 0.55] }, warnings: [] },
-  "Train.shape": { objects: 14, bounds: { min: [-1, -0.42, -1.12], max: [0.6, 1.53, 1.15] }, warnings: [/camera/] },
+  "Train.shape": { objects: 14, bounds: { min: [-0.6, -0.42, -1.12], max: [0.6, 1.53, 1.15] }, warnings: [/camera/] },
 };
 
 const REFUSED: Record<string, RegExp> = {
