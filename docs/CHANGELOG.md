@@ -52,7 +52,8 @@ and together they round edges as upstream's Fillet does. `extrude { section alon
 a section along a path, mitred at corners and capped at the ends of an open path; an open path
 extrudes to a two-sided wall; `detail` reads as a value and `detail 0` inside a path draws its
 curve points as corners; a `detail` inside a path no longer leaks past it. A shape kept as a
-value keeps the colour it was given (the filleted cone stays blue). **Behaviour change** toward
+value keeps the one colour it was given (the filleted cone stays blue); a mesh whose vertices
+differ in colour gives an uncoloured `minkowski` result. **Behaviour change** toward
 upstream: `extrude` no longer closes an open path for you — repeat the first point to get a
 solid, otherwise the path extrudes to a wall.
 

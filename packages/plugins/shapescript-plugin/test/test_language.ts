@@ -921,6 +921,8 @@ describe("minkowski, inset and extrude along", () => {
       const color = mesh.geometry.getAttribute("color");
       near([color.getX(0), color.getY(0), color.getZ(0)], [0, 1, 0]);
     });
+    // Degeneracy is judged at the shapes' own scale: tiny solids still sum.
+    withMesh("minkowski {\n cube { size 0.00001 }\n cube { size 0.00001 }\n}", (mesh) => near(extent(mesh).toArray(), [2e-5, 2e-5, 2e-5], 1e-9));
     // A mirrored operand is still convex: one hull, not per-face pieces.
     withMesh("minkowski {\n cube { size -1 1 1 }\n cube { size 0.5 }\n}", (mesh) => {
       near([volume(mesh)], [1.5 ** 3], 1e-4);

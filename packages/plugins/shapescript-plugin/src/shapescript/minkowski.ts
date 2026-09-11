@@ -76,7 +76,7 @@ export function smoothHull(points: THREE.Vector3[]): THREE.BufferGeometry | unde
   hull.deleteAttribute("uv");
   const merged = mergeVertices(hull, 1e-6);
   hull.dispose();
-  if (!merged.getAttribute("position")?.count || Math.abs(enclosedVolume(merged)) < DEGENERATE_VOLUME) {
+  if (!merged.getAttribute("position")?.count || isFlat(merged)) {
     merged.dispose();
     return undefined;
   }
@@ -85,7 +85,17 @@ export function smoothHull(points: THREE.Vector3[]): THREE.BufferGeometry | unde
   return merged;
 }
 
-const DEGENERATE_VOLUME = 1e-12;
+/** A hull encloses nothing when its volume is negligible AT ITS OWN SCALE: a
+ *  sum of two 1e-5 cubes is a solid of 8e-15, a sum of two parallel faces is
+ *  flat however large. */
+const FLAT_VOLUME_RATIO = 1e-9;
+
+function isFlat(geometry: THREE.BufferGeometry): boolean {
+  geometry.computeBoundingBox();
+  const size = geometry.boundingBox!.getSize(new THREE.Vector3());
+  const extent = Math.max(size.x, size.y, size.z);
+  return extent === 0 || Math.abs(enclosedVolume(geometry)) < FLAT_VOLUME_RATIO * extent ** 3;
+}
 
 function enclosedVolume(geometry: THREE.BufferGeometry): number {
   let volume = 0;
