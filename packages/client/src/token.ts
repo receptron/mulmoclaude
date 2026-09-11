@@ -21,7 +21,7 @@ import { readSidecarFile, SIDECAR_FILES, sidecarPath } from "./workspace.js";
  * Prefer this over `TOKEN_FILE_PATH` for anything that reads, writes, or
  * reports the path: the constant freezes the workspace root at import time, so
  * it disagrees with `readBridgeToken()` for any process that sets
- * `MULMOCLAUDE_WORKSPACE_PATH` after importing this package (Codex).
+ * `MULMOCLAUDE_WORKSPACE_PATH` after importing this package (Codex, #3078).
  */
 export function tokenFilePath(): string {
   return sidecarPath(SIDECAR_FILES.token);

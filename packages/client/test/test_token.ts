@@ -152,7 +152,7 @@ describe("readBridgeToken — MULMOCLAUDE_WORKSPACE_PATH", () => {
 // The boundary the constant-vs-function split lives on: a consumer that
 // imports the package BEFORE its `.env` is applied. `readBridgeToken()` and
 // `tokenFilePath()` re-resolve, `TOKEN_FILE_PATH` does not — which is exactly
-// why anything doing I/O should call the function (Codex, #3081).
+// why anything doing I/O should call the function (Codex, #3078).
 describe("workspace set AFTER import", () => {
   it("tokenFilePath() re-resolves where TOKEN_FILE_PATH cannot", async () => {
     const { TOKEN_FILE_PATH, tokenFilePath } = await loadFresh();

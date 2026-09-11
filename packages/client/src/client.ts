@@ -104,7 +104,7 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   // with a NEW port, which the right server answers `invalid token` and the
   // connect handler explains; the dangerous pairing survives only in the narrow
   // window where BOTH reads fall between the token write and the port publish.
-  // Closing it needs a shared generation marker on the sidecars — #3082 (Codex).
+  // Closing it needs a shared generation marker on the sidecars (Codex, #3082).
   const token = requireBearerToken();
   const apiUrl = resolveApiUrl(opts.apiUrl);
   // `opts.options === undefined` → scrape env automatically.
