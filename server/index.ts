@@ -1352,6 +1352,13 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
 // skip this are harmless — see plans/done/feat-bearer-token-auth.md; the
 // next startup overwrites both, and every reader already treats a missing
 // sidecar as "the server has not said yet".
+//
+// "Best-effort" is load-bearing for the port half in a way it never was for the
+// token: a crash leaves a `.server-port` naming a port this server has left, and
+// a bridge that follows it presents its bearer token to whatever took that port
+// (#3082). That residue is accepted and reasoned about in
+// `docs/bridge-protocol.md`; it is not covered by this cleanup, which only
+// closes the graceful path.
 const shutdownHooks: (() => void)[] = [stopWhisperSidecar];
 function registerShutdownHook(hook: () => void): void {
   shutdownHooks.push(hook);

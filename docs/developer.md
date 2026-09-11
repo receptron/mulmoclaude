@@ -300,8 +300,8 @@ Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on
 | Vue page load / reload / new tab | Vite plugin (dev) / Express handler (prod) reads the file and substitutes `<meta name="mulmoclaude-auth" content="…">` into index.html |
 | Vue bootstrap (`src/main.ts`)    | Reads the meta tag, calls `setAuthToken()` so every `apiFetch` attaches the header                                                     |
 | HMR                              | No file I/O — token stays in Vue memory, SPA never reloads                                                                             |
-| `SIGINT` / `SIGTERM`             | Best-effort `unlink` of `.session-token`                                                                                               |
-| Crash / `kill -9`                | File may linger — harmless, next startup generates a new token and the stale value no longer matches                                   |
+| `SIGINT` / `SIGTERM`             | Best-effort `unlink` of BOTH `.session-token` and `.server-port` (#3082)                                                               |
+| Crash / `kill -9`                | Both may linger. The token is harmless — the next startup generates a new one and the stale value stops matching. The PORT is not: it names a port this server has left, and a bridge that follows it presents its token to whatever took it. See [`bridge-protocol.md`](bridge-protocol.md) |
 
 **Dev-mode escape hatch**: setting `MULMOCLAUDE_AUTH_TOKEN=…` before `yarn dev:client` makes the Vite plugin use that value instead of reading the file. Used by `e2e/playwright.config.ts` to inject a predictable token in E2E; also handy for debugging without a running server. Production (Express serving built HTML) never reads env — the in-memory token from `generateAndWriteToken()` is the sole source.
 
