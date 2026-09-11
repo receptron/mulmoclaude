@@ -12,11 +12,11 @@
 // passes against a rename.
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:net";
-import { boundPortOf, formatServerPort, getBoundPort, publishServerPort, setBoundPort } from "../../server/workspace/serverPort.js";
+import { boundPortOf, deleteServerPort, formatServerPort, getBoundPort, publishServerPort, setBoundPort } from "../../server/workspace/serverPort.js";
 import { parsePublishedPort } from "../../scripts/lib/devServerPort.js";
 
 let workspace: string;
@@ -157,3 +157,57 @@ describe("bound port, in-process", () => {
     assert.equal(getBoundPort(), 54321);
   });
 });
+
+// `.session-token` has been removed on shutdown since bearer auth landed; its
+// pair was not, so a dead server kept publishing an address (#3082). The
+// delete has to be total (the file is gone, not emptied — an empty file is a
+// half-written write to every reader) and it has to be silent about every way
+// the file can already be absent, because it runs on the shutdown path where
+// throwing would skip whatever cleanup comes after it.
+describe("deleteServerPort", () => {
+  it("removes a published port", async () => {
+    await publishServerPort(3002, portPath);
+    assert.equal(existsSync(portPath), true, "precondition: the port was published");
+    await deleteServerPort(portPath);
+    assert.equal(existsSync(portPath), false);
+  });
+
+  it("leaves nothing an empty-file reader could mistake for a port", async () => {
+    await publishServerPort(3002, portPath);
+    await deleteServerPort(portPath);
+    assert.equal(parsePublishedPort(readTextOrNull(portPath)), null);
+  });
+
+  it("is silent when the file was never written", async () => {
+    await deleteServerPort(portPath);
+    assert.equal(existsSync(portPath), false);
+  });
+
+  it("is silent when the file is already gone", async () => {
+    await publishServerPort(3002, portPath);
+    await deleteServerPort(portPath);
+    await assert.doesNotReject(() => deleteServerPort(portPath));
+  });
+
+  it("is silent when the whole workspace is gone", async () => {
+    rmSync(workspace, { recursive: true, force: true });
+    await assert.doesNotReject(() => deleteServerPort(portPath));
+  });
+
+  // The shutdown path must reach `process.exit(0)` whatever the filesystem
+  // says, so the contract is "does not reject", not "always removes".
+  it("is silent when the path is a directory it cannot unlink", async () => {
+    mkdirSync(portPath, { recursive: true });
+    await assert.doesNotReject(() => deleteServerPort(portPath));
+    assert.equal(existsSync(portPath), true);
+  });
+});
+
+/** What a reader sees, without distinguishing "absent" from "unreadable". */
+function readTextOrNull(target: string): string | null {
+  try {
+    return readFileSync(target, "utf-8");
+  } catch {
+    return null;
+  }
+}

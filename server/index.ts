@@ -134,7 +134,7 @@ import { requireSameOrigin } from "./api/csrfGuard.js";
 import { bearerAuth } from "./api/auth/bearerAuth.js";
 import { isViewDataPath } from "./api/auth/viewToken.js";
 import { deleteTokenFile, generateAndWriteToken, getCurrentToken } from "./api/auth/token.js";
-import { boundPortOf, publishServerPort, setBoundPort } from "./workspace/serverPort.js";
+import { boundPortOf, deleteServerPort, publishServerPort, setBoundPort } from "./workspace/serverPort.js";
 import { log } from "./system/logger/index.js";
 import { logBackgroundError } from "./utils/logBackgroundError.js";
 import { isNonEmptyString } from "./utils/types.js";
@@ -1344,11 +1344,14 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
   maybeForceChatIndexBackfill();
 }
 
-// Graceful shutdown: best-effort cleanup of the auth token file so
-// other readers (Vite plugin, future bridges) don't latch onto a
-// dead token. Crashes that skip this are harmless — see
-// plans/done/feat-bearer-token-auth.md; the next startup overwrites and
-// the stale file's token no longer matches the live in-memory one.
+// Graceful shutdown: best-effort cleanup of BOTH startup sidecars, so
+// other readers (Vite plugin, bridges, the PostToolUse hooks) don't
+// latch onto a dead token or address a port this server has left.
+// The token half has done this since bearer auth landed; `.server-port`
+// was the pair's other half and was not cleaned up (#3082). Crashes that
+// skip this are harmless — see plans/done/feat-bearer-token-auth.md; the
+// next startup overwrites both, and every reader already treats a missing
+// sidecar as "the server has not said yet".
 const shutdownHooks: (() => void)[] = [stopWhisperSidecar];
 function registerShutdownHook(hook: () => void): void {
   shutdownHooks.push(hook);
@@ -1366,6 +1369,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
     }
   }
   await deleteTokenFile();
+  await deleteServerPort();
   process.exit(0);
 }
 process.on("SIGINT", () => {
@@ -1377,6 +1381,25 @@ process.on("SIGTERM", () => {
 
 (async () => {
   const port = await resolvePort();
+
+  // Drop any port a previous run left behind, before the new token exists
+  // (#3082).
+  //
+  // The two sidecars are written token-first, port-last, so a reader whose
+  // reads both land in that gap sees the NEW token beside the OLD port — a
+  // fresh credential addressed at a port this server has not bound and the
+  // previous one has left. Clearing here removes the old value from that gap
+  // entirely: what a reader can see is the new token with NO port, which every
+  // reader already handles ("the server has not said yet").
+  //
+  // It does not manufacture a correct pair — a client with no published port
+  // falls back to its default, exactly as it does on a machine where no server
+  // has ever run. The gain is that a SPECIFIC dead port stops being offered.
+  //
+  // After `resolvePort()`, never before: an explicit `PORT` that is busy exits
+  // the process there, and deleting first would take the file published by the
+  // live instance holding that port down with us.
+  await deleteServerPort();
 
   // Generate the bearer token before `app.listen` so the first
   // request cannot race an uninitialised `getCurrentToken()`. The

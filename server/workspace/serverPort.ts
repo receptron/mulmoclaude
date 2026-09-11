@@ -14,6 +14,7 @@
 // a PREFIX: `3002` truncated to `300` parses as a perfectly valid port that
 // nothing is listening on. A rename cannot be observed half-done, so the reader
 // sees either the old contents or the new ones and never a state in between.
+import { unlink } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { writeFileAtomic } from "../utils/files/index.js";
 import { env } from "../system/env.js";
@@ -54,6 +55,32 @@ export function formatServerPort(port: number): string {
  */
 export async function publishServerPort(port: number, portPath: string = WORKSPACE_PATHS.serverPort): Promise<void> {
   await writeFileAtomic(portPath, formatServerPort(port), { mode: 0o600 });
+}
+
+/**
+ * Remove the published port, so nothing outside this process addresses a server
+ * that is not there (#3082).
+ *
+ * `.session-token` has been deleted on shutdown since bearer auth landed, "so
+ * other readers don't latch onto a dead token". Its pair was not — the two are
+ * written together on every startup and only one was ever cleaned up. This is
+ * that asymmetry, not a new policy.
+ *
+ * Safe to delete for the reason `scripts/wait-for-backend.ts` already records:
+ * the file only ever addresses a LIVE server, so it is meaningless once that
+ * server is gone. An instance still running against the same workspace would
+ * lose its published address — but two instances sharing a workspace already
+ * overwrite each other's `.session-token`, so that pair was broken before this.
+ *
+ * Best-effort: a crash skips it, the next startup overwrites, and every reader
+ * already treats an absent port as "the server has not said yet".
+ */
+export async function deleteServerPort(portPath: string = WORKSPACE_PATHS.serverPort): Promise<void> {
+  try {
+    await unlink(portPath);
+  } catch {
+    /* already gone, or never written — nothing to do */
+  }
 }
 
 /**
