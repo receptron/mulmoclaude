@@ -56,6 +56,31 @@ root 対応済み）。View は root 対応の **dispatch 経路**を通る。
 
 guards は注入するので、プラグインのランタイム無しで駆動できる。
 
+### ダウンロード2ルート（round 3 で追加）
+
+`downloadMovie` / `downloadPdf` は `getOptionalStringQuery(req, "root")` で root を読んでいた。
+これは**非 string を `undefined` に畳む**ので、`?root=a&root=b`（配列）が既定 root になる ——
+他で消したはずの fold が、#3076 で自分が書いたコードに残っていた。`suppliedRoot` 経由へ。
+
+### session 再水和（round 3 で追加）
+
+`enrichWithMulmoScript` も同じ fold をしていた。壊れた root は **absent ではなく corrupt** なので、
+既定 root の同名デッキをセッション履歴に混ぜず、この関数の既存契約（「失敗したら entry をそのまま
+返す」）でそのまま返す。
+
+### ルールの反転（round 3）
+
+同じルールへの**3件目**だったので、ケースを足すのをやめて反転した。
+`test_storyRootSweep.ts` に**呼び出し単位**で: story op に root を渡すファイルでは、
+`const root` / `const { … root … }` の**初期化が必ず `parseSuppliedRoot` / `suppliedRoot` から**
+であること。最初はファイル単位（「どこかで parser に触れているか」）にしたが、Codex が4通りで
+素通りした —— 同じファイルの別の正当な parse が `getOptionalStringQuery` を隠していた。
+
+**既知の限界**（docblock に明記）: 別ファイルのヘルパー経由で洗った root、`ops["movieStatusOp"]`
+のような綴り。本当の封じは `parseSuppliedRoot` だけが作れる branded type だが、パッケージの
+シグネチャ変更になるのでこの PR には入れない。コメントは走査前に除去しているので
+`// parseSuppliedRoot` で偽装はできない。
+
 ### `/save` は触らない
 
 このルートの body は**エージェントのツール引数**（`SaveMulmoScriptArgs`）そのもので、`root` は

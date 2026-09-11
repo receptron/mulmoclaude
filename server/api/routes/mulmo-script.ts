@@ -473,7 +473,12 @@ bindRoute(router, API_ROUTES.mulmoScript.downloadMovie, (req: Request, res: Resp
   // An artifact ref is relative to ITS stories root (#3014). Absent = the default root, which
   // is every request this host makes today — it registers no extra roots — so this is
   // unchanged for it and correct for a host that does.
-  const resolved = mulmoScriptOps.resolveStory(moviePath, getOptionalStringQuery(req, "root"));
+  // Through the parser, not `getOptionalStringQuery`: that folds a repeated `?root=a&root=b`
+  // (an ARRAY) into `undefined`, which serves the DEFAULT root's identically-named artifact —
+  // the fold this PR removed everywhere else (#3077 round 3, Codex).
+  const root = suppliedRoot(req.query.root, res);
+  if (root === null) return;
+  const resolved = mulmoScriptOps.resolveStory(moviePath, root);
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return;
@@ -553,7 +558,12 @@ bindRoute(router, API_ROUTES.mulmoScript.downloadPdf, (req: Request, res: Respon
     return;
   }
   // Same as downloadMovie above: the ref is relative to its root (#3014).
-  const resolved = mulmoScriptOps.resolveStory(pdfPath, getOptionalStringQuery(req, "root"));
+  // Through the parser, not `getOptionalStringQuery`: that folds a repeated `?root=a&root=b`
+  // (an ARRAY) into `undefined`, which serves the DEFAULT root's identically-named artifact —
+  // the fold this PR removed everywhere else (#3077 round 3, Codex).
+  const root = suppliedRoot(req.query.root, res);
+  if (root === null) return;
+  const resolved = mulmoScriptOps.resolveStory(pdfPath, root);
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return;

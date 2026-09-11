@@ -157,6 +157,53 @@ describe("a story is addressed by the pair, not the path", () => {
     assert.deepEqual(evasions, [], `these name a story op without calling it directly: ${evasions.join(" | ")}`);
   });
 
+  it("binds every root it passes from `parseSuppliedRoot`, never from an inline fold", () => {
+    // THIRD finding on one rule, so the rule is inverted rather than patched again: the REST
+    // readers (round 1), the claims about them (round 2), and the session replay (round 3) each
+    // folded a malformed root into the DEFAULT root. Folding is the silent misaddressing
+    // `guardSuppliedRoot` was added to dispatch to stop (#3015).
+    //
+    // Stated as what is PERMITTED, at BINDING level rather than file level: in a file that hands
+    // a root to a story op, every `const root`/`const { root }` must be initialised from
+    // `parseSuppliedRoot` or `suppliedRoot`. A file-level "does it mention the parser anywhere"
+    // check was the first draft and Codex walked past it in four ways — the file's other
+    // legitimate parse blinded it to `getOptionalStringQuery(req, "root")` in the same file,
+    // which was a live fold in the download routes.
+    //
+    // KNOWN LIMITS, said out loud: this is textual, so a root laundered through a helper in
+    // ANOTHER file, or an op reached by `ops["movieStatusOp"]`, is not seen. The real closure is
+    // a branded `ParsedStoryRoot` that only the parser can produce — a package-signature change,
+    // so it is not in this PR. Comments are stripped before scanning, so a `// parseSuppliedRoot`
+    // cannot forge compliance.
+    const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const offenders: string[] = [];
+    sourceFiles().forEach((file) => {
+      const source = stripComments(readFileSync(file, "utf-8"));
+      const passesARoot = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*\\broot\\b`).test(source);
+      if (!passesARoot) return;
+      // Every binding of a name `root` in this file has to come from the parser.
+      // Two simple alternatives rather than one nested-quantifier pattern: `[^}]*root[^}]*`
+      // backtracks super-linearly on a long brace body (sonarjs/super-linear-regex), and a
+      // linter finding inside the guard is the guard nobody keeps.
+      const bindings = [
+        ...source.matchAll(/(?:const|let|var)\s+root\s*=\s*([^;\n]*)/g),
+        ...source.matchAll(/(?:const|let|var)\s+(\{[^}]*\})\s*=\s*([^;\n]*)/g),
+      ].filter((binding) => /\broot\b/.test(binding[0]));
+      bindings.forEach((binding) => {
+        // A plain `const root = …` carries its initialiser in group 1; a destructure carries the
+        // brace body there and the initialiser in group 2.
+        const initialiser = binding[2] ?? binding[1] ?? "";
+        // `const { filePath, root } = entry.result.data` is a raw read, and legal: what matters
+        // is that the value handed to an op is parsed, so a destructure is permitted only when
+        // the file also parses it before use. Anything else must name the parser inline.
+        const parsed = /\b(parseSuppliedRoot|suppliedRoot)\(/.test(initialiser);
+        const rawDestructure = binding[0].includes("{") && source.includes("parseSuppliedRoot(root)");
+        if (!parsed && !rawDestructure) offenders.push(`${relative(REPO_ROOT, file)}: ${binding[0].trim()}`);
+      });
+    });
+    assert.deepEqual(offenders, [], `these bind a root without parsing it: ${offenders.join(" | ")}`);
+  });
+
   it("every exemption still exists — a stale one hides the next real call site", () => {
     const rootless = new Set(rootlessCalls());
     const gone = [...ROOTLESS_BY_DESIGN.keys()].filter((site) => !rootless.has(site));
