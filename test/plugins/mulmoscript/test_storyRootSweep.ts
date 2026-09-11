@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import typescript from "typescript";
@@ -24,11 +24,18 @@ import typescript from "typescript";
  * — a hand-written list of 17 members, a generic `async function f<T>(`, and a generic arrow whose
  * type argument contains a nested `>`. Each fix was a new spelling, which is the queue this whole
  * PR exists to end. An AST has no spellings.
+ *
+ * What it still cannot follow, said out loud because a silent miss is the failure this file
+ * exists to prevent: a root reached through a TYPE QUERY (`typeof x`), an indexed access, a
+ * mapped type, or an import type. Those need a type checker rather than a parser. Every
+ * root-carrying type in the package today is a plain interface or alias, so if you add one of
+ * those shapes, this is the file to teach.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, "..", "..", "..");
-const PACKAGE_SERVER = join(REPO_ROOT, "packages", "plugins", "mulmoscript-plugin", "src", "server");
+const PACKAGE_SRC = join(REPO_ROOT, "packages", "plugins", "mulmoscript-plugin", "src");
+const PACKAGE_SERVER = join(PACKAGE_SRC, "server");
 const HOST_SOURCE = join(REPO_ROOT, "server", "plugins", "mulmoscript-server.ts");
 const FACTORY = "createMulmoScriptServerOps";
 const HOST_UNION = "RootTakingOp";
@@ -37,16 +44,19 @@ const ROOT = "root";
 const parse = (file: string) => typescript.createSourceFile(file, readFileSync(file, "utf-8"), typescript.ScriptTarget.Latest, true);
 const OPS = parse(join(PACKAGE_SERVER, "ops.ts"));
 
-/** Type declarations the package owns, by name. A type it does NOT own cannot carry a root — a
- *  stories root is this package's own concept — so "not ours" is an answer, not a gap. */
+type Declared = [string, typescript.Node];
+
+/** Type declarations the package owns, by name — read from EVERY source in it, not just the two
+ *  beside the ops. A type it does NOT own cannot carry a root, because a stories root is this
+ *  package's own concept, and that argument only holds if "ours" means the whole package. */
 const PACKAGE_TYPES = new Map<string, typescript.Node>(
-  [OPS, parse(join(PACKAGE_SERVER, "types.ts"))].flatMap((source) =>
-    source.statements
-      .filter((statement) => typescript.isInterfaceDeclaration(statement) || typescript.isTypeAliasDeclaration(statement))
-      .flatMap((statement) =>
-        typescript.isInterfaceDeclaration(statement) || typescript.isTypeAliasDeclaration(statement) ? [[statement.name.text, statement] as const] : [],
+  readdirSync(PACKAGE_SRC, { recursive: true, encoding: "utf-8" })
+    .filter((entry) => entry.endsWith(".ts"))
+    .flatMap((entry) =>
+      parse(join(PACKAGE_SRC, entry)).statements.flatMap((statement): Declared[] =>
+        typescript.isInterfaceDeclaration(statement) || typescript.isTypeAliasDeclaration(statement) ? [[statement.name.text, statement]] : [],
       ),
-  ),
+    ),
 );
 
 const named = (node: typescript.Node, name: string) =>
@@ -89,16 +99,27 @@ const factory = OPS.statements.find(
   (statement): statement is typescript.FunctionDeclaration => typescript.isFunctionDeclaration(statement) && statement.name?.text === FACTORY,
 );
 
-/** Everything the factory declares, by name, so a returned shorthand can be resolved to it. */
-function localDeclarations(scope: typescript.Node): Map<string, typescript.Node> {
-  const byName = new Map<string, typescript.Node>();
-  const visit = (node: typescript.Node) => {
-    const declaration = typescript.isFunctionDeclaration(node) || typescript.isVariableDeclaration(node);
-    if (declaration && node.name !== undefined && typescript.isIdentifier(node.name) && !byName.has(node.name.text)) byName.set(node.name.text, node);
-    typescript.forEachChild(node, visit);
-  };
-  typescript.forEachChild(scope, visit);
-  return byName;
+/** The functions and variables a list of statements declares, by name. */
+function declaredBy(statements: readonly typescript.Statement[]): Declared[] {
+  return statements.flatMap((statement): Declared[] => {
+    if (typescript.isFunctionDeclaration(statement) && statement.name !== undefined) return [[statement.name.text, statement]];
+    if (!typescript.isVariableStatement(statement)) return [];
+    return statement.declarationList.declarations.flatMap((declaration): Declared[] =>
+      typescript.isIdentifier(declaration.name) ? [[declaration.name.text, declaration]] : [],
+    );
+  });
+}
+
+/**
+ * What a name in the return object can actually refer to: the module's declarations, then the
+ * factory's, which shadow them.
+ *
+ * Deliberately NOT a walk over every descendant. A declaration nested inside some other function
+ * in this factory is not in scope at the return statement, and a walk that reached it first would
+ * answer about the wrong function — silently, because the answer has the same shape either way.
+ */
+function declarationsInScope(scope: typescript.FunctionDeclaration): Map<string, typescript.Node> {
+  return new Map<string, typescript.Node>([...declaredBy(OPS.statements), ...declaredBy(scope.body?.statements ?? [])]);
 }
 
 type Classified = { kind: "function"; parameters: readonly typescript.ParameterDeclaration[] } | { kind: "host-supplied" } | { kind: "value" };
@@ -134,7 +155,7 @@ function returnedMembers(): Members {
   const returned = factory.body?.statements.filter(typescript.isReturnStatement).at(-1)?.expression;
   if (returned === undefined || !typescript.isObjectLiteralExpression(returned))
     return { takingARoot: [], unreadable: ["the factory's return value is not an object literal"] };
-  const locals = localDeclarations(factory);
+  const locals = declarationsInScope(factory);
   const classified = returned.properties.map((property) => ({ property, classified: classifyProperty(factory, locals, property) }));
   return {
     takingARoot: classified
@@ -182,7 +203,7 @@ describe("every root-taking op is narrowed to a parsed root", () => {
   });
 
   it("sees a root that arrives inside a TYPE, not only one named in a position", () => {
-    const locals = factory === undefined ? new Map<string, typescript.Node>() : localDeclarations(factory);
+    const locals = factory === undefined ? new Map<string, typescript.Node>() : declarationsInScope(factory);
     ["renderBeatOp", "runStoryOp"].forEach((member) => {
       const shape = factory === undefined ? null : classify(factory, locals, member);
       assert.equal(shape?.kind, "function", `${member} is a function this can read`);
