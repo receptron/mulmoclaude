@@ -65,24 +65,27 @@ export function isConvex(triangles: readonly THREE.Vector3[][], points: readonly
   return true;
 }
 
-/** The convex hull of `points`, smooth-shaded: it is the rounded part of a
- *  Minkowski sum, so shared vertices average their face normals. Coplanar
- *  points (two parallel faces summed) give a flat sliver rather than a throw
- *  from `ConvexGeometry`; that is `undefined` here. */
-export function smoothHull(points: THREE.Vector3[]): THREE.BufferGeometry | undefined {
+/** The convex hull of `points`. A whole sum (`smooth`) is the rounded solid
+ *  itself, so shared vertices average their face normals. A per-face PIECE
+ *  keeps flat normals: its rounded sides are interior once the pieces overlap,
+ *  and averaging them into its flat top tilted that face's border — a visible
+ *  bump along every seam of a flat face. Coplanar points (two parallel faces
+ *  summed) give a flat sliver rather than a throw from `ConvexGeometry`; that
+ *  is `undefined` here. */
+export function hullGeometry(points: THREE.Vector3[], smooth: boolean): THREE.BufferGeometry | undefined {
   if (points.length > MAX_HULL_POINTS) throw new Error("`minkowski` operands are too detailed — lower `detail` or simplify the shapes");
   const hull = new ConvexGeometry(points);
   hull.deleteAttribute("normal");
   hull.deleteAttribute("uv");
-  const merged = mergeVertices(hull, 1e-6);
-  hull.dispose();
-  if (!merged.getAttribute("position")?.count || isFlat(merged)) {
-    merged.dispose();
+  const geometry = smooth ? mergeVertices(hull, 1e-6) : hull;
+  if (smooth) hull.dispose();
+  if (!geometry.getAttribute("position")?.count || isFlat(geometry)) {
+    geometry.dispose();
     return undefined;
   }
-  merged.computeVertexNormals();
-  merged.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(merged.getAttribute("position").count * 2), 2));
-  return merged;
+  geometry.computeVertexNormals();
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(geometry.getAttribute("position").count * 2), 2));
+  return geometry;
 }
 
 /** A hull encloses nothing when its volume is negligible AT ITS OWN SCALE: a
@@ -120,7 +123,7 @@ export function minkowskiSum(a: MinkowskiOperand, b: MinkowskiOperand): THREE.Bu
   const convexA = isConvex(facesA, pointsA);
   const convexB = isConvex(facesB, pointsB);
   if (convexA && convexB) {
-    const hull = smoothHull(pairwiseSums(pointsA, pointsB));
+    const hull = hullGeometry(pairwiseSums(pointsA, pointsB), true);
     if (!hull) throw new Error("`minkowski` operands must enclose a volume");
     return hull;
   }
@@ -134,7 +137,7 @@ export function minkowskiSum(a: MinkowskiOperand, b: MinkowskiOperand): THREE.Bu
   const pieces: THREE.BufferGeometry[] = [];
   for (const face of faces)
     for (const corners of other) {
-      const piece = smoothHull(pairwiseSums(face, corners));
+      const piece = hullGeometry(pairwiseSums(face, corners), false);
       if (piece) pieces.push(piece);
     }
   if (pieces.length === 0) throw new Error("`minkowski` operands must enclose a volume");
@@ -156,35 +159,144 @@ function pairwiseSums(a: readonly THREE.Vector3[], b: readonly THREE.Vector3[]):
  *  the planes are consistent, least-squares where more than three meet. */
 export function insetGeometry(geometry: THREE.BufferGeometry, distance: number): THREE.BufferGeometry {
   const position = geometry.getAttribute("position");
-  const normalsAt = new Map<string, THREE.Vector3[]>();
   const triangles = worldTriangles(geometry, new THREE.Matrix4());
-  // Outward whichever way the faces wind, so a mirrored mesh insets inward too.
-  const sign = windingSign(triangles);
-  for (const [a, b, c] of triangles) {
-    const normal = new THREE.Vector3().crossVectors(b!.clone().sub(a!), c!.clone().sub(a!)).multiplyScalar(sign);
-    if (normal.lengthSq() < 1e-18) continue;
-    normal.normalize();
-    for (const corner of [a!, b!, c!]) {
-      const key = keyOf(corner);
-      const normals = normalsAt.get(key) ?? [];
-      if (!normals.some((known) => known.dot(normal) > 1 - 1e-6)) normals.push(normal);
-      normalsAt.set(key, normals);
+  const { normalsAt, onEdge } = faceNormalsAtVertices(triangles);
+  const movedTo = new Map<string, THREE.Vector3>();
+  const cornerMoved = (point: THREE.Vector3): THREE.Vector3 => {
+    const key = keyOf(point);
+    let moved = movedTo.get(key);
+    if (!moved) {
+      moved = point.clone().addScaledVector(offsetDirection(normalsAt.get(key) ?? []), -distance);
+      movedTo.set(key, moved);
     }
-  }
+    return moved;
+  };
+  // A vertex on another face's edge lands on that edge's inset — between its
+  // moved ends, at the same fraction — rather than at its own planes' corner,
+  // which can lie beyond the moved corner when the vertex is nearer to it
+  // than the inset distance.
   const moved = geometry.clone();
   const target = moved.getAttribute("position") as THREE.BufferAttribute;
   const point = new THREE.Vector3();
   for (let i = 0; i < position.count; i++) {
     point.fromBufferAttribute(position, i);
-    const offset = offsetDirection(normalsAt.get(keyOf(point)) ?? []);
-    point.addScaledVector(offset, -distance);
-    target.setXYZ(i, point.x, point.y, point.z);
+    const edge = onEdge.get(keyOf(point));
+    const placed = edge ? cornerMoved(edge.from).clone().lerp(cornerMoved(edge.to), edge.t) : cornerMoved(point);
+    target.setXYZ(i, placed.x, placed.y, placed.z);
   }
   target.needsUpdate = true;
   moved.computeBoundingBox();
   moved.computeBoundingSphere();
   return moved;
 }
+
+/** The distinct face normals meeting at each vertex position. A vertex that
+ *  sits on another triangle's EDGE without being one of its corners — the
+ *  T-junctions a boolean leaves where one face was split by a seam and its
+ *  neighbour was not — belongs to that face too; without it the vertex would
+ *  slide along one face alone and stand proud of the inset surface. */
+interface EdgePlace {
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  t: number;
+}
+
+function faceNormalsAtVertices(triangles: readonly THREE.Vector3[][]): { normalsAt: Map<string, THREE.Vector3[]>; onEdge: Map<string, EdgePlace> } {
+  const normalsAt = new Map<string, THREE.Vector3[]>();
+  const onEdge = new Map<string, EdgePlace>();
+  const add = (point: THREE.Vector3, normal: THREE.Vector3) => {
+    const key = keyOf(point);
+    const normals = normalsAt.get(key) ?? [];
+    if (!normals.some((known) => known.dot(normal) > 1 - 1e-6)) normals.push(normal);
+    normalsAt.set(key, normals);
+  };
+  // Outward whichever way the faces wind, so a mirrored mesh insets inward too.
+  const sign = windingSign(triangles);
+  const normals = triangles.map(([a, b, c]) => {
+    const normal = new THREE.Vector3().crossVectors(b!.clone().sub(a!), c!.clone().sub(a!)).multiplyScalar(sign);
+    return normal.lengthSq() < 1e-18 ? undefined : normal.normalize();
+  });
+  triangles.forEach((corners, i) => {
+    const normal = normals[i];
+    if (normal) for (const corner of corners) add(corner, normal);
+  });
+  const grid = new VertexGrid(triangles.flat());
+  triangles.forEach((corners, i) => {
+    const normal = normals[i];
+    if (!normal) return;
+    for (let e = 0; e < 3; e++) {
+      const from = corners[e]!,
+        to = corners[(e + 1) % 3]!;
+      for (const point of grid.near(from, to)) {
+        const t = onOpenSegment(point, from, to);
+        if (t === undefined) continue;
+        add(point, normal);
+        if (!onEdge.has(keyOf(point))) onEdge.set(keyOf(point), { from, to, t });
+      }
+    }
+  });
+  return { normalsAt, onEdge };
+}
+
+const ON_EDGE_EPSILON = 1e-6;
+
+/** Where along the segment `point` lies, when it lies strictly between the ends. */
+function onOpenSegment(point: THREE.Vector3, from: THREE.Vector3, to: THREE.Vector3): number | undefined {
+  const edge = to.clone().sub(from);
+  const length = edge.length();
+  if (length < ON_EDGE_EPSILON) return undefined;
+  const t = point.clone().sub(from).dot(edge) / (length * length);
+  if (t <= ON_EDGE_EPSILON || t >= 1 - ON_EDGE_EPSILON) return undefined;
+  return point.distanceTo(from.clone().addScaledVector(edge, t)) < ON_EDGE_EPSILON * Math.max(1, length) ? t : undefined;
+}
+
+/** Distinct vertex positions bucketed on a uniform grid, so an edge is tested
+ *  only against the vertices near it rather than all of them. */
+class VertexGrid {
+  private readonly cells = new Map<string, THREE.Vector3[]>();
+  private readonly cell: number;
+  private readonly origin: THREE.Vector3;
+
+  constructor(points: readonly THREE.Vector3[]) {
+    const box = new THREE.Box3().setFromPoints([...points]);
+    this.origin = box.min.clone();
+    const extent = box.getSize(new THREE.Vector3());
+    this.cell = Math.max(extent.x, extent.y, extent.z, 1e-9) / VERTEX_GRID_DIVISIONS;
+    const seen = new Set<string>();
+    for (const point of points) {
+      const key = keyOf(point);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const cell = this.cellOf(point);
+      const bucket = this.cells.get(cell) ?? [];
+      bucket.push(point);
+      this.cells.set(cell, bucket);
+    }
+  }
+
+  private coordinates(point: THREE.Vector3): [number, number, number] {
+    return [Math.floor((point.x - this.origin.x) / this.cell), Math.floor((point.y - this.origin.y) / this.cell), Math.floor((point.z - this.origin.z) / this.cell)];
+  }
+
+  private cellOf(point: THREE.Vector3): string {
+    return this.coordinates(point).join(",");
+  }
+
+  /** The vertices in every cell the box around `from`–`to` touches. */
+  near(from: THREE.Vector3, to: THREE.Vector3): THREE.Vector3[] {
+    const [ax, ay, az] = this.coordinates(from);
+    const [bx, by, bz] = this.coordinates(to);
+    const found: THREE.Vector3[] = [];
+    for (let x = Math.min(ax, bx); x <= Math.max(ax, bx); x++) {
+      for (let y = Math.min(ay, by); y <= Math.max(ay, by); y++) {
+        for (let z = Math.min(az, bz); z <= Math.max(az, bz); z++) found.push(...(this.cells.get(`${x},${y},${z}`) ?? []));
+      }
+    }
+    return found;
+  }
+}
+
+const VERTEX_GRID_DIVISIONS = 32;
 
 /** Offsets sharper than this are clamped: a needle-like corner would otherwise
  *  shoot its vertex far past the shape. */

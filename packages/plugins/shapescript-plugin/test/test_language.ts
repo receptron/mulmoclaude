@@ -953,6 +953,14 @@ describe("minkowski, inset and extrude along", () => {
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.max.y, box.min.y], [0.5 - 0.1 * Math.sqrt(5), -0.4], 1e-3);
     });
+    // A boolean leaves T-junctions: the face a seam split has vertices along
+    // the cube's edges that the neighbouring face's triangles do not share.
+    // Those vertices belong to both faces and move with both, so the inset
+    // of the union is inset on every axis and nothing stands proud.
+    withMesh("define s union {\n cube\n cylinder { size 0.45 1.2 0.45 orientation 0.5 position 0.45 }\n}\ninset(s 0.06)", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z], [-0.44, -0.44, -0.44, 0.99, 0.44, 0.44], 1e-3);
+    });
     // A mirrored mesh winds inward; inset still moves its faces inward.
     withMesh("define c cube { size -1 1 1 }\ninset(c 0.1)", (mesh) => near(extent(mesh).toArray(), [0.8, 0.8, 0.8], 1e-5));
     assert.throws(() => objectsOf("inset(1 2)"), /mesh/);
@@ -1008,7 +1016,12 @@ describe("minkowski, inset and extrude along", () => {
     assert.throws(() => objectsOf("extrude { path { point 0 0 } }"), /at least two/);
   });
   it("reads a lone `position` value as X alone, on shapes, builders and groups", () => {
-    for (const script of ["cube { position 1 }", "extrude { position 1 square }", "group { position 1\n cube }", "extrude {\n position 1\n square\n along path { point 0 0 point 0 1 }\n}"]) {
+    for (const script of [
+      "cube { position 1 }",
+      "extrude { position 1 square }",
+      "group { position 1\n cube }",
+      "extrude {\n position 1\n square\n along path { point 0 0 point 0 1 }\n}",
+    ]) {
       withMesh(script, (mesh) => {
         const box = new THREE.Box3().setFromObject(mesh);
         near([box.min.x, box.max.x], [0.5, 1.5], 0.01);
