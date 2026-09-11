@@ -23,7 +23,7 @@ card: { toolName: STORY_TOOL, data: { script: body.script, filePath: body.filePa
 
 プラグイン側の `MulmoScriptData`（`src/core/types.ts:21`）は `{ script, filePath }` しか宣言していない。
 View は `data.value?.filePath` だけを読み、transport は受け取った引数をそのまま流すので、
-**Vue 層の 20 箇所の dispatch すべてで `root` が落ちる**。購読2つも `root: () => undefined` とベタ書き。
+**Vue 層の 22 箇所（17 kind）の dispatch すべてで `root` が落ちる**。購読2つも `root: () => undefined` とベタ書き。
 
 サーバ側の受け皿（`artifactsForRoot` / `guardStoryWriteRoot` / `rootScopedGenerationState`）は
 #3015 / #3019 / #3020 で入っていて動く。**View が送りさえすれば通る。**
