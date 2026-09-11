@@ -275,7 +275,11 @@ class VertexGrid {
   }
 
   private coordinates(point: THREE.Vector3): [number, number, number] {
-    return [Math.floor((point.x - this.origin.x) / this.cell), Math.floor((point.y - this.origin.y) / this.cell), Math.floor((point.z - this.origin.z) / this.cell)];
+    return [
+      Math.floor((point.x - this.origin.x) / this.cell),
+      Math.floor((point.y - this.origin.y) / this.cell),
+      Math.floor((point.z - this.origin.z) / this.cell),
+    ];
   }
 
   private cellOf(point: THREE.Vector3): string {

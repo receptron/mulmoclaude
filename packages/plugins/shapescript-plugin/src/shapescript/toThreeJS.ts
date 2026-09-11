@@ -717,9 +717,16 @@ export class Converter {
     if (value.kind === "polygon") {
       return { ...value, points: value.points.map((point) => new THREE.Vector3(...point).applyMatrix4(matrix).toArray() as Point3) };
     }
+    const geometry = value.geometry.clone().applyMatrix4(matrix);
+    try {
+      this.chargeRetained(geometry);
+    } catch (error) {
+      geometry.dispose();
+      throw error;
+    }
     return {
       ...value,
-      geometry: value.geometry.clone().applyMatrix4(matrix),
+      geometry,
       ...(value.polygons ? { polygons: value.polygons.map((polygon) => this.transformedForCapture(polygon) as PolygonValue) } : {}),
     };
   }
@@ -768,6 +775,7 @@ export class Converter {
     const temporary = new THREE.Group();
     const captured: Value[] = [];
     const charged = this.vertexCount;
+    const retainedBefore = this.retained.length;
     try {
       this.captureValues(captured, () =>
         this.inScope(temporary, () => {
@@ -791,6 +799,10 @@ export class Converter {
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = charged;
+      // The refund covers the scratch meshes only. A value retained meanwhile
+      // — a transformed capture, an `inset` result, a nested shape value —
+      // outlives the scratch and stays charged.
+      this.vertexCount += this.retained.slice(retainedBefore).reduce((sum, geometry) => sum + geometry.getAttribute("position").count, 0);
     }
   }
 
@@ -908,7 +920,9 @@ export class Converter {
     const { params = [], body = [], value, name } = fn.definition;
     return this.evaluator.withArguments(params, args, () => {
       const { captured, geometries } = this.buildScratch(body, (values) => {
-        if (value !== undefined) values.push(this.evaluator.evaluate(value));
+        // A shape the body ends with is placed where the body's transforms
+        // left the frame, as a statement there would be.
+        if (value !== undefined) values.push(this.transformedForCapture(this.evaluator.evaluate(value)));
       });
       for (const geometry of geometries) {
         this.chargeRetained(geometry);

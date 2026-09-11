@@ -989,6 +989,17 @@ describe("minkowski, inset and extrude along", () => {
       assert.equal(disposed.has(placed!.geometry), false);
       disposeObject3D(group);
     }
+    // A mesh value captured under a transform is a fresh clone: charged past
+    // the scratch refund and released with the other values.
+    {
+      const script = "define big sphere { detail 16 }\ndefine f() {\n translate 1\n big\n}\nf()";
+      // The body's transform places the shape it ends with.
+      withMesh(script, (mesh) => near([new THREE.Box3().setFromObject(mesh).min.x], [0.5], 0.01));
+      const vertices = 16 * 16 * 6; // one sphere at detail 16, as a value (non-indexed)
+      // The value, its transformed capture and the placed copy: three charges, not two.
+      assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script), { maxVertices: vertices * 2.5 })), /vertices/);
+      disposeObject3D(astToThreeJS(parseShapeScript(script), { maxVertices: vertices * 3.5 }));
+    }
     // Every inset result is a retained allocation, charged against the budget.
     assert.throws(
       () => disposeObject3D(astToThreeJS(parseShapeScript("define c cube\ndefine d inset(c 0.1)\ndefine e inset(d 0.1)\ncube"), { maxVertices: 60 })),
