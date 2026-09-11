@@ -1727,9 +1727,12 @@ export class Parser {
     node.lines.push(this.parseVectorOrExpression());
   }
 
+  /** An option of the text block, unless a binding of that exact spelling
+   *  claims it — options are lowercase, like `along`, and symbols are
+   *  case-sensitive (`define WrapWidth "W"` then `text { WrapWidth }`). */
   private textOption(token: Token): "wrapWidth" | "lineSpacing" | "font" | undefined {
     if (token.type !== TokenType.IDENTIFIER) return undefined;
-    const name = String(token.value).toLowerCase();
+    const name = String(token.value);
     if (this.values.has(name) || this.blocks.has(name)) return undefined;
     return name === "wrapwidth" ? "wrapWidth" : name === "linespacing" ? "lineSpacing" : name === "font" ? "font" : undefined;
   }

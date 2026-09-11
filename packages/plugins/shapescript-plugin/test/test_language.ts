@@ -1171,6 +1171,9 @@ describe("text", () => {
     assert.match(infoOf('font "Zapfino"\nfill text "Hi"').warnings[0]!, /font/);
     assert.match(infoOf('fill text {\n font "Zapfino"\n "Hi"\n}').warnings[0]!, /font/);
     assert.deepEqual(infoOf('define font 1\nfill text "Hi"\ncube { size font }').warnings, []);
+    // Symbols are case-sensitive: a differently-spelled one is a line of text, not an option.
+    assert.equal(objectsOf('define WrapWidth "W"\ntext {\n WrapWidth\n}').length, 1);
+    assert.equal(objectsOf('define Font "F"\ntext {\n Font\n}').length, 1);
     assert.match(infoOf('fill text "日本"').warnings[0]!, /"日" "本".*\?/);
     assert.equal(objectsOf('text "   "').length, 0);
     assert.throws(() => objectsOf('fill text "   "'), /Fill requires/);
