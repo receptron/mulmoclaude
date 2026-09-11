@@ -132,10 +132,19 @@ describe("two saves in flight at once", () => {
       editor.onDeckUpdate({ title, beats: [{ text: "one" }] });
     }
 
-    async function answer(index: number, outcome: SaveOutcome, options?: { alreadyAnswered: boolean }): Promise<void> {
+    /**
+     * Answer one in-flight save.
+     *
+     * Answering the same one twice is refused rather than ignored: resolving a settled promise
+     * is a silent no-op, so a test that did it would assert against a branch it never reached
+     * and pass (Codex P3, round 2).
+     */
+    const answered = new Set<number>();
+    async function answer(index: number, outcome: SaveOutcome): Promise<void> {
       const resolve = pending[index];
       assert.ok(resolve, `save ${index} is in flight`);
-      assert.ok(options?.alreadyAnswered !== true || index === 0, "only the first save is answered twice");
+      assert.ok(!answered.has(index), `save ${index} has not been answered yet`);
+      answered.add(index);
       resolve(outcome);
       await new Promise((settled) => setImmediate(settled));
     }
@@ -158,14 +167,20 @@ describe("two saves in flight at once", () => {
     );
   });
 
-  it("ignores an in-flight save once a newer edit is merely QUEUED — it has not been dispatched yet", async () => {
-    const { deckSaveError, startSave, queueEdit, answer, committed } = overlappingHarness();
+  it("does not commit an in-flight save once a newer edit is merely QUEUED — it has not been dispatched yet", async () => {
+    const { startSave, queueEdit, answer, committed } = overlappingHarness();
     startSave("first");
     queueEdit("second");
     await answer(0, OK);
     assert.deepEqual(committed, [], "the older script must not be put back over what the user is typing");
-    await answer(0, failedWith("File not found"), { alreadyAnswered: true });
-    assert.equal(deckSaveError.value, null, "and its verdict is about text that is no longer on screen");
+  });
+
+  it("does not show the failure of an in-flight save once a newer edit is merely QUEUED", async () => {
+    const { deckSaveError, startSave, queueEdit, answer } = overlappingHarness();
+    startSave("first");
+    queueEdit("second");
+    await answer(0, failedWith("File not found"));
+    assert.equal(deckSaveError.value, null, "the verdict is about text that is no longer on screen");
   });
 
   it("ignores the older save's success when the newer one already failed", async () => {

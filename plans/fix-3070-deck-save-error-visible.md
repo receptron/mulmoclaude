@@ -68,6 +68,8 @@ Media タブの既存の扱い（ビート保存の失敗はそのビートに�
 - **2本同時飛び**（deferred promise で順序を作る）: 新しい方が成功 → 古い方が後から失敗しても
   バナーは出ない / 新しい方が失敗 → 古い方が後から成功しても commit しない
 - **debounce 中にキューされただけの編集**でも、飛んでいる古い保存の応答は捨てる
+  （成功を commit しない / 失敗をバナーに出さない、を別々のケースで —— 1つの promise を
+  2度 resolve しても no-op なので、まとめると失敗側が何も見ないテストになる）
 - `clearDeckSaveError()` で消える
 
 View 側は `data-testid` と `deckSaveError` / `clearDeckSaveError` の結線をソース読み取りで検証
