@@ -1159,6 +1159,13 @@ describe("text", () => {
     });
     // A `name` property still names the object when nothing binds `name`.
     assert.equal(objectsOf('text {\n name "caption"\n "H"\n}')[0]!.name, "caption");
+    // Outline text takes its own material, as a filled one does.
+    const outlineMaterial = (script: string) => (objectsOf(script)[0] as THREE.LineSegments).material as THREE.LineBasicMaterial;
+    near([outlineMaterial('text {\n opacity 0.2\n "H"\n}').opacity], [0.2]);
+    near([outlineMaterial('text {\n color 1 0 0 0.5\n "H"\n}').opacity], [0.5]);
+    near(outlineMaterial('define ink material { color 0 0 1 }\ntext {\n material ink\n "H"\n}').color.toArray(), [0, 0, 1]);
+    // The outline's two vertices per point count against the budget.
+    assert.throws(() => astToThreeJS(parseShapeScript('text "H"'), { maxVertices: 20 }), /vertices/);
   });
   it("keeps the built-in font, substitutes missing glyphs and bounds the text", () => {
     assert.match(infoOf('font "Zapfino"\nfill text "Hi"').warnings[0]!, /font/);

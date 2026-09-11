@@ -2039,9 +2039,11 @@ export class Converter {
       });
       if (layout.missing.length) this.warn(`The built-in font has no glyph for ${[...new Set(layout.missing)].map((c) => `"${c}"`).join(" ")} — drawn as "?"`);
       const points = layout.rings.reduce((sum, ring) => sum + ring.length, 0);
-      this.chargeEstimate(points);
       if (layout.shapes.length === 0) return null;
-      if (this.operandDepth > 0 || this.valueSink !== null) return this.finishMesh(new THREE.ShapeGeometry(layout.shapes, 1), node, true);
+      if (this.operandDepth > 0 || this.valueSink !== null) {
+        this.chargeEstimate(points);
+        return this.finishMesh(new THREE.ShapeGeometry(layout.shapes, 1), node, true);
+      }
       return this.textOutline(node, layout, points);
     });
   }
@@ -2063,8 +2065,11 @@ export class Converter {
     return text;
   }
 
-  /** The glyph outlines as one set of line segments in the current material's colour. */
+  /** The glyph outlines as one set of line segments — two vertices per ring
+   *  point — in the text's own material (its `color`, `opacity`, `material`),
+   *  falling back to the enclosing one as a mesh would. */
   private textOutline(node: TextNode, layout: TextLayout, points: number): THREE.LineSegments {
+    this.chargeEstimate(points * 2);
     const positions = new Float32Array(points * 6);
     let offset = 0;
     for (const ring of layout.rings) {
@@ -2076,11 +2081,9 @@ export class Converter {
     }
     this.vertexCount += points * 2;
     const geometry = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    const material = this.currentTransform().material;
-    const opacity = Math.min(1, Math.max(0, material.alpha * material.opacity));
-    const color = node.properties.color
-      ? new THREE.Color(...this.evaluateRGBA(node.properties.color).slice(0, 3))
-      : (material.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8));
+    const state = this.materialFor(node.properties, this.currentTransform().material);
+    const opacity = Math.min(1, Math.max(0, state.alpha * state.opacity));
+    const color = state.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8);
     const line = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color, opacity, transparent: opacity < 1 }));
     this.applyExplicitTransforms(line, node.properties, true);
     this.applyCurrentTransform(line);
