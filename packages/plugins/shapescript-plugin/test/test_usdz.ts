@@ -13,7 +13,7 @@ import { usdzArtifactPath } from "../src/core/paths";
 import { DEFAULT_MAX_DURATION_MS } from "../src/shapescript/toThreeJS";
 
 const CUBE = "cube { size 1 }";
-const CSG = "difference { sphere { size 2 } cylinder { size 1 3 1 } }";
+const CSG = "difference {\n sphere {\n  size 2\n }\n cylinder {\n  size 1 3 1\n }\n}";
 
 /** In-memory FileOps that keeps bytes as bytes — a `.usdz` is binary and a
  *  double that decoded it to text would hide a corrupted write. */

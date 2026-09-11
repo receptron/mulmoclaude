@@ -767,6 +767,26 @@ export class Parser {
     throw new ParseError(`Expected identifier but got ${token.type}`, token.line, token.column);
   }
 
+  /** A statement in a block or at the top level, which must end its line:
+   *  the upstream app reads a property's arguments to the end of the line,
+   *  so `sphere { position 0 1 0 size 2 }` is a `position` with five
+   *  arguments there. Refused here for the same reason, so a script that
+   *  renders in this viewer also renders upstream. */
+  private parseStatementLine(): SceneNode | null {
+    const node = this.parseNode();
+    if (node) this.expectEndOfStatement();
+    return node;
+  }
+
+  private expectEndOfStatement(): void {
+    const token = this.current();
+    const previous = this.tokens[this.pos - 1];
+    // A block's parser may already have stepped past the line break (an `if`
+    // looking for its `else`), so the test is the line, not the token.
+    if (!previous || token.type === TokenType.NEWLINE || token.type === TokenType.RBRACE || token.type === TokenType.EOF || token.line !== previous.line) return;
+    throw new ParseError(`Unexpected \`${String(token.value)}\` after a statement — ShapeScript takes one statement per line; start a new line here`, token.line, token.column);
+  }
+
   private skipNewlines(): void {
     while (this.current().type === TokenType.NEWLINE) {
       this.advance();
@@ -1181,6 +1201,7 @@ export class Parser {
     while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
       this.skipNewlines();
       if (!this.parseProperty(properties)) return properties;
+      this.expectEndOfStatement();
       this.skipNewlines();
     }
 
@@ -1252,7 +1273,7 @@ export class Parser {
       const nodes: SceneNode[] = [];
 
       while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-        const node = this.parseNode();
+        const node = this.parseStatementLine();
         if (node) {
           nodes.push(node);
         }
@@ -1306,6 +1327,7 @@ export class Parser {
           if (token.type === TokenType.RBRACE || token.type === TokenType.EOF) break;
           if (primitive !== "polygon") throw new ParseError(`Unexpected token in ${primitive}: ${token.type}`, token.line, token.column);
           (points ??= []).push(this.parsePathCommand("polygon"));
+          this.expectEndOfStatement();
           this.skipNewlines();
         }
       });
@@ -1442,7 +1464,7 @@ export class Parser {
               this.current().type !== TokenType.RBRACE &&
               this.current().type !== TokenType.EOF
             ) {
-              const node = this.parseNode();
+              const node = this.parseStatementLine();
               if (node) caseBody.push(node);
               this.skipNewlines();
             }
@@ -1458,7 +1480,7 @@ export class Parser {
           } else {
             defaultCase = [];
             while (this.current().type !== TokenType.CASE && this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-              const node = this.parseNode();
+              const node = this.parseStatementLine();
               if (node) defaultCase.push(node);
               this.skipNewlines();
             }
@@ -1527,9 +1549,10 @@ export class Parser {
               name: optionName,
               defaultValue,
             });
+            this.expectEndOfStatement();
           } else {
             // Parse regular scene nodes
-            const node = this.parseNode();
+            const node = this.parseStatementLine();
             if (node) {
               body.push(node);
             }
@@ -1604,7 +1627,7 @@ export class Parser {
       while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
         const token = this.current();
         if (this.startsStatement(token)) {
-          const node = this.parseNode();
+          const node = this.parseStatementLine();
           if (node) statements.push(node);
         } else {
           result = this.parseVectorOrExpression();
@@ -1695,6 +1718,7 @@ export class Parser {
     this.scoped(() => {
       while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
         this.parseTextLine(node);
+        this.expectEndOfStatement();
         this.skipNewlines();
       }
     });
@@ -1779,7 +1803,7 @@ export class Parser {
         } else if (this.isAlongOption(token)) {
           along = this.parseAlong(builderType, along);
         } else {
-          const node = this.parseNode();
+          const node = this.parseStatementLine();
           if (node) children.push(node);
         }
         this.skipNewlines();
@@ -1876,6 +1900,7 @@ export class Parser {
           continue;
         }
         parsed.push(this.parsePathCommand(where));
+        this.expectEndOfStatement();
         this.skipNewlines();
       }
       return parsed;
@@ -2186,6 +2211,7 @@ export class Parser {
           this.advance();
           const optionValue = this.parseVectorOrExpression();
           properties[optionName] = optionValue;
+          this.expectEndOfStatement();
         } else {
           break;
         }
@@ -2221,7 +2247,7 @@ export class Parser {
 
     while (this.current().type !== TokenType.EOF) {
       const posBefore = this.pos;
-      const node = this.parseNode();
+      const node = this.parseStatementLine();
       if (node) {
         nodes.push(node);
       }

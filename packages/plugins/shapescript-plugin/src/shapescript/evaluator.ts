@@ -116,7 +116,7 @@ export class SymbolTable {
 
   constructor(seed: number = DEFAULT_RANDOM_SEED) {
     this.scopes.push({ values: new Map(), random: new RandomSequence(seed) });
-    for (const [name, value] of Object.entries({ pi: Math.PI, tau: 2 * Math.PI, true: true, false: false })) this.set(name, value);
+    for (const [name, value] of Object.entries({ pi: Math.PI, true: true, false: false })) this.set(name, value);
     for (const [name, value] of Object.entries(NAMED_COLORS)) this.set(name, value);
   }
 

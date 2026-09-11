@@ -35,7 +35,7 @@ describe("validation before presentation", () => {
   for (const [script, code, message] of [
     ["cube {", "PARSE_ERROR", /RBRACE/],
     ["cube { size missing }", "EVALUATION_ERROR", /Undefined variable/],
-    ["difference { cube imaginaryShape }", "EVALUATION_ERROR", /Unknown shape/],
+    ["difference {\n cube\n imaginaryShape\n}", "EVALUATION_ERROR", /Unknown shape/],
     ["for i in 1 to 100000000 { cube }", "LIMIT_EXCEEDED", /iterations/],
     ["cube { position (1 / 0) 0 0 }", "EVALUATION_ERROR", /finite/],
     ["loft { square }", "EVALUATION_ERROR", /two cross-sections/],
@@ -78,24 +78,24 @@ describe("validation before presentation", () => {
 
 describe("geometry builders", () => {
   it("lofts two squares into a capped solid of the expected volume", () => {
-    withMesh("loft { square translate 0 0 2 square }", (mesh) => {
+    withMesh("loft {\n square\n translate 0 0 2\n square\n}", (mesh) => {
       assert.ok(Math.abs(volume(mesh) - 2) < 1e-5);
       mesh.geometry.computeBoundingBox();
       assert.equal(mesh.geometry.boundingBox?.max.z, 2);
     });
   });
   it("lofts different profiles and works inside a boolean", () => {
-    withMesh("difference { loft { square translate 0 0 2 circle } cube }", (mesh) => {
+    withMesh("difference {\n loft {\n  square\n  translate 0 0 2\n  circle\n }\n cube\n}", (mesh) => {
       assert.ok(volume(mesh) > 0);
     });
   });
   it("forms a convex hull connecting separated cubes", () => {
-    withMesh("hull { cube { position -1 0 0 } cube { position 1 0 0 } }", (mesh) => {
+    withMesh("hull {\n cube {\n  position -1 0 0\n }\n cube {\n  position 1 0 0\n }\n}", (mesh) => {
       assert.ok(Math.abs(volume(mesh) - 3) < 1e-5);
     });
   });
   it("stencil preserves volume and paints only intersecting surfaces", () => {
-    withMesh("stencil { cube { color 1 0 0 } cube { position 0.5 0 0 color 0 1 0 } }", (mesh) => {
+    withMesh("stencil {\n cube {\n  color 1 0 0\n }\n cube {\n  position 0.5 0 0\n  color 0 1 0\n }\n}", (mesh) => {
       assert.ok(Math.abs(volume(mesh) - 1) < 1e-5, `volume ${volume(mesh)}`);
       assert.ok(Array.isArray(mesh.material));
       const colors = new Set(
@@ -110,19 +110,19 @@ describe("geometry builders", () => {
   it("keeps a state-only command as a CSG child, which produces no object", () => {
     // `color`, `translate`, `define` and friends convert to null — reading a
     // mesh flag off one used to throw a TypeError out of the CSG collector.
-    for (const script of ["difference { cube color 1 0 0 sphere }", "difference { cube translate 0.5 0 0 sphere }", "union { detail 8 cube }"]) {
+    for (const script of ["difference {\n cube\n color 1 0 0\n sphere\n}", "difference {\n cube\n translate 0.5 0 0\n sphere\n}", "union {\n detail 8\n cube\n}"]) {
       withMesh(script, (mesh) => assert.ok(mesh.geometry.getAttribute("position")));
     }
   });
   it("refuses a volumeless path as a CSG operand instead of feeding it to the evaluator", () => {
-    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("difference { cube path { point 0 0 point 1 0 point 0 1 } }"))), /no volume/);
+    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("difference {\n cube\n path {\n  point 0 0\n  point 1 0\n  point 0 1\n }\n}"))), /no volume/);
   });
   it("refunds the vertex budget for builder operands that never enter the scene", () => {
     // Each `hull` builds its two spheres, charges them, then disposes them —
     // they never reach the scene, so their charge must not accumulate. The
     // budget here holds the 24,000 vertices this actually draws with room to
     // spare, but not the ~8,800 of discarded operands on top of them.
-    const group = astToThreeJS(parseShapeScript("detail 20 for i in 1 to 10 { hull { sphere { position i 0 0 } sphere { position i 2 0 } } }"), {
+    const group = astToThreeJS(parseShapeScript("detail 20\nfor i in 1 to 10 {\n hull {\n  sphere {\n   position i 0 0\n  }\n  sphere {\n   position i 2 0\n  }\n }\n}"), {
       maxVertices: 30_000,
     });
     try {
@@ -136,17 +136,17 @@ describe("geometry builders", () => {
     }
   });
   it("refuses a conversion that outruns the wall-clock budget", () => {
-    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("detail 32 for i in 1 to 5000 { sphere }"), { maxDurationMs: 0 })), /longer than/);
+    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("detail 32\nfor i in 1 to 5000 {\n sphere\n}"), { maxDurationMs: 0 })), /longer than/);
   });
   it("refuses a lathe profile that samples to nothing", () => {
     for (const script of [
-      "lathe path { translate 1e308 0 translate 1e308 0 point 1 0 point 1 1 }",
-      "lathe path { point 0 0 point 0 1 point 0 2 }",
-      "lathe path { point 1 0 point 1 0 }",
+      "lathe path {\n translate 1e308 0\n translate 1e308 0\n point 1 0\n point 1 1\n}",
+      "lathe path {\n point 0 0\n point 0 1\n point 0 2\n}",
+      "lathe path {\n point 1 0\n point 1 0\n}",
     ]) {
       assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script))), /overflow|axis of rotation|at least 2 points/, script);
     }
-    withMesh("lathe path { point 0.5 0 curve 1.5 1 point 0.5 2 point 0 2 }", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count > 0));
+    withMesh("lathe path {\n point 0.5 0\n curve 1.5 1\n point 0.5 2\n point 0 2\n}", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count > 0));
   });
   it("refuses a solid whose extent is zero in some dimension", () => {
     for (const script of [
@@ -165,41 +165,41 @@ describe("geometry builders", () => {
     }
   });
   it("refuses a scope color that is not numeric, as the per-shape property already did", () => {
-    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript('color "bad" cube'))), /numeric color/);
-    withMesh("color 1 0 0 cube", (mesh) => assert.equal((mesh.material as THREE.MeshStandardMaterial).color.getHexString(), "ff0000"));
+    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript('color "bad"\ncube'))), /numeric color/);
+    withMesh("color 1 0 0\ncube", (mesh) => assert.equal((mesh.material as THREE.MeshStandardMaterial).color.getHexString(), "ff0000"));
   });
   it("refuses non-finite color channels, which THREE.Color accepts silently", () => {
-    for (const script of ["cube { color (1e308 * 1e308) }", "color (1e308 * 1e308) cube", "cube { color (1e308 * 1e308) 0 0 }"]) {
+    for (const script of ["cube { color (1e308 * 1e308) }", "color (1e308 * 1e308)\ncube", "cube { color (1e308 * 1e308) 0 0 }"]) {
       assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script))), /finite color/, script);
     }
-    withMesh("color 0.5 cube", (mesh) => assert.ok((mesh.material as THREE.MeshStandardMaterial).color.equals(new THREE.Color(0.5, 0.5, 0.5))));
+    withMesh("color 0.5\ncube", (mesh) => assert.ok((mesh.material as THREE.MeshStandardMaterial).color.equals(new THREE.Color(0.5, 0.5, 0.5))));
   });
   it("refuses a path whose accumulated transform overflows", () => {
     // Individually finite operands, but the path's frame accumulates: `NaN`
     // positions reach the geometry and every later comparison against them is false.
     for (const script of [
-      "lathe path { translate 1e308 0 translate 1e308 0 point 1 0 point 1 1 }",
-      "fill path { scale 1e308 1e308 scale 1e308 1e308 point 1 0 point 1 1 point 0 1 }",
-      "extrude path { for i in 1 to 10 { translate 1e307 1e307 point 0 0 point 1 0 point 0 1 } }",
-      "lathe path { rotate 1e308 rotate 1e308 point 1 0 point 1 1 }",
-      "extrude path { point 1e308 0 point 1e308 1e308 point (0 - 1e308) 1e308 }",
+      "lathe path {\n translate 1e308 0\n translate 1e308 0\n point 1 0\n point 1 1\n}",
+      "fill path {\n scale 1e308 1e308\n scale 1e308 1e308\n point 1 0\n point 1 1\n point 0 1\n}",
+      "extrude path {\n for i in 1 to 10 {\n  translate 1e307 1e307\n  point 0 0\n  point 1 0\n  point 0 1\n }\n}",
+      "lathe path {\n rotate 1e308\n rotate 1e308\n point 1 0\n point 1 1\n}",
+      "extrude path {\n point 1e308 0\n point 1e308 1e308\n point (0 - 1e308) 1e308\n}",
     ]) {
       assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script))), /overflow/, script);
     }
   });
   it("refuses a degenerate inline path instead of presenting an empty mesh", () => {
-    for (const script of ["fill path { point 0 0 }", "fill path { point 0 0 point 1 0 }", "extrude path { point 0 0 point 1 0 point 2 0 point 0 0 }"]) {
+    for (const script of ["fill path { point 0 0 }", "fill path {\n point 0 0\n point 1 0\n}", "extrude path {\n point 0 0\n point 1 0\n point 2 0\n point 0 0\n}"]) {
       assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script))), /encloses an area/, script);
     }
     // A bare path is a stroke, so it needs a segment rather than an area.
     assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("path { point 0 0 }"))), /at least two points/);
-    withMesh("fill path { point 0 0 point 1 0 point 0 1 }", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count >= 3));
+    withMesh("fill path {\n point 0 0\n point 1 0\n point 0 1\n}", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count >= 3));
   });
   it("lofts sections whose winding a mirroring transform reversed", () => {
-    withMesh("loft { square translate 0 0 2 scale -1 1 1 square }", (mesh) => assert.ok(Math.abs(volume(mesh) - 2) < 1e-5, `volume ${volume(mesh)}`));
+    withMesh("loft {\n square\n translate 0 0 2\n scale -1 1 1\n square\n}", (mesh) => assert.ok(Math.abs(volume(mesh) - 2) < 1e-5, `volume ${volume(mesh)}`));
   });
   it("keeps nested builder transforms when used as CSG operands", () => {
-    withMesh("union { group { translate 5 0 0 hull { cube cube { position 1 0 0 } } } }", (mesh) => {
+    withMesh("union {\n group {\n  translate 5 0 0\n  hull {\n   cube\n   cube {\n    position 1 0 0\n   }\n  }\n }\n}", (mesh) => {
       mesh.geometry.computeBoundingBox();
       const box = new THREE.Box3().setFromObject(mesh);
       assert.equal(box.min.x, 4.5);
@@ -207,7 +207,7 @@ describe("geometry builders", () => {
     });
   });
   it("supports a stencil result as another CSG operand", () => {
-    withMesh("difference { stencil { cube cube { position 0.5 0 0 color 0 1 0 } } cube { position 0 0.5 0 } }", (mesh) => {
+    withMesh("difference {\n stencil {\n  cube\n  cube {\n   position 0.5 0 0\n   color 0 1 0\n  }\n }\n cube {\n  position 0 0.5 0\n }\n}", (mesh) => {
       assert.ok(Math.abs(volume(mesh) - 0.5) < 1e-5);
     });
   });
@@ -225,7 +225,7 @@ describe("geometry builders", () => {
   });
   it("samples curved lathe profiles", () => {
     // The control point at x=2 bows the profile out past the end points at x=1.
-    withMesh("lathe path { point 1 0 curve 2 1 point 1 2 point 0 2 }", (mesh) => {
+    withMesh("lathe path {\n point 1 0\n curve 2 1\n point 1 2\n point 0 2\n}", (mesh) => {
       mesh.geometry.computeBoundingBox();
       assert.ok((mesh.geometry.boundingBox?.max.x ?? 0) > 1.1);
     });
@@ -234,7 +234,7 @@ describe("geometry builders", () => {
 
 describe("expressions", () => {
   it("supports chained tuple/string access", () => {
-    withMesh('define points ((2 3 4), (5 6 7))\ncube { position points[1].x points[0].y points.count size "abc".count }', (mesh) => {
+    withMesh('define points ((2 3 4), (5 6 7))\ncube {\n position points[1].x points[0].y points.count\n size "abc" .count\n}', (mesh) => {
       assert.deepEqual(mesh.position.toArray(), [5, 3, 2]);
     });
   });
@@ -246,17 +246,17 @@ describe("expressions", () => {
     withMesh('cube { size (1 2 3)[-1] (1 2 3)["y"] (5 6)[-2] }', (mesh) => assert.deepEqual(extent(mesh).toArray(), [3, 2, 5]));
   });
   it("supports constants, numeric literals, tuple min/max and string functions", () => {
-    withMesh("if true { cube { position +2 .5 1e-3 size max((1, 2, 3)) } }", (mesh) => {
+    withMesh("if true {\n cube {\n  position +2 .5 1e-3\n  size max((1, 2, 3))\n }\n}", (mesh) => {
       assert.deepEqual(mesh.position.toArray(), [2, 0.5, 0.001]);
     });
-    withMesh('cube { size (tau / pi) position trim(" abc ").count join(("a", "b"), "").count 0 }', (mesh) => {
+    withMesh('cube {\n size (2 * pi / pi)\n position trim(" abc ").count join(("a", "b"), "").count 0\n}', (mesh) => {
       assert.deepEqual(mesh.position.toArray(), [3, 2, 0]);
     });
   });
   it("uses inline path definitions and loops in builders", () => {
     // `rotate 0.5` is a quarter turn of the path's frame, so the four points
     // land on the axes at radius `edge`: a diamond of area 2.
-    withMesh("extrude path { define edge 1 for i in 1 to 4 { point edge 0 rotate 0.5 } point edge 0 }", (mesh) => {
+    withMesh("extrude path {\n define edge 1\n for i in 1 to 4 {\n  point edge 0\n  rotate 0.5\n }\n point edge 0\n}", (mesh) => {
       assert.ok(Math.abs(volume(mesh) - 2) < 1e-5);
     });
   });
@@ -269,12 +269,12 @@ describe("expressions", () => {
     withMesh('cube { size join(("a", "b"), "-").count }', (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
   });
   it("supports upstream's ordinal members", () => {
-    withMesh("define v (1 2 3 4)\ncube { position v.first v.second v.last size v.fourth }", (mesh) => {
+    withMesh("define v (1 2 3 4)\ncube {\n position v.first v.second v.last\n size v.fourth\n}", (mesh) => {
       near(mesh.position.toArray(), [1, 2, 4]);
       near(extent(mesh).toArray(), [4, 4, 4]);
     });
-    withMesh("define rows ((1 2 3) (4 5 6))\ncube { position rows.last size rows.first.third }", (mesh) => near(mesh.position.toArray(), [4, 5, 6]));
-    withMesh('define v (1 2 3)\ncube { position v.allButFirst.first v.allButLast.count 0 size "abc".allButFirst.count }', (mesh) => {
+    withMesh("define rows ((1 2 3) (4 5 6))\ncube {\n position rows.last\n size rows.first.third\n}", (mesh) => near(mesh.position.toArray(), [4, 5, 6]));
+    withMesh('define v (1 2 3)\ncube {\n position v.allButFirst.first v.allButLast.count 0\n size "abc" .allButFirst.count\n}', (mesh) => {
       near(mesh.position.toArray(), [2, 2, 0]);
       near(extent(mesh).toArray(), [2, 2, 2]);
     });
@@ -287,8 +287,8 @@ describe("expressions", () => {
       withMesh(`cube { position ${vector} }`, (mesh) => assert.deepEqual(mesh.position.toArray(), [1, 2, 3]));
     }
     withMesh("cube { position -1 -2 -3 }", (mesh) => assert.deepEqual(mesh.position.toArray(), [-1, -2, -3]));
-    withMesh("extrude path { point +0 +0 point +1 +0 point +0 +1 point -1 +0 point +0 +0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 1) < 1e-5));
-    withMesh("extrude path { point 0 0 point (1 + 2 * 3) 0 point 0 1 point -7 0 point 0 0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 7) < 1e-5));
+    withMesh("extrude path {\n point +0 +0\n point +1 +0\n point +0 +1\n point -1 +0\n point +0 +0\n}", (mesh) => assert.ok(Math.abs(volume(mesh) - 1) < 1e-5));
+    withMesh("extrude path {\n point 0 0\n point (1 + 2 * 3) 0\n point 0 1\n point -7 0\n point 0 0\n}", (mesh) => assert.ok(Math.abs(volume(mesh) - 7) < 1e-5));
   });
   it("evaluates `rnd` the same way twice, so validation and rendering agree", () => {
     // The server validates the script and the browser renders it from source;
@@ -350,8 +350,8 @@ describe("upstream conventions", () => {
   });
   it("reads orientation as roll yaw pitch in half-turns, applied Z then Y then X", () => {
     // 0.5 half-turns = 90°: the 2-long side swings from X onto Z.
-    withMesh("cube { orientation 0 0.5 0 size 2 1 1 }", (mesh) => near(extent(mesh).toArray(), [1, 1, 2], 1e-6));
-    withMesh("cube { rotation 0.5 size 2 1 1 }", (mesh) => near(extent(mesh).toArray(), [1, 2, 1], 1e-6));
+    withMesh("cube {\n orientation 0 0.5 0\n size 2 1 1\n}", (mesh) => near(extent(mesh).toArray(), [1, 1, 2], 1e-6));
+    withMesh("cube {\n rotation 0.5\n size 2 1 1\n}", (mesh) => near(extent(mesh).toArray(), [1, 2, 1], 1e-6));
     // A lone value is a roll, not a uniform tuple like `size`.
     withMesh("cube { orientation 0.25 }", (mesh) => {
       const roll = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, -Math.PI / 4));
@@ -367,7 +367,7 @@ describe("upstream conventions", () => {
     assert.throws(() => astToThreeJS(parseShapeScript("cube { orientation 0.5 0 0 0 }")), /axis/);
     // An axis is a direction: huge or tiny components must not overflow or underflow it away.
     for (const magnitude of ["1e200", "1e-200"]) {
-      withMesh(`cube { orientation 0.5 0 ${magnitude} 0 size 2 1 1 }`, (mesh) => near(extent(mesh).toArray(), [1, 1, 2], 1e-6));
+      withMesh(`cube {\n orientation 0.5 0 ${magnitude} 0\n size 2 1 1\n}`, (mesh) => near(extent(mesh).toArray(), [1, 1, 2], 1e-6));
     }
     assert.throws(() => astToThreeJS(parseShapeScript("cube { orientation 1 2 3 4 5 }")), /rotation/);
   });
@@ -383,16 +383,16 @@ describe("upstream conventions", () => {
   });
   it("places path points at absolute coordinates in the path's frame", () => {
     // A unit square, spelled the way the upstream docs do.
-    withMesh("extrude path { point 0 0 point 1 0 point 1 1 point 0 1 point 0 0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 1) < 1e-6));
+    withMesh("extrude path {\n point 0 0\n point 1 0\n point 1 1\n point 0 1\n point 0 0\n}", (mesh) => assert.ok(Math.abs(volume(mesh) - 1) < 1e-6));
     // `translate` moves the frame, so the same square lands 5 units over.
-    withMesh("fill path { translate 5 0 point 0 0 point 1 0 point 1 1 point 0 1 point 0 0 }", (mesh) => {
+    withMesh("fill path {\n translate 5 0\n point 0 0\n point 1 0\n point 1 1\n point 0 1\n point 0 0\n}", (mesh) => {
       mesh.geometry.computeBoundingBox();
       near([mesh.geometry.boundingBox!.min.x, mesh.geometry.boundingBox!.max.x], [5, 6]);
     });
     // `scale` scales the frame; a lone value is uniform and evaluated ONCE,
     // so `scale rnd` draws one number, not one per axis.
-    withMesh("extrude path { scale 2 point 0 0 point 1 0 point 1 1 point 0 1 point 0 0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 4) < 1e-6));
-    withMesh("extrude path { scale rnd point 0 0 point 1 0 point 1 1 point 0 1 point 0 0 }", (mesh) => {
+    withMesh("extrude path {\n scale 2\n point 0 0\n point 1 0\n point 1 1\n point 0 1\n point 0 0\n}", (mesh) => assert.ok(Math.abs(volume(mesh) - 4) < 1e-6));
+    withMesh("extrude path {\n scale rnd\n point 0 0\n point 1 0\n point 1 1\n point 0 1\n point 0 0\n}", (mesh) => {
       mesh.geometry.computeBoundingBox();
       const box = mesh.geometry.boundingBox!;
       near([box.max.x, box.max.y], [upstreamRnd(0), upstreamRnd(0)]);
@@ -401,15 +401,15 @@ describe("upstream conventions", () => {
   it("treats `curve` as a Bézier control point, with implicit midpoints between consecutive controls", () => {
     // The octagon-of-controls idiom from the upstream docs draws a unit circle.
     const circle =
-      "extrude path { curve -0.414 1 curve 0.414 1 curve 1 0.414 curve 1 -0.414 curve 0.414 -1 curve -0.414 -1 curve -1 -0.414 curve -1 0.414 curve -0.414 1 }";
+      "extrude path {\n curve -0.414 1\n curve 0.414 1\n curve 1 0.414\n curve 1 -0.414\n curve 0.414 -1\n curve -0.414 -1\n curve -1 -0.414\n curve -1 0.414\n curve -0.414 1\n}";
     withMesh(circle, (mesh) => assert.ok(Math.abs(volume(mesh) - Math.PI) / Math.PI < 0.03, `${volume(mesh)}`));
     // The procedural semicircle from the upstream docs: half a unit disc once
     // filled, give or take the 4% that on-curve midpoints at cos(11.25°) cost.
-    withMesh("extrude path { point 0 1 for 1 to 7 { rotate 1 / 8 curve 0 1 } rotate 1 / 8 point 0 1 point 0 -1 }", (mesh) =>
+    withMesh("extrude path {\n point 0 1\n for 1 to 7 {\n  rotate 1 / 8\n  curve 0 1\n }\n rotate 1 / 8\n point 0 1\n point 0 -1\n}", (mesh) =>
       assert.ok(Math.abs(volume(mesh) - Math.PI / 2) / (Math.PI / 2) < 0.05, `${volume(mesh)}`),
     );
     // One control between two corners bows the edge out without passing through the control.
-    withMesh("fill path { point -1 -1 curve 0 1 point 1 -1 point -1 -1 }", (mesh) => {
+    withMesh("fill path {\n point -1 -1\n curve 0 1\n point 1 -1\n point -1 -1\n}", (mesh) => {
       mesh.geometry.computeBoundingBox();
       const top = mesh.geometry.boundingBox!.max.y;
       assert.ok(top > -0.5 && top < 0.5, `${top}`);
@@ -419,7 +419,7 @@ describe("upstream conventions", () => {
     withMesh("cube { position rnd 0 0 }", (mesh) => near([mesh.position.x], [upstreamRnd(0)]));
     withMesh("seed 57\ncube { position rnd 0 0 }", (mesh) => near([mesh.position.x], [upstreamRnd(57)]));
     // The group reseeds itself only; the outer `rnd` is still the first draw of the default sequence.
-    const { group, meshes } = meshesOf("group { seed 57 cube { position rnd 0 0 } }\ncube { position rnd 0 0 }");
+    const { group, meshes } = meshesOf("group {\n seed 57\n cube {\n  position rnd 0 0\n }\n}\ncube {\n position rnd 0 0\n}");
     try {
       near([meshes[0]!.position.x, meshes[1]!.position.x], [upstreamRnd(57), upstreamRnd(0)]);
     } finally {
@@ -511,7 +511,7 @@ describe("colours and materials", () => {
       near(m.emissive.toArray(), [1, 0, 0]);
       assert.equal(m.flatShading, false);
     });
-    materialOf("cube { glow green * 0.5 metallicity 1 }", (m) => {
+    materialOf("cube {\n glow green * 0.5\n metallicity 1\n}", (m) => {
       near(m.emissive.toArray(), [0, 0.5, 0]);
       near([m.metalness], [1]);
     });
@@ -524,7 +524,7 @@ describe("colours and materials", () => {
       near(m.color.toArray(), [0, 0, 1]);
       near([m.metalness, m.roughness], [1, 0.1]);
     });
-    materialOf(`${bundle}sphere { material shiny color red }`, (m) => {
+    materialOf(`${bundle}sphere {\n material shiny\n color red\n}`, (m) => {
       near(m.color.toArray(), [1, 0, 0]);
       near([m.metalness], [1]);
     });
@@ -554,7 +554,7 @@ describe("colours and materials", () => {
     assert.deepEqual(infoOf("background #808080\ncube").background, [128 / 255, 128 / 255, 128 / 255, 1]);
     assert.equal(infoOf("cube").background, undefined);
     assert.match(infoOf('background "stars.jpg"\ncube').warnings[0]!, /background image "stars.jpg"/);
-    assert.throws(() => infoOf("group { background red cube }"), /root/);
+    assert.throws(() => infoOf("group {\n background red\n cube\n}"), /root/);
   });
 });
 
@@ -563,10 +563,10 @@ describe("upstream shapes and paths", () => {
     withMesh("cube { size 2 }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
     withMesh("cube { size 1 2 }", (mesh) => near(extent(mesh).toArray(), [1, 2, 1]));
     withMesh("cylinder { size 1 2 }", (mesh) => near(extent(mesh).toArray(), [1, 2, 1], 0.01));
-    withMesh("group { size 2 cube }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("group {\n size 2\n cube\n}", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
   });
   it("builds an icosphere of the requested diameter", () => {
-    withMesh("icosphere { size 2 detail 16 }", (mesh) => {
+    withMesh("icosphere {\n size 2\n detail 16\n}", (mesh) => {
       // Twenty faces at detail 0 → 20 · 4² triangles at detail 16 (two subdivisions).
       assert.equal(mesh.geometry.getAttribute("position").count, 20 * 16 * 3);
       const size = extent(mesh);
@@ -596,7 +596,7 @@ describe("upstream shapes and paths", () => {
         near(extent(mesh).toArray(), [2, 0.5, 1], 0.02);
       },
     );
-    withMesh("extrude path { arc { angle 1 size 2 } point 0 1 }", (mesh) => near([volume(mesh)], [Math.PI / 2], 0.02));
+    withMesh("extrude path {\n arc {\n  angle 1\n  size 2\n }\n point 0 1\n}", (mesh) => near([volume(mesh)], [Math.PI / 2], 0.02));
   });
   it("draws a bare path as a line, open or closed, and still fills it on request", () => {
     const [line] = objectsOf("path {\n point 0 0\n point 1 1\n point 2 0\n}");
@@ -610,7 +610,7 @@ describe("upstream shapes and paths", () => {
     near(lineMaterial.color.toArray(), [1, 0, 0]);
     near([lineMaterial.opacity], [0.5 * (128 / 255)]);
     assert.ok(lineMaterial.transparent);
-    assert.throws(() => objectsOf("path { point 0 0 1 point 1 0 }"), /planar/);
+    assert.throws(() => objectsOf("path {\n point 0 0 1\n point 1 0\n}"), /planar/);
   });
   it("revolves a lathe profile drawn on the −X side like one on +X, always facing outward", () => {
     const right = "lathe path {\n point 0 1\n point 0.5 1\n point 0.5 0\n point 0 0\n}";
@@ -632,7 +632,7 @@ describe("upstream shapes and paths", () => {
     );
   });
   it("scales a builder's result by its `size`, with an extrude's Z as the depth, centred on the profile", () => {
-    withMesh("extrude { size 2 3 4 square }", (mesh) => {
+    withMesh("extrude {\n size 2 3 4\n square\n}", (mesh) => {
       near(extent(mesh).toArray(), [2, 3, 4]);
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.min.z, box.max.z], [-2, 2]);
@@ -641,11 +641,11 @@ describe("upstream shapes and paths", () => {
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.min.z, box.max.z], [-0.5, 0.5]);
     });
-    withMesh("extrude { size 0.5 square }", (mesh) => near(extent(mesh).toArray(), [0.5, 0.5, 0.5]));
-    withMesh("hull { size 2 cube }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("extrude {\n size 0.5\n square\n}", (mesh) => near(extent(mesh).toArray(), [0.5, 0.5, 0.5]));
+    withMesh("hull {\n size 2\n cube\n}", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
   });
   it("places and colours a custom block through its standard options", () => {
-    materialOf("define post { cube }\npost { position 1 2 3 size 2 color red }", (m, mesh) => {
+    materialOf("define post {\n cube\n}\npost {\n position 1 2 3\n size 2\n color red\n}", (m, mesh) => {
       near(mesh.position.toArray(), [1, 2, 3]);
       near(extent(mesh).toArray(), [2, 2, 2]);
       near(m.color.toArray(), [1, 0, 0]);
@@ -740,6 +740,34 @@ describe("control flow, ranges and functions", () => {
       near(extent(mesh).toArray(), [3, 2, 3]),
     );
   });
+  it("refuses two statements on one line, as upstream does", () => {
+    // Upstream reads a property's arguments to the end of the line, so these
+    // would be `position` with five arguments there.
+    for (const script of [
+      "sphere { position 0 1 0 size 2 }",
+      "color red cube",
+      "polygon { color red point 0 0 0 point 1 0 0 point 0 1 0 }",
+      "path { point 0 0 point 1 1 }",
+      "cube { size 1 } sphere",
+      "define post {\n option height 2 cylinder\n}",
+      "post { height 3 size 1 }",
+      'text {\n "Hi" size 0.5\n}',
+      "extrude {\n square along circle\n}",
+    ]) {
+      assert.throws(() => objectsOf(script), /one statement per line/, script);
+    }
+    // One statement per line, a block's brace on the statement's line, and
+    // `else` after the closing brace all pass; so does a statement after an
+    // `if` whose block ended the previous line.
+    assert.equal(objectsOf("if true { translate 0 1 0 }\ncube").length, 1);
+    assert.equal(objectsOf("if false { cube } else { sphere }").length, 1);
+    assert.equal(objectsOf("define c if true { 1 } else { 2 }\ncube { size c }").length, 1);
+    assert.equal(objectsOf("cube { size 1 }\nsphere").length, 2);
+  });
+  it("has no `tau`, as upstream has none", () => {
+    assert.throws(() => objectsOf("cube { size tau }"), /tau/);
+    assert.equal(objectsOf("define tau 2 * pi\ncube { size tau }").length, 1);
+  });
   it("names the upstream features it lacks", () => {
     for (const [script, message] of [
       ['import "other.shape"', /import/],
@@ -755,7 +783,7 @@ describe("shapes as values", () => {
   it("defines a shape as a value, reads its members and places it", () => {
     withMesh("define s sphere { size 2 }\ns", (mesh) => near(extent(mesh).toArray(), [2, 2, 2], 0.01));
     withMesh("define s cube { size 1 2 3 }\ncube { size s.bounds.size }", (mesh) => near(extent(mesh).toArray(), [1, 2, 3]));
-    withMesh("define s cube { size 1 2 3 }\ncube { position s.bounds.center size s.bounds.width s.bounds.height s.bounds.depth }", (mesh) =>
+    withMesh("define s cube {\n size 1 2 3\n}\ncube {\n position s.bounds.center\n size s.bounds.width s.bounds.height s.bounds.depth\n}", (mesh) =>
       near(extent(mesh).toArray(), [1, 2, 3]),
     );
     withMesh("define s cube\ncube { size s.volume s.triangles.count s.polygons.count }", (mesh) => near(extent(mesh).toArray(), [1, 12, 12]));
@@ -774,7 +802,7 @@ describe("shapes as values", () => {
     const scale = 1 / Math.sqrt(t * t + 1);
     const rotate = (p: [number, number, number]) => new THREE.Vector3(...p).multiplyScalar(scale).applyAxisAngle(new THREE.Vector3(1, 0, 0), -Math.atan(t));
     const expected = [rotate([-1, t, 0]), rotate([-t, 0, 1]), rotate([0, 1, t])].reduce((sum, v) => sum.add(v), new THREE.Vector3()).multiplyScalar(0.5 / 3);
-    withMesh("define ico icosphere { detail 0 }\ndefine c ico.polygons.first.center\ncube { position c size ico.polygons.count 1 1 }", (mesh) => {
+    withMesh("define ico icosphere {\n detail 0\n}\ndefine c ico.polygons.first.center\ncube {\n position c\n size ico.polygons.count 1 1\n}", (mesh) => {
       near(mesh.position.toArray(), expected.toArray(), 1e-6);
       near(extent(mesh).toArray(), [20, 1, 1]);
     });
@@ -839,7 +867,7 @@ describe("shapes as values", () => {
     withMesh("define tri {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}\nmesh {\n translate 0 0 3\n tri\n}", (mesh) =>
       near([new THREE.Box3().setFromObject(mesh).min.z], [3]),
     );
-    assert.throws(() => objectsOf("polygon { point 0 0 point 1 0 }"), /three points/);
+    assert.throws(() => objectsOf("polygon {\n point 0 0\n point 1 0\n}"), /three points/);
     assert.throws(() => objectsOf("mesh { }"), /at least one polygon/);
   });
   it("lets a function build shapes, and a bare call place or contribute them", () => {
@@ -848,7 +876,7 @@ describe("shapes as values", () => {
       near(extent(mesh).toArray(), [1, 1, 1]);
       assert.equal(mesh.geometry.getAttribute("position").count, 6);
     });
-    withMesh("define pair { cube { position -1 } cube { position 1 } }\ndefine both(s) { pair }\ncube { size both(1).count 1 1 }", (mesh) =>
+    withMesh("define pair {\n cube {\n  position -1\n }\n cube {\n  position 1\n }\n}\ndefine both(s) {\n pair\n}\ncube {\n size both(1).count 1 1\n}", (mesh) =>
       near(extent(mesh).toArray(), [2, 1, 1]),
     );
     assert.throws(() => objectsOf("define nothing(a) { define b a }\nnothing 1"), /returns nothing|produced no value/);
@@ -885,7 +913,7 @@ describe("shapes as values", () => {
   });
   it("accepts line breaks inside parentheses", () => {
     withMesh("cube { size (1\n + 2) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
-    withMesh("define rows (\n (1 2 3)\n (4 5 6)\n)\ncube { position rows.first size rows.last }", (mesh) => {
+    withMesh("define rows (\n(1 2 3)\n(4 5 6)\n)\ncube {\n position rows.first\n size rows.last\n}", (mesh) => {
       near(mesh.position.toArray(), [1, 2, 3]);
       near(extent(mesh).toArray(), [4, 5, 6]);
     });
@@ -911,7 +939,7 @@ describe("minkowski, inset and extrude along", () => {
     // Per-face colours cannot follow the sum's new vertices: a mesh whose
     // vertices differ gives an uncoloured result; one colour throughout is kept.
     const tetra = (colors: readonly string[]) =>
-      `mesh {\n polygon { color ${colors[0]} point 0 0 0 point 1 0 0 point 0 1 0 }\n polygon { color ${colors[1]} point 0 0 0 point 0 0 1 point 1 0 0 }\n polygon { color ${colors[2]} point 0 0 0 point 0 1 0 point 0 0 1 }\n polygon { color ${colors[3]} point 1 0 0 point 0 0 1 point 0 1 0 }\n}`;
+      `mesh {\n polygon {\n  color ${colors[0]}\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n polygon {\n  color ${colors[1]}\n  point 0 0 0\n  point 0 0 1\n  point 1 0 0\n }\n polygon {\n  color ${colors[2]}\n  point 0 0 0\n  point 0 1 0\n  point 0 0 1\n }\n polygon {\n  color ${colors[3]}\n  point 1 0 0\n  point 0 0 1\n  point 0 1 0\n }\n}`;
     withMesh(`minkowski {\n ${tetra(["1 0 0", "0 1 0", "0 0 1", "1 1 0"])}\n cube { size 0.5 }\n}`, (mesh) => {
       near(extent(mesh).toArray(), [1.5, 1.5, 1.5], 1e-4);
       assert.equal(mesh.geometry.hasAttribute("color"), false);
@@ -935,14 +963,14 @@ describe("minkowski, inset and extrude along", () => {
     // Two non-convex operands: an L-shaped prism summed with itself has
     // parallel faces whose sums are flat; those pairs are skipped, the rest
     // merge into a solid with finite normals and the expected extent.
-    const L = "extrude path { point 0 0 point 2 0 point 2 1 point 1 1 point 1 2 point 0 2 point 0 0 }";
+    const L = "extrude path {\n point 0 0\n point 2 0\n point 2 1\n point 1 1\n point 1 2\n point 0 2\n point 0 0\n}";
     withMesh(`minkowski {\n ${L}\n ${L}\n}`, (mesh) => {
       near(extent(mesh).toArray(), [4, 4, 2], 1e-4);
       const normal = mesh.geometry.getAttribute("normal");
       for (let i = 0; i < normal.count; i++) assert.ok(Number.isFinite(normal.getX(i)) && Number.isFinite(normal.getY(i)), `normal ${i}`);
     });
     assert.throws(() => objectsOf("minkowski { cube }"), /at least two/);
-    assert.throws(() => objectsOf("minkowski { cube path { point 0 0 point 1 0 } }"), /at least two/);
+    assert.throws(() => objectsOf("minkowski {\n cube\n path {\n  point 0 0\n  point 1 0\n }\n}"), /at least two/);
   });
   it("insets a mesh value along its faces, exactly at corners", () => {
     withMesh("define c cube\ninset(c 0.1)", (mesh) => near(extent(mesh).toArray(), [0.8, 0.8, 0.8], 1e-5));
@@ -956,7 +984,7 @@ describe("minkowski, inset and extrude along", () => {
     // the cube's edges that the neighbouring face's triangles do not share.
     // Those vertices belong to both faces and move with both, so the inset
     // of the union is inset on every axis and nothing stands proud.
-    withMesh("define s union {\n cube\n cylinder { size 0.45 1.2 0.45 orientation 0.5 position 0.45 }\n}\ninset(s 0.06)", (mesh) => {
+    withMesh("define s union {\n cube\n cylinder {\n  size 0.45 1.2 0.45\n  orientation 0.5\n  position 0.45\n }\n}\ninset(s 0.06)", (mesh) => {
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z], [-0.44, -0.44, -0.44, 0.99, 0.44, 0.44], 1e-3);
     });
@@ -1016,21 +1044,21 @@ describe("minkowski, inset and extrude along", () => {
     });
   });
   it("extrudes an open path into a two-sided wall", () => {
-    withMesh("extrude { size 1 1 0.5 path { point 0 0 point 2 0 } }", (mesh) => {
+    withMesh("extrude {\n size 1 1 0.5\n path {\n  point 0 0\n  point 2 0\n }\n}", (mesh) => {
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.min.x, box.max.x, box.min.z, box.max.z], [0, 2, -0.25, 0.25]);
       assert.equal(mesh.geometry.getAttribute("position").count, 8);
       near([volume(mesh)], [0]);
     });
-    withMesh("define w {\n path { point 0 0 point 0 1 }\n}\nextrude {\n size 1 1 0.2\n w\n}", (mesh) => near(extent(mesh).toArray(), [0, 1, 0.2]));
+    withMesh("define w {\n path {\n  point 0 0\n  point 0 1\n }\n}\nextrude {\n size 1 1 0.2\n w\n}", (mesh) => near(extent(mesh).toArray(), [0, 1, 0.2]));
     assert.throws(() => objectsOf("extrude { path { point 0 0 } }"), /at least two/);
   });
   it("reads a lone `position` value as X alone, on shapes, builders and groups", () => {
     for (const script of [
       "cube { position 1 }",
-      "extrude { position 1 square }",
+      "extrude {\n position 1\n square\n}",
       "group { position 1\n cube }",
-      "extrude {\n position 1\n square\n along path { point 0 0 point 0 1 }\n}",
+      "extrude {\n position 1\n square\n along path {\n  point 0 0\n  point 0 1\n }\n}",
     ]) {
       withMesh(script, (mesh) => {
         const box = new THREE.Box3().setFromObject(mesh);
@@ -1050,13 +1078,13 @@ describe("minkowski, inset and extrude along", () => {
     assert.equal(sphere.geometry.getAttribute("position").count, plain.geometry.getAttribute("position").count);
   });
   it("sweeps a section along a path with `along`", () => {
-    withMesh("extrude {\n circle { size 0.2 }\n along path { point 0 0 point 0 2 }\n}", (mesh) => {
+    withMesh("extrude {\n circle {\n  size 0.2\n }\n along path {\n  point 0 0\n  point 0 2\n }\n}", (mesh) => {
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.min.x, box.max.x, box.min.y, box.max.y, box.min.z, box.max.z], [-0.1, 0.1, 0, 2, -0.1, 0.1], 1e-5);
       near([volume(mesh)], [16 * 0.01 * Math.sin(Math.PI / 16) * 2], 1e-4);
     });
     // Points closer than the coordinate tolerance merge; a short real segment does not.
-    withMesh("extrude {\n square { size 0.1 }\n along path { point 0 0 point 0.00001 0 }\n}", (mesh) => near([extent(mesh).x], [0.00001], 1e-7));
+    withMesh("extrude {\n square {\n  size 0.1\n }\n along path {\n  point 0 0\n  point 0.00001 0\n }\n}", (mesh) => near([extent(mesh).x], [0.00001], 1e-7));
     // A closed path sweeps a ring with no caps; `size` scales the whole result.
     withMesh("extrude {\n size 2 1 1\n square { size 0.2 }\n along circle { size 2 }\n}", (mesh) => {
       near(extent(mesh).toArray(), [4.4, 2.2, 0.2], 0.01);
@@ -1064,11 +1092,11 @@ describe("minkowski, inset and extrude along", () => {
       assert.ok(volume(mesh) > 0.24 && volume(mesh) < 0.26, `volume ${volume(mesh)}`);
     });
     for (const [script, message] of [
-      ["extrude { square along path { point 0 0 point 1 1 } along circle }", /one `along`/],
-      ["loft { square along circle }", /only valid inside `extrude`/],
+      ["extrude {\n square\n along path {\n  point 0 0\n  point 1 1\n }\n along circle\n}", /one `along`/],
+      ["loft {\n square\n along circle\n}", /only valid inside `extrude`/],
       ["extrude { along circle }", /needs a planar section/],
-      ["extrude { square along }", /needs a path/],
-      ["extrude { square along cube }", /XY plane|exactly one path|closed perimeter/],
+      ["extrude {\n square\n along\n}", /needs a path/],
+      ["extrude {\n square\n along cube\n}", /XY plane|exactly one path|closed perimeter/],
     ] as const) {
       assert.throws(() => objectsOf(script), message, script);
     }
