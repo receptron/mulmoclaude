@@ -15,6 +15,10 @@ import {
   createMulmoScriptDispatchHandler,
   GENERATION_EVENT,
   type MulmoScriptServerOps,
+  type OpResult,
+  type RunStoryOpDeps,
+  type RunStoryOpOptions,
+  type StoryContext,
 } from "@mulmoclaude/mulmoscript-plugin/server";
 import type { ParsedStoryRoot } from "../api/routes/mulmoScriptWriteRoot.js";
 import { STORY_SCRIPT_EXTENSIONS } from "@mulmoclaude/mulmoscript-plugin";
@@ -111,7 +115,8 @@ type RootTakingOp =
   | "publishScriptChanged"
   | "toStoryRef"
   | "triggerAutoBackgroundMovie"
-  | "publishGeneration";
+  | "publishGeneration"
+  | "runStoryOp";
 
 type RootedMulmoScriptOps = Omit<MulmoScriptServerOps, RootTakingOp> & {
   resolveStory: (filePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["resolveStory"]>;
@@ -163,6 +168,14 @@ type RootedMulmoScriptOps = Omit<MulmoScriptServerOps, RootTakingOp> & {
     chatSessionId: string | undefined,
     root: ParsedStoryRoot,
   ) => ReturnType<MulmoScriptServerOps["triggerAutoBackgroundMovie"]>;
+  /** Generic, so its signature is written out rather than derived: `Parameters<…>` erases the
+   *  type parameter every op built on this one carries through. */
+  runStoryOp: <T>(
+    filePath: string,
+    options: RootedGenerateArgs<RunStoryOpOptions<T>>,
+    handler: (ctx: { absoluteFilePath: string; context: StoryContext }) => Promise<OpResult<T>>,
+    deps?: RunStoryOpDeps,
+  ) => Promise<OpResult<T>>;
 };
 
 /** The object-argument ops take their root in a field rather than a position. */

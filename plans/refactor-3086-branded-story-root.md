@@ -16,8 +16,10 @@ mulmoScript の story root が `string | undefined` なので、**parse して�
 ## 測ったこと（設計の根拠）
 
 - root を渡す呼び出しは **14 箇所 / 2 ファイル**
-- ops が export するメンバーは 32 種、うち **root を引数に取るのは 25 種**（位置引数が 22、
-  引数オブジェクト経由が 3）。最初はこれを手で数えて **17 しか narrow していなかった**
+- ops が export するメンバーは 32 種、うち **root を引数に取るのは 26 種**（位置引数が 22、
+  引数オブジェクト経由が 4）。最初はこれを手で数えて **17 しか narrow していなかった**。
+  26 種目の `runStoryOp` は round 2 で出た —— **sweep が読めない形を「root 無し」と同じ扱いに
+  していた**ためで、下の「読めなかったら赤」を参照
 - `mulmoScriptOps` を import しているのは **その2ファイルだけ**
 
 最後の1つが効いた。**生の ops を export しなければ、未 parse の root は届きようがない。**
@@ -44,7 +46,7 @@ mint できるのは `parseSuppliedRoot` の中だけ。
 ### 2. 生の ops を隠す（`server/plugins/mulmoscript-server.ts`）
 
 `createMulmoScriptServerOps(...)` の結果を **export しない**（`rawOps`）。
-代わりに、**root を取る 25 メンバーすべてに `ParsedStoryRoot` を要求する型**で見せる:
+代わりに、**root を取る 26 メンバーすべてに `ParsedStoryRoot` を要求する型**で見せる:
 
 ```ts
 export const mulmoScriptOps: RootedMulmoScriptOps = rawOps;
@@ -58,8 +60,6 @@ export const mulmoScriptOps: RootedMulmoScriptOps = rawOps;
 `suppliedRoot()` の戻り、`parseBeatQuery` の結果、`resolveStoryRequest` の戻り、
 `BeatOpArgs.root`、`StoryWriteGuards`、`resolveStoryWriteTarget` の引数。
 **型検査が全箇所を指してくれる**ので、漏れは構造的に起きない。
-
-### 4. sweep から、型が肩代わりした規則を外す
 
 ### 4. root を**必須**にする —— 省略も型で閉じる
 
@@ -76,7 +76,8 @@ rs(filePath); // optional だった間はコンパイルが通った
 
 ### 5. sweep は「型では言えない1つ」だけに
 
-`test_storyRootSweep.ts` は **240行超 → 99行**、ルールは1つ。
+`test_storyRootSweep.ts` は **240行超 → 181行**、ルールは1つ（行数の半分は、下の
+「読めなかったら赤」を成立させる導出そのもの）。
 
 **どの値が root になれるか**も**名指しするか**も型が決めるようになったので、残るのは
 **「ホストが narrow すべきメンバーを全部 narrow したか」**だけ。narrow し忘れたメンバーは
@@ -85,6 +86,20 @@ rs(filePath); // optional だった間はコンパイルが通った
 そのチェックは**両側をソースから導出して突き合わせる** —— パッケージの source が
 「どのメンバーが root を取るか」を、ホストの union が「どれを narrow したか」を語り、
 パッケージに新しい root 付き op が入った日に赤くなる。
+
+**読めなかったら赤**（round 2、Codex）。導出する側は「root を取らない」と「宣言が読めない」を
+**区別できないと意味が無い** —— 外から見た答えが同じで、安全なのは片方だけだから。
+実際これが起きていた: `async function runStoryOp<T>(` は generic なので宣言の regex に当たらず、
+`backend` はファクトリの引数なのでどこにも宣言が無い。どちらも黙って「root 無し」に落ちていて、
+**`runStoryOp` は本当に root を取る**（26 種目）。いまは
+
+- 返しているメンバーの宣言が読めなければ**失敗**（`backend` のようなファクトリ引数だけは、
+  ホスト自身が作ったオブジェクトなので「op ではない」と明示的に分類する）
+- 引数リストは**括弧を数えて**取る。`indexOf(")")` は `(p, onDone: () => void, root?: string)` を
+  root の手前で切り落とし、それは「root を取らない op」と全く同じに見える
+- root が**型の中**から来る形（`GenerateOpArgsWith<…>` → `GenerateOpArgs`、
+  `RunStoryOpOptions<T>`）は、名前を並べるのではなく**パッケージが宣言する型を辿って**判定する。
+  名前の列挙はこの PR が消したはずのもの
 
 provenance（誰が root を作ったか）の規則は全部削除。型が、しかも**テキストルールが原理的に
 見えなかった形まで含めて**保証するようになったため。
@@ -107,7 +122,15 @@ brand が効くことは**型検査で**確かめる（5形）。とくに **D �
 > 合っていなかった**だけで、同時に自分の変更が 18 エラーを出していたのも見えていなかった。
 > **以後 typecheck は終了コードで判定する。**
 
-残した sweep の2規則も break-verify 済み（root を名指さない呼び出し / 古い例外、どちらも赤）。
+**この表は round 2 で「書いてあるだけ」から「CI が落ちる」に変えた。**
+`test/server/api/test_storyRootBrand.ts` に条件型の表明として置いてあり、`yarn typecheck` が
+`test/` を見るので、`ParsedStoryRoot` を素の string に戻す・root を optional に戻す、のどちらも
+コンパイルエラーになる。`@ts-expect-error` は CLAUDE.md が禁止しており、そもそも**行のどこかで
+何かエラーが出れば通ってしまう**ので、`Assert<NotAssignable<string, ParsedStoryRoot>>` の方が強い。
+
+sweep 側は 4 つのミューテーションで赤を確認済み: ホストの union から `runStoryOp` を落とす /
+メンバーの宣言を読めない形にする / `runStoryOp` の引数型から root を両方（`RunStoryOpOptions` と
+`RunStoryOpDeps`）消す / root を取らない `ffmpegGuard` を union に足す。
 
 ## やらないこと
 
