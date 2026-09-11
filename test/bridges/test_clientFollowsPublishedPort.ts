@@ -2,13 +2,19 @@
 //
 // The unit tests in `packages/client/test/` pin the resolution RULE. This pins
 // the consequence: `createBridgeClient()` driven end to end against two real
-// socket.io servers, one of them a decoy on the port the client used to
-// hardcode. Which one answers is the only evidence that matters, because the
-// failure this fixes is a clean connection to the wrong server — a green rule
-// test would look identical either way.
+// socket.io servers. Which one answers is the only evidence that matters,
+// because the failure this fixes is a CLEAN connection to the wrong server — a
+// green rule test looks identical either way.
 //
-// Both servers bind port 0, so the test never races a fixed port and never
-// depends on 3001 being free on the runner.
+// Neither server sits on 3001, and neither is meant to. Binding the old
+// hardcoded port would make the wrong-server case literal, at the cost of a
+// race with whatever else holds 3001 — a developer's own `yarn dev`, most
+// obviously. So the second server is just a DIFFERENT right answer: it is what
+// makes "it connected" distinguishable from "it connected to the one the file
+// named". That the client would otherwise land on 3001 is asserted without a
+// socket, by the `resolveApiUrl()` case below and by the unit tests.
+//
+// Both bind port 0, so nothing here races a fixed port at all (Codex, #3078).
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -93,12 +99,12 @@ const ENV_KEYS = ["MULMOCLAUDE_WORKSPACE_PATH", "MULMOCLAUDE_API_URL", "MULMOCLA
 type EnvKey = (typeof ENV_KEYS)[number];
 
 let workspace = "";
-let real: FakeServer;
-let decoy: FakeServer;
+let published: FakeServer;
+let other: FakeServer;
 const saved: Partial<Record<EnvKey, string | undefined>> = {};
 
 before(async () => {
-  [real, decoy] = await Promise.all([startFakeServer("real"), startFakeServer("decoy")]);
+  [published, other] = await Promise.all([startFakeServer("published"), startFakeServer("other")]);
   workspace = mkdtempSync(path.join(tmpdir(), "mulmo-published-port-"));
   writeFileSync(path.join(workspace, ".session-token"), `${TOKEN}\n`, "utf-8");
   ENV_KEYS.forEach((key) => {
@@ -110,7 +116,7 @@ before(async () => {
 });
 
 after(async () => {
-  await Promise.all([real.close(), decoy.close()]);
+  await Promise.all([published.close(), other.close()]);
   rmSync(workspace, { recursive: true, force: true });
   ENV_KEYS.forEach((key) => {
     const value = saved[key];
@@ -124,21 +130,21 @@ const publishPort = (port: number): void => {
 };
 
 describe("a bridge reaches the server that published its port (#3078)", () => {
-  it("connects to the published port, not to the one it used to hardcode", async () => {
-    publishPort(real.port);
-    assert.equal(await askWhoAnswered(), "real");
+  it("connects to the server the file names, not to the other one", async () => {
+    publishPort(published.port);
+    assert.equal(await askWhoAnswered(), "published");
   });
 
   it("follows the file when the server moves — the same bridge code, a new port", async () => {
-    publishPort(decoy.port);
-    assert.equal(await askWhoAnswered(), "decoy", "a second read must follow the file, not a cached first answer");
+    publishPort(other.port);
+    assert.equal(await askWhoAnswered(), "other", "a second read must follow the file, not a cached first answer");
   });
 
   it("an explicit MULMOCLAUDE_API_URL still overrides the published port", async () => {
-    publishPort(real.port);
-    process.env.MULMOCLAUDE_API_URL = `http://127.0.0.1:${decoy.port}`;
+    publishPort(published.port);
+    process.env.MULMOCLAUDE_API_URL = `http://127.0.0.1:${other.port}`;
     try {
-      assert.equal(await askWhoAnswered(), "decoy");
+      assert.equal(await askWhoAnswered(), "other");
     } finally {
       delete process.env.MULMOCLAUDE_API_URL;
     }
@@ -150,9 +156,9 @@ describe("a bridge reaches the server that published its port (#3078)", () => {
   });
 
   it("the token comes from the same workspace the port does", async () => {
-    publishPort(real.port);
+    publishPort(published.port);
     // No MULMOCLAUDE_AUTH_TOKEN: the only way to authenticate is the
     // `.session-token` beside `.server-port`, which the server writes as its pair.
-    assert.equal(await askWhoAnswered(), "real");
+    assert.equal(await askWhoAnswered(), "published");
   });
 });
