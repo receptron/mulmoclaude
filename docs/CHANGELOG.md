@@ -43,6 +43,33 @@ warning naming it. Text is capped at 2000 characters before the vertex budget ap
 
 ### Fixed
 
+#### `@mulmoclaude/mulmoscript-plugin@4.8.0` — the View sends the root its card names (#3014, PR #3076)
+
+A deck under a registered stories root opened fine and then failed every write: saving and beat
+images both answered `File not found` (reported from receptron/mulmoterminal#1970). The host was
+already putting `root` on the card; the View never read it. `MulmoScriptData` declared only
+`{ script, filePath }`, so all **17 dispatch kinds** travelled without a root — and
+`stories/deck.json` exists in EVERY registered root, so each one addressed the DEFAULT root's
+file of that name. Both subscriptions hard-coded `root: () => undefined`.
+
+`MulmoScriptData` now declares `root?: string`, which is a type for a value the host was already
+sending, so this is additive and every pre-root card keeps its exact behaviour: absent means the
+default root.
+
+Sending the root is necessary but not sufficient, and three further defects had to be fixed for
+the pair to actually hold:
+
+- **`staleSince` widened to the pair.** An awaited dispatch is applied to whatever card is on
+  screen when it returns, so the root has to be re-checked on arrival, not only on departure.
+- **Media bytes carry the root too** (`fetchMediaBlob`, the host adapter, and both download
+  routes). An artifact ref is relativised against its own root's directory, so it does not carry
+  one.
+- **Awaited dispatches re-check the pair before applying a response.** Sending the root fixes
+  which file is addressed; it does not fix which card the answer belongs to.
+
+The agent's tool schema is deliberately unchanged: `root` is absent from it so a model cannot
+name a root, and only the host fills it in (#3015).
+
 #### Every bridge connected to port 3001 whether or not the server was on it (#3078, PR #3081)
 
 The shared `@mulmobridge/client` resolved its server address as `opts.apiUrl` → `MULMOCLAUDE_API_URL`
@@ -320,7 +347,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.5.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 
