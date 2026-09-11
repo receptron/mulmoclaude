@@ -301,13 +301,23 @@ describe("staleSince", () => {
   // The guard drops a late response once the View navigated elsewhere. The
   // direction is load-bearing — an inverted check would let one script's
   // responses write into another's per-beat state.
+  //
+  // The identity is the PAIR `(root, filePath)`: `stories/deck.json` exists in every
+  // registered root (#3014), so the path alone lets one repository's deck accept another's
+  // late response. The full set of root cases lives with the plugin, in
+  // `packages/plugins/mulmoscript-plugin/test/test_helpers.ts` — this file predates the
+  // plugin's own suite and duplicates it.
   it("is stale only when the current path differs from the requested one", () => {
-    assert.equal(staleSince("stories/b.json", "stories/a.json"), true);
-    assert.equal(staleSince("stories/a.json", "stories/a.json"), false);
+    assert.equal(staleSince({ filePath: "stories/b.json" }, { filePath: "stories/a.json" }), true);
+    assert.equal(staleSince({ filePath: "stories/a.json" }, { filePath: "stories/a.json" }), false);
   });
 
   it("treats two empty paths as not stale", () => {
-    assert.equal(staleSince("", ""), false);
+    assert.equal(staleSince({ filePath: "" }, { filePath: "" }), false);
+  });
+
+  it("is stale for the same path in a different root", () => {
+    assert.equal(staleSince({ filePath: "stories/a.json", root: "acme" }, { filePath: "stories/a.json", root: "widgets" }), true);
   });
 });
 
