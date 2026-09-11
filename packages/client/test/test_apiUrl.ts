@@ -85,8 +85,9 @@ describe("parsePublishedPort", () => {
     "3002.0",
     "+3002",
     "NaN",
-    // Full-width digits: `\d` is ASCII-only, and `Number("３００２")` is NOT
-    // — it coerces to 3002, so a looser check would accept these.
+    // Full-width digits. `\d` matches ASCII 0-9 only — it does NOT become
+    // Unicode-aware the way `\p{Nd}` under the `u` flag would — so this pins
+    // that the rule is deliberately ASCII-restricted.
     "３００２",
   ];
   rejected.forEach((raw) => {
