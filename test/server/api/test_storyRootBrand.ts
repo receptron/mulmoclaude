@@ -71,6 +71,11 @@ type __RenderBeatRejectsARawRoot = Assert<NotAssignable<string, RootArgument<Ops
 type __PublishGenerationRejectsARawRoot = Assert<NotAssignable<string, RootArgument<Ops["publishGeneration"], 5>["root"]>>;
 type __RunStoryOpRejectsARawRoot = Assert<NotAssignable<string, RootArgument<Ops["runStoryOp"], 1>["root"]>>;
 
+// The factory's own backend is not reachable through the exported ops at all. It is the one
+// root-taking surface that cannot be narrowed — `artifactsFor(root: string)` belongs to an object
+// this module builds — so it is removed instead, and `artifactsForRoot` answers the same question.
+type __BackendIsNotReachable = Assert<NotAssignable<"backend", keyof Ops>>;
+
 describe("the story-root brand", () => {
   it("mints a root only through the parser, and an empty one means the default", () => {
     const named = parseSuppliedRoot("acme");

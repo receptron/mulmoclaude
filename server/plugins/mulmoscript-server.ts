@@ -118,7 +118,11 @@ type RootTakingOp =
   | "publishGeneration"
   | "runStoryOp";
 
-type RootedMulmoScriptOps = Omit<MulmoScriptServerOps, RootTakingOp> & {
+/** `backend` is dropped rather than narrowed: it is the object this module hands the factory, and
+ *  it carries `artifactsFor(root: string)` — a root-taking function with a RAW parameter, so
+ *  `mulmoScriptOps.backend.artifactsFor?.(req.query.root)` would compile and return the wrong
+ *  root's FileOps. `artifactsForRoot` is the narrowed way to ask the same question. */
+type RootedMulmoScriptOps = Omit<MulmoScriptServerOps, RootTakingOp | "backend"> & {
   resolveStory: (filePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["resolveStory"]>;
   beatImageOp: (filePath: string, beatIndex: number, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatImageOp"]>;
   beatAudioOp: (filePath: string, beatIndex: number, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatAudioOp"]>;

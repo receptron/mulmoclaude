@@ -76,7 +76,7 @@ rs(filePath); // optional だった間はコンパイルが通った
 
 ### 5. sweep は「型では言えない1つ」だけに
 
-`test_storyRootSweep.ts` は **240行超 → 181行**、ルールは1つ（行数の半分は、下の
+`test_storyRootSweep.ts` は **240行超 → 200行**、ルールは1つ（行数の半分は、下の
 「読めなかったら赤」を成立させる導出そのもの）。
 
 **どの値が root になれるか**も**名指しするか**も型が決めるようになったので、残るのは
@@ -91,15 +91,41 @@ rs(filePath); // optional だった間はコンパイルが通った
 **区別できないと意味が無い** —— 外から見た答えが同じで、安全なのは片方だけだから。
 実際これが起きていた: `async function runStoryOp<T>(` は generic なので宣言の regex に当たらず、
 `backend` はファクトリの引数なのでどこにも宣言が無い。どちらも黙って「root 無し」に落ちていて、
-**`runStoryOp` は本当に root を取る**（26 種目）。いまは
+**`runStoryOp` は本当に root を取る**（26 種目）。
 
-- 返しているメンバーの宣言が読めなければ**失敗**（`backend` のようなファクトリ引数だけは、
-  ホスト自身が作ったオブジェクトなので「op ではない」と明示的に分類する）
-- 引数リストは**括弧を数えて**取る。`indexOf(")")` は `(p, onDone: () => void, root?: string)` を
-  root の手前で切り落とし、それは「root を取らない op」と全く同じに見える
+**そして regex での読み取り自体をやめた（round 3）。** 同じ1箇所への指摘が3ラウンド連続で
+出たので、ケースを足すのをやめて反転した —— #3083 でテキストルールに対してやったのと同じ判断:
+
+| round | 読み違えた形 |
+|---|---|
+| 1 | 手で数えた 17 メンバーのリスト |
+| 2 | `async function runStoryOp<T>(` —— generic なので宣言に当たらない |
+| 3 | `const op = <T extends Record<string, unknown>>(…)` —— `indexOf(">")` が束縛の中の `>` で止まる |
+
+3つとも**綴り**であって規則ではない。いまは **TypeScript 自身のパーサ**（`ts.createSourceFile`）で
+ops.ts を読み、返しているオブジェクトリテラルのメンバーを AST で解決する:
+
+- 返している各プロパティを、ファクトリ内のローカル宣言に解決する（shorthand / `name: impl` /
+  インラインの arrow のいずれも）。**解決できなければ失敗**。`backend` のようなファクトリ引数だけは
+  「op ではない」と明示的に分類する
+- root を取るかは **`ts.ParameterDeclaration` を見て**判定する。括弧の数え間違い・generic の
+  読み違い・コメント除去による破壊は、**そもそも起き得ない**
 - root が**型の中**から来る形（`GenerateOpArgsWith<…>` → `GenerateOpArgs`、
-  `RunStoryOpOptions<T>`）は、名前を並べるのではなく**パッケージが宣言する型を辿って**判定する。
-  名前の列挙はこの PR が消したはずのもの
+  `RunStoryOpOptions<T>`、`RunStoryOpDeps`）は、名前を並べるのではなく
+  **パッケージが宣言する型を AST で辿って**判定する。名前の列挙はこの PR が消したはずのもの
+
+**9通りの形で赤を確認**: 上の表の3形 + callback の後ろの root + 新規 options interface +
+`name: impl` 形 + インライン arrow + `" // )"` を含む文字列リテラル（regex 版のコメント除去が
+壊していた形）+ union からの取りこぼし2種。
+
+### 6. `backend` は narrow せず、**露出をやめる**（round 3、自分で発見）
+
+`backend.artifactsFor?: (root: string) => FileOps | null` は**生の root を取る関数**で、
+`mulmoScriptOps.backend.artifactsFor?.(req.query.root)` はコンパイルが通っていた ——
+この PR が閉じようとしているクラスそのもの。呼び出し元は現時点で無いが、狭めた型は契約なので
+`Omit<…, RootTakingOp | "backend">` で**外から見えなくした**。同じ問いには `artifactsForRoot` が答える。
+
+ホスト自身が作ったオブジェクトなので narrow するのは筋が違う。`rawOps.backend` はモジュール内には残る。
 
 provenance（誰が root を作ったか）の規則は全部削除。型が、しかも**テキストルールが原理的に
 見えなかった形まで含めて**保証するようになったため。
