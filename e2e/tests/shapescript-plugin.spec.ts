@@ -8,7 +8,11 @@ import { mockAllApis } from "../fixtures/api";
 
 const SCRIPT = `define count 4
 for i in 1 to count {
-    cube { position (i * 2 - 5) 0 0 size 1 color (i / count) 0.5 (1 - i / count) }
+    cube {
+        position (i * 2 - 5) 0 0
+        size 1
+        color (i / count) 0.5 (1 - i / count)
+    }
 }`;
 
 async function setupShapeScriptSession(page: Page) {
@@ -83,9 +87,9 @@ test.describe("shapescript plugin rendering", () => {
     // Failed edits remain unsaved and can be corrected in place.
     await expect(apply).toBeEnabled();
     for (const script of [
-      "loft { square translate 0 0 2 circle }",
-      "hull { cube cube { position 2 0 0 } }",
-      "stencil { cube { color 1 0 0 } cube { position 0.5 0 0 color 0 1 0 } }",
+      "loft {\n square\n translate 0 0 2\n circle\n}",
+      "hull {\n cube\n cube { position 2 0 0 }\n}",
+      "stencil {\n cube { color 1 0 0 }\n cube {\n  position 0.5 0 0\n  color 0 1 0\n }\n}",
     ]) {
       await editor.fill(script);
       await apply.click();

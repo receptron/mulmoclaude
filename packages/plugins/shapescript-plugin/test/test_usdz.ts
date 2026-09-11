@@ -7,13 +7,17 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { FileOps } from "gui-chat-protocol";
 
-import { shapeScriptToUsdz, USDZ_MIME_TYPE } from "../src/export/usdz";
+import * as THREE from "three";
+import { sceneToUsdz, shapeScriptToUsdz, USDZ_MIME_TYPE } from "../src/export/usdz";
+import { parseShapeScript } from "../src/shapescript/parser";
+import { astToThreeJS } from "../src/shapescript/toThreeJS";
+import { disposeObject3D } from "../src/shapescript/dispose";
 import { executeExportShapeScriptUsdz, EXPORT_USDZ_SCHEMA, EXPORT_USDZ_TOOL_NAME, EXPORT_USDZ_TOOL_TIMEOUT_MS } from "../src/export/tool";
 import { usdzArtifactPath } from "../src/core/paths";
 import { DEFAULT_MAX_DURATION_MS } from "../src/shapescript/toThreeJS";
 
 const CUBE = "cube { size 1 }";
-const CSG = "difference { sphere { size 2 } cylinder { size 1 3 1 } }";
+const CSG = "difference {\n sphere {\n  size 2\n }\n cylinder {\n  size 1 3 1\n }\n}";
 
 /** In-memory FileOps that keeps bytes as bytes — a `.usdz` is binary and a
  *  double that decoded it to text would hide a corrupted write. */
@@ -88,6 +92,55 @@ describe("shapeScriptToUsdz", () => {
 
   it("reports ShapeScript errors rather than writing a broken file", async () => {
     await assert.rejects(shapeScriptToUsdz("cube {"), /RBRACE/);
+  });
+  it("gives vertex-coloured faces plain materials, which USD viewers shade with", async () => {
+    // Coloured polygons carry vertex colours on a white material; the
+    // exporter's `displayColor` is ignored by Quick Look, so each colour
+    // becomes its own mesh and material.
+    const script =
+      "mesh {\n polygon {\n  color 1 0 0\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n polygon {\n  color 0 0 1\n  point 0 0 0\n  point 0 0 1\n  point 1 0 0\n }\n polygon {\n  color 1 0 0\n  point 0 0 0\n  point 0 1 0\n  point 0 0 1\n }\n}";
+    const [stage] = zipEntries(await shapeScriptToUsdz(script));
+    const diffuse = [...(stage?.text.matchAll(/diffuseColor = \(([^)]*)\)/g) ?? [])].map((m) => m[1]);
+    assert.deepEqual(diffuse.sort(), ["0, 0, 1", "1, 0, 0"]);
+    assert.equal((stage?.text.match(/def Material /g) ?? []).length, 2);
+    // A plain-coloured shape is unchanged: one mesh, its own colour.
+    const [cube] = zipEntries(await shapeScriptToUsdz("cube {\n color 0 1 0\n}"));
+    assert.equal((cube?.text.match(/def Material /g) ?? []).length, 1);
+    assert.match(cube?.text ?? "", /diffuseColor = \(0, 1, 0\)/);
+    // The split keeps the mesh's placement: a coloured polygon mesh and a
+    // cube given the same transform export with the same matrix.
+    const placed = "group {\n size 2 1 1\n translate 0 0 3\n cube {\n  color 0 1 0\n }\n mesh {\n  polygon {\n   color 1 0 0\n   point 0 0 0\n   point 1 0 0\n   point 0 1 0\n  }\n }\n}";
+    const [placedStage] = zipEntries(await shapeScriptToUsdz(placed));
+    const transforms = (placedStage?.text.match(/xformOp:transform = \([^\n]*/g) ?? []).filter((line) => line.includes("(0, 0, 3, 1)"));
+    assert.equal(transforms.length, 2, placedStage?.text.match(/xformOp:transform = \([^\n]*/g)?.join("\n") ?? "");
+    assert.equal(transforms[0], transforms[1]);
+    // A face whose vertices differ in colour (a geometry from elsewhere; a
+    // polygon block gives all its points one colour) gets their mean.
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3));
+    geometry.setAttribute("color", new THREE.Float32BufferAttribute([1, 0, 0, 0, 1, 0, 0, 0, 1], 3));
+    const mixed = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true }));
+    const [blend] = zipEntries(await sceneToUsdz(mixed));
+    mixed.geometry.dispose();
+    (mixed.material as THREE.Material).dispose();
+    assert.equal((blend?.text.match(/def Material /g) ?? []).length, 1);
+    const [r, g, b] = (/diffuseColor = \(([^)]*)\)/.exec(blend?.text ?? "")?.[1] ?? "").split(", ").map(Number);
+    assert.ok(
+      [r, g, b].every((c) => Math.abs((c ?? 0) - 1 / 3) < 1e-6),
+      `blend ${r} ${g} ${b}`,
+    );
+    // A child of a vertex-coloured mesh is kept.
+    const parent = new THREE.Mesh(geometry.clone(), new THREE.MeshStandardMaterial({ vertexColors: true }));
+    parent.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x00ff00 })));
+    const [withChild] = zipEntries(await sceneToUsdz(parent));
+    assert.equal((withChild?.text.match(/def Material /g) ?? []).length, 2);
+    disposeObject3D(parent);
+    // A hidden mesh stays hidden.
+    const group = astToThreeJS(parseShapeScript("mesh {\n polygon {\n  color 1 0 0\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}"));
+    group.traverse((object) => void (object !== group && (object.visible = false)));
+    const [hidden] = zipEntries(await sceneToUsdz(group));
+    assert.equal((hidden?.text.match(/def Material /g) ?? []).length, 0);
+    disposeObject3D(group);
   });
 
   it("names the MIME type AR Quick Look expects", () => {

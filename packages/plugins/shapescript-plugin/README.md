@@ -79,9 +79,8 @@ USDZ units are metres, so `size 1` is one metre in AR.
 A call is either C-like, with **no space** before its parenthesis (`sin(x)`; `sin (x)` is not a
 call), or bare, as upstream: `max 0 (j - 1)`, `sqrt 9`, `sin pi / 2` — the function takes every
 value after it, so parenthesise it inside a larger expression: `(sqrt 9) + (sqrt 16)`. Arguments are
-a value list; commas (`max(0, j - 1)`) also work here but not in the upstream app. This parser also
-accepts several statements on one line (`define a 1 define b 2`); upstream requires one per line, so
-portable scripts keep to that.
+a value list; commas (`max(0, j - 1)`) also work here but not in the upstream app. One statement per
+line, as upstream: `define a 1 define b 2` on one line is a parse error naming the rule.
 
 ## Storage
 
@@ -212,7 +211,7 @@ extrude path {
 }
 ```
 
-Also supported: `pi`, `tau` (plugin-only; upstream has no `tau`, so portable scripts write `2 * pi`), `true`, `false`, scientific notation, unary `+`,
+Also supported: `pi` (no `tau`, as upstream; write `2 * pi`), `true`, `false`, scientific notation, unary `+`,
 short-circuit `and`/`or`, string literals, `join`/`split`/`trim`, tuple arguments to `min`/`max`,
 zero-based tuple/string subscripts (negative from the end, or by name: `v["y"]`), `.count`, ordinal
 members `.first` … `.tenth`, `.last`, `.allButFirst`, `.allButLast`, vector `.x/.y/.z/.w`, size
@@ -298,7 +297,7 @@ places it (with `position` / `orientation` / `size` on the call), and its member
 construction face for face, so scripts that index its faces (upstream's Dodecahedron) get the same
 faces. `for v in … { expr }` and `if c { a } else { b }` are expressions, a function may build
 shapes (`define face(data) { polygon { … } }`) and be called bare as a statement (`face data`), and
-`mesh { … }` assembles the polygons its body produces — `polygon { color red point a point b point c }`
+`mesh { … }` assembles the polygons its body produces — `polygon { color red … }` with one `point` per line
 with 3D points, a tuple per point allowed — into one flat-shaded, vertex-coloured mesh. A value a
 statement produces that is not a shape is an "unused value" error, as upstream. Paths as values and
 `object` values remain unsupported.
