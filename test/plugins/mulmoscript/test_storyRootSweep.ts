@@ -10,7 +10,8 @@ import { dirname, join, relative } from "node:path";
  * `stories/deck.json` exists in EVERY registered stories root (#3014), so a host call that
  * resolves a path alone reads the DEFAULT root's file of that name. This rule was patched three
  * times before it was written down — the media-byte download, the session rehydration, and the
- * movie/PDF generation body — so it is stated here as a rule instead of a fourth fix.
+ * movie/PDF generation body — so it is stated here as a rule instead of a fourth fix. #3077 then
+ * used it to find and close the whole REST surface at once, which is what the rule is for.
  *
  * It is deliberately phrased as what is PERMITTED: a `resolveStory` call names a root, OR it is
  * in `ROOTLESS_BY_DESIGN` below with the reason it cannot have one. Everything else is reported.
@@ -61,39 +62,44 @@ const ROOT_TAKING_OPS = [
 ] as const;
 
 /**
+ * An op call handed a root straight off the REQUEST — `movieStatusOp(p, req.query.root)` and its
+ * siblings (Codex, round 5).
+ *
+ * Narrow on purpose. A request read is unambiguously unparsed; an arbitrary `x.root` may well be
+ * an already-parsed root coming out of a helper's result, and telling those apart is provenance,
+ * which a regex cannot do. Two widenings were tried and both misfired: every member read
+ * (`\\w+\\.root`) reported `const { … root … } = parsed`, and a bare `query.root` reported
+ * `beatImageOp(query.filePath, query.beatIndex, query.root)` — where `query` is the PARSED result
+ * of `parseBeatQuery`, not `req.query`. Only `req.query.root` / `req.body.root` name the request
+ * without ambiguity.
+ */
+const OPS_RECEIVING_A_REQUEST_ROOT = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*?[(,]\\s*req\\.(?:query|body)\\.root\\b`);
+
+/**
  * Call sites that may address a story by path alone, and why.
  *
  * Keyed by `<path-from-repo-root>:<the call's own line text, trimmed>` so moving a file or
  * changing the call breaks the exemption rather than silently carrying it.
  */
-const SUPERSEDED_REST_SURFACE =
-  "REST surface, no caller in this repo. `pluginEndpoints<MulmoScriptEndpoints>` is used by exactly one file — the host adapter — and only for the two download routes (both rooted). The View reaches these ops through the ROOT-AWARE dispatch route instead. Threading `root` through every REST body/query parser and `makeBeatOpHandler` is a change to a surface nothing here calls, so it is #3077 rather than this PR. A host that DOES call these routes must fix them first.";
-
 const ROOTLESS_BY_DESIGN = new Map<string, string>([
   [
     "server/api/routes/mulmo-script.ts:const resolved = mulmoScriptOps.resolveStory(outcome.filePath);",
-    "The AGENT's tool path. `root` is not in the tool schema, so a model cannot name one (#3015) — every save reaching here is in the default root by construction.",
+    "The AGENT's tool path: this route's body IS `SaveMulmoScriptArgs`, and `root` is deliberately not in the tool schema, so a model cannot name one (#3015). Every save reaching here is in the default root by construction.",
   ],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.beatImageOp(query.filePath, query.beatIndex);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.movieStatusOp(filePath);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.beatAudioOp(query.filePath, query.beatIndex);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.beatMovieOp(query.filePath, query.beatIndex);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.characterImageOp(filePath, key);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.uploadBeatImageOp(filePath, beatIndex, imageData);", SUPERSEDED_REST_SURFACE],
-  [
-    "server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.renderCharacterOp({ filePath, key, force, chatSessionId });",
-    SUPERSEDED_REST_SURFACE,
-  ],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.uploadCharacterImageOp(filePath, key, imageData);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.pdfStatusOp(filePath);", SUPERSEDED_REST_SURFACE],
 ]);
 
 /**
  * Ops handed to a factory as a VALUE rather than called directly.
  *
- * `makeBeatOpHandler(op, …)` invokes them with a `BeatOpArgs` that has no `root` field, so these
- * are the same superseded REST surface as above, reached by a different spelling. Listed
- * separately because the direct-call test cannot see an argument list that does not exist yet.
+ * `makeBeatOpHandler(op, …)` invokes them with a `BeatOpArgs` that carries `root` since #3077, so
+ * the root reaches these ops through the factory rather than through an argument list this
+ * textual rule can read.
+ *
+ * What makes that safe rather than a hole is a BEHAVIOURAL test, not this sentence:
+ * `test/server/api/test_mulmoScriptBeatOp.ts` → "makeBeatOpHandler — the root it hands the op"
+ * asserts the factory forwards a named root, reads an absent or empty one as the default, and
+ * REFUSES a wrong-typed one with a 400 without running the op. Delete that suite and these two
+ * entries become unchecked.
  */
 const OP_VALUES_BY_DESIGN = new Set<string>([
   "server/api/routes/mulmo-script.ts:makeBeatOpHandler(mulmoScriptOps.generateBeatAudioOp, (result) => ({ audio: result.audio })),",
@@ -163,6 +169,84 @@ describe("a story is addressed by the pair, not the path", () => {
         });
     });
     assert.deepEqual(evasions, [], `these name a story op without calling it directly: ${evasions.join(" | ")}`);
+  });
+
+  it("binds every root it passes from `parseSuppliedRoot`, never from an inline fold", () => {
+    // THIRD finding on one rule, so the rule is inverted rather than patched again: the REST
+    // readers (round 1), the claims about them (round 2), and the session replay (round 3) each
+    // folded a malformed root into the DEFAULT root. Folding is the silent misaddressing
+    // `guardSuppliedRoot` was added to dispatch to stop (#3015).
+    //
+    // Stated as what is PERMITTED, at BINDING level rather than file level: in a file that hands
+    // a root to a story op, every `const root`/`const { root }` must be initialised from
+    // `parseSuppliedRoot` or `suppliedRoot`. A file-level "does it mention the parser anywhere"
+    // check was the first draft and Codex walked past it in four ways — the file's other
+    // legitimate parse blinded it to `getOptionalStringQuery(req, "root")` in the same file,
+    // which was a live fold in the download routes.
+    //
+    // WHAT IT ASSERTS, exhaustively — and therefore what it does NOT.
+    //
+    // Exactly two shapes are reported:
+    //
+    //   A. a DIRECT declaration-with-initialiser of a name `root`, typed or not, whose
+    //      initialiser does not call `parseSuppliedRoot` / `suppliedRoot`;
+    //   B. an op call handed `req.query.root` / `req.body.root`.
+    //
+    // EVERYTHING ELSE IS NOT REPORTED. That is a closed statement; the earlier drafts of this
+    // comment listed missed spellings instead, and that list could never be finished — rounds 6,
+    // 7 and 9 of one review each added another one (a same-file helper, a typed binding, then
+    // `let root; root = raw;`). A textual rule has infinitely many blind spellings, so naming
+    // them is not a specification, it is a queue.
+    //
+    // Illustrative, NOT exhaustive: a root laundered through a helper (any file), a function
+    // PARAMETER, an intermediate object `{ root: raw }`, `ops["movieStatusOp"]` / `?.()` /
+    // aliases, a destructured root, and a declaration separated from its assignment
+    // (`let root; root = raw;`).
+    //
+    // The real closure for all four is a branded `ParsedStoryRoot` that only `parseSuppliedRoot`
+    // can produce, with the host's op wrappers typed to require it — a package signature change,
+    // so not this PR. What this DOES assert is the shape every fold in this loop actually took:
+    // a direct `const root = <something that is not the parser>`. Comments are stripped before
+    // scanning, so a `// parseSuppliedRoot` cannot forge compliance.
+    const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+    const offenders: string[] = [];
+    sourceFiles().forEach((file) => {
+      const source = stripComments(readFileSync(file, "utf-8"));
+      const passesARoot = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*\\broot\\b`).test(source);
+      if (!passesARoot) return;
+      // Every binding of a name `root` in this file has to come from the parser.
+      // Two simple alternatives rather than one nested-quantifier pattern: `[^}]*root[^}]*`
+      // backtracks super-linearly on a long brace body (sonarjs/super-linear-regex), and a
+      // linter finding inside the guard is the guard nobody keeps.
+      const bindings = [
+        // Everything between the name and the `=` is skipped in ONE character class that cannot
+        // contain an `=` — no optional group around a quantifier, which is what
+        // `security/detect-unsafe-regex` rejects and what backtracks (Codex, round 8). That span
+        // is the optional `: <type>`, and it is not cosmetic: `const root: string | undefined =
+        // <fold>` is the very shape this asserts, and the annotation alone hid a fold until
+        // round 7. `root\b` keeps `rootDir` out.
+        ...source.matchAll(/(?:const|let|var)\s+root\b[^=;\n]*=\s*([^;\n]*)/g),
+        ...source.matchAll(/(?:const|let|var)\s+(\{[^}]*\})\s*=\s*([^;\n]*)/g),
+      ].filter((binding) => /\broot\b/.test(binding[0]));
+      bindings.forEach((binding) => {
+        // A plain `const root = …` carries its initialiser in group 1; a destructure carries the
+        // brace body there and the initialiser in group 2.
+        const initialiser = binding[2] ?? binding[1] ?? "";
+        // A DESTRUCTURE is permitted, and listed as a limit below: `const { filePath, root } =
+        // parsed` may be taking an already-parsed root out of a helper's result, and a regex
+        // cannot tell that from `= entry.result.data`. Two earlier drafts tried — one trusted the
+        // file to mention the parser anywhere, one demanded that no op receive a bare `root` —
+        // and each was wrong in its own direction (Codex, rounds 4 and 5). What IS assertable is
+        // the direct assignment, and that is where every fold this loop actually found lived.
+        const parsed = /\b(parseSuppliedRoot|suppliedRoot)\(/.test(initialiser);
+        if (!parsed && !binding[0].includes("{")) offenders.push(`${relative(REPO_ROOT, file)}: ${binding[0].trim()}`);
+      });
+      // The one member read that needs no provenance chase: straight off the request.
+      if (OPS_RECEIVING_A_REQUEST_ROOT.test(source)) {
+        offenders.push(`${relative(REPO_ROOT, file)}: an op is handed a root straight off the request`);
+      }
+    });
+    assert.deepEqual(offenders, [], `these bind a root without parsing it: ${offenders.join(" | ")}`);
   });
 
   it("every exemption still exists — a stale one hides the next real call site", () => {

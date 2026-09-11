@@ -13,6 +13,7 @@
 import type { Request, Response } from "express";
 import type { OpFailure } from "@mulmoclaude/mulmoscript-plugin/server";
 import { badRequest, sendError } from "../../utils/httpError.js";
+import { parseSuppliedRoot } from "./mulmoScriptWriteRoot.js";
 
 export interface ErrorResponse {
   error: string;
@@ -45,6 +46,10 @@ export interface BeatOpArgs {
   beatIndex: number;
   force?: boolean | undefined;
   chatSessionId?: string | undefined;
+  /** Which registered stories root `filePath` is relative to (#3014); absent = the default.
+   *  Without it every beat op here resolved the DEFAULT root's file of that name, because the
+   *  same `stories/…` spelling exists in each one (#3077). */
+  root?: string | undefined;
 }
 
 /** Untrusted request body: `filePath` / `beatIndex` are whatever JSON the
@@ -54,6 +59,7 @@ export interface BeatOpBody {
   beatIndex?: unknown | undefined;
   force?: boolean | undefined;
   chatSessionId?: string | undefined;
+  root?: unknown | undefined;
 }
 
 export type BeatOpHandler<TBody> = (req: Request<object, unknown, BeatOpBody>, res: Response<TBody | ErrorResponse>) => Promise<void>;
@@ -69,12 +75,21 @@ export function makeBeatOpHandler<TResult extends { ok: true }, TBody extends ob
   toResponse: (result: TResult) => TBody,
 ): BeatOpHandler<TBody> {
   return async (req, res) => {
-    const { filePath, beatIndex, force, chatSessionId } = req.body;
+    const { filePath, beatIndex, force, chatSessionId, root } = req.body;
     if (typeof filePath !== "string" || !filePath || !validBeatIndex(beatIndex)) {
       badRequest(res, "filePath and beatIndex are required");
       return;
     }
-    const result = await runOp({ filePath, beatIndex, force, chatSessionId });
+    // Absent and empty mean the default root; present-but-not-a-string is REFUSED rather than
+    // folded into it — the same rule the package's dispatch applies at its single entry, for the
+    // reason its comment gives: folding writes to the default root's identically-named script
+    // while the caller believes it named another (#3015 / #3014).
+    const parsedRoot = parseSuppliedRoot(root);
+    if (!parsedRoot.ok) {
+      badRequest(res, parsedRoot.error);
+      return;
+    }
+    const result = await runOp({ filePath, beatIndex, force, chatSessionId, root: parsedRoot.root });
     if (!result.ok) {
       sendOpFailure(res, result);
       return;

@@ -28,6 +28,7 @@ import { encodeCursor, parseCursor, sessionChangeMs } from "./sessionsCursor.js"
 import { errorMessage } from "../../utils/errors.js";
 import { log } from "../../system/logger/index.js";
 import { asyncHandler } from "../../utils/asyncHandler.js";
+import { parseSuppliedRoot } from "./mulmoScriptWriteRoot.js";
 
 interface SessionMeta {
   roleId: string;
@@ -297,9 +298,10 @@ function isPresentMulmoScriptToolResult(entry: unknown): entry is PresentMulmoSc
   const { result } = entry;
   if (!isRecord(result) || result.toolName !== "presentMulmoScript") return false;
   const { data } = result;
-  // `root` is optional and stays untyped here — it is read through a `typeof` check at the
-  // one place that uses it, so a malformed value degrades to the default root rather than
-  // rejecting an entry that is otherwise fine to replay.
+  // `root` is optional and stays UNTYPED here on purpose: this predicate decides whether an
+  // entry is a mulmoScript result at all, and a corrupt root does not stop it being one. The
+  // root is judged where it is used — `enrichWithMulmoScript` parses it and, when it is corrupt,
+  // replays the entry as stored rather than filling it from the default root's deck.
   return isRecord(data) && typeof data.filePath === "string";
 }
 
@@ -319,8 +321,15 @@ async function enrichWithMulmoScript(entry: PresentMulmoScriptToolResult): Promi
     // The PAIR, not the path: `stories/deck.json` exists in every registered stories root, so
     // rehydrating by path alone re-reads the DEFAULT root's file of that name and replays a
     // different deck into the session (#3014). `root` is what the card carries; absent = default.
+    //
+    // A stored root that is not a string is CORRUPT, not absent, so the entry is replayed as it
+    // was rather than filled from the default root's identically-named deck — the same refusal
+    // the REST readers make (#3077), reached here by this function's existing "return the entry
+    // unchanged on any failure" contract rather than by an HTTP status.
     const { filePath, root } = entry.result.data;
-    const resolved = mulmoScriptOps.resolveStory(filePath, typeof root === "string" ? root : undefined);
+    const parsedRoot = parseSuppliedRoot(root);
+    if (!parsedRoot.ok) return entry;
+    const resolved = mulmoScriptOps.resolveStory(filePath, parsedRoot.root);
     if (!resolved.ok) return entry;
     const scriptJson = (await readTextSafe(resolved.absolutePath)) ?? "";
     const script: unknown = JSON.parse(scriptJson);
