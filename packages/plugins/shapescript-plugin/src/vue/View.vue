@@ -301,6 +301,8 @@ function loadShapeScript() {
     clearScene();
     sceneWarnings.value = [];
     printOutput.value = [];
+    // An empty or invalid script must not keep the previous script's background.
+    scene.background = new THREE.Color(DEFAULT_BACKGROUND);
     const script = props.selectedResult.data?.script;
     // An empty script is valid and clears the scene — reached when a result
     // moves from an INVALID script to an empty one, where leaving the previous

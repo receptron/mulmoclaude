@@ -1425,8 +1425,13 @@ export class Converter {
       if (child.type === "path") {
         if (pathNode) throw new Error("`lathe` takes one profile path");
         pathNode = child;
-      } else if (this.convertNode(child)) {
-        throw new Error("`lathe` takes a path, not a shape — give it `path { … }`");
+      } else {
+        const object = this.convertNode(child);
+        if (object) {
+          // Never reaches the scene, so nothing downstream would free it.
+          disposeObject3D(object);
+          throw new Error("`lathe` takes a path, not a shape — give it `path { … }`");
+        }
       }
     }
 
