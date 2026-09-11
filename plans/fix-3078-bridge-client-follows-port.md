@@ -53,17 +53,38 @@ common は意図的に node builtin ゼロの isomorphic パッケージで、se
   `MULMOCLAUDE_AUTH_TOKEN` の扱いに合わせる。従来の `??` は `""` をそのまま
   `io("")` に渡していた）。
 
-`token.ts` は `workspace.ts` 経由に付け替え。`TOKEN_FILE_PATH` の export 形
-（module load 時に確定する定数）は既存テスト / エラーメッセージのため維持。
+`token.ts` は `workspace.ts` 経由に付け替え。`TOKEN_FILE_PATH` は #272 以来の公開 API
+なので残すが、**module load 時に確定するスナップショット**なので、I/O と表示は新設の
+`tokenFilePath()`（呼び出し時解決）を通す。両者が食い違う境界＝「import 後に workspace を
+設定した場合」もテストで固定する。
 
-## 検証
+`createBridgeClient()` は **token を先に、port を後に**読む。サーバが
+`.session-token` → `.server-port` の順で書く（`server/index.ts:1386` → `:1464`）ため、
+読み取り順で**どちらのずれが起きやすいか**が決まる。port 先読みは「新しい token を、
+サーバが去った直後の古いポートへ」という静かな失敗を招きやすく、token 先読みなら多くの場合
+「古い token + 新しいポート」＝正しいサーバが `invalid token` を返す声の出る失敗になる。
+**閉じはしない**（両方の read が書き込み区間に入ると危険な対が残る）。
 
-- 単体: `parsePublishedPort` の表（正常 / 改行付き / 空 / 空白のみ / 非数字 /
-  `3002abc` / `0` / `65536` / 負）、`resolveApiUrl` の優先順位 4 通り、
-  `MULMOCLAUDE_WORKSPACE_PATH` を立てた場合の token / port 読み。
-- 実機: `PORT` を塞いでサーバを前進させ、CLI ブリッジ（`yarn cli`）が
-  publish されたポートに繋がることを確認する。`.server-port` が無い場合に
-  3001 へ落ちることも確認する。
+## 検証（実施済み）
+
+- **単体** (`packages/client/test/`, 84 pass): `parsePublishedPort` の受理 6 / 棄却 15
+  （`3002abc` や `80@attacker.example` のような `parseInt` なら通る形、オーバーフロー、
+  先頭ゼロ、全角数字を含む）、`resolveApiUrl` の優先順位 4 通り + 空値 2 通り、
+  `MULMOCLAUDE_WORKSPACE_PATH` 下の token 読み、`TOKEN_FILE_PATH`（import 時）と
+  `tokenFilePath()`（呼び出し時）が食い違う境界。
+- **CI で走る e2e** (`test/bridges/test_clientFollowsPublishedPort.ts`, 5 pass):
+  実 socket.io サーバ 2 本（**どちらも port 0**）がそれぞれ自分の名前を echo し、
+  `createBridgeClient()` がどちらに届いたかを ack が言う。単体テストは**規則**を固定できるが
+  **結果**は見られない — この修正が防ぐ失敗は「**間違ったサーバに綺麗に繋がる**」なので、
+  規則テストはどちらに転んでも同じ緑になるため。
+  **break-verify 済み**: build 済み `resolveApiUrl` を「常に既定値」に書き換えると 5 件中 3 件が赤。
+  3001 に**置かない**のは意図的（開発者自身の `yarn dev` と奪い合うため）。「さもなくば 3001」は
+  socket を使わず `resolveApiUrl()` のケースと単体テストで固定している。
+- **実機**: `PORT` を塞いだ状況を mock server 2 本（3001 に「必ずエラーを返す囮」、3099 に本物）で
+  再現し、**修正前は `connected: true` のまま囮の ack を受け取り**、修正後は 3099 に到達することを
+  確認。`.server-port` 無しで `http://localhost:3001` に落ちることも確認。
+- **公開物**: `drift.mjs` / `launcherSync.mjs` / `npm pack --dry-run` で、1.1.0 への bump、
+  28 箇所のレンジ sweep、tarball に `dist/apiUrl.*` と `dist/workspace.*` が入ることを確認。
 
 ## 対象外（PR に明記する）
 
@@ -71,3 +92,15 @@ common は意図的に node builtin ゼロの isomorphic パッケージで、se
   ホスト側で動く前提。今回は触らない。
 - 起動後の追従。ポートは `createBridgeClient()` 時に 1 回だけ読む。実行時追従は
   A-3（socket 作り直し）と同じ話なので #3078 に残す。
+
+## レビューで判明し、別 issue に切り出した残余
+
+- **#3082** — ① サーバ不在時、残った `.server-port` のポートを別プロセスが掴んでいると
+  bearer token がそこへ渡る（**この PR で入った露出ではない**: 修正前も `localhost:3001`
+  固定で同じことが起きる）。② sidecar の対に世代マーカーが無く、再起動を跨ぐと torn pair を
+  読みうる（読み取り順の入れ替えは窓を狭めるだけ）。対処案として「shutdown で `.server-port`
+  を消す」「token を出す前に相手を確認する」「両 sidecar に共通の起動 id を持たせる」を記載。
+- **#3085** — `packages/core/assets/helps/*`（telegram.md / custom-view.md）がまだ
+  `localhost:3001` と書いている。`assets/helps/*` を触ると `@mulmoclaude/core` の版上げ＋
+  18 箇所のレンジ sweep を伴うため、`error-recovery.md` への追記（publish 後に「◯◯ 以降に
+  上げてください」と書けるようになってから）とまとめて 1 回の core リリースで行う。
