@@ -77,6 +77,13 @@ registerBuiltinDispatch(MULMOSCRIPT_SCOPE, createMulmoScriptDispatchHandler(rawO
  * compiles, because `req.query.root` is not a `ParsedStoryRoot` and `parseSuppliedRoot` is the
  * only thing that mints one.
  *
+ * The root is REQUIRED on every one of them, not optional. `ParsedStoryRoot` already includes
+ * `undefined`, so a caller that means the default root writes `undefined` and says so — where an
+ * OPTIONAL parameter let a caller mean it by silence, which is #3014's rule
+ * ("a call NAMES a root") and could only be enforced textually before. An aliased call
+ * (`const rs = ops.resolveStory; rs(p)`) was invisible to that sweep and is a compile error now
+ * (#3086 round 1, Codex).
+ *
  * Members that take no root are untouched and pass straight through.
  */
 type RootTakingOp =
@@ -96,16 +103,24 @@ type RootTakingOp =
   | "guardStoryWriteRoot"
   | "guardStoryGenerationRoot"
   | "guardStoryWirePath"
-  | "artifactsForRoot";
+  | "artifactsForRoot"
+  | "generateMovieOp"
+  | "generatePdfOp"
+  | "guardStoryRootRegistered"
+  | "pendingGenerations"
+  | "publishScriptChanged"
+  | "toStoryRef"
+  | "triggerAutoBackgroundMovie"
+  | "publishGeneration";
 
 type RootedMulmoScriptOps = Omit<MulmoScriptServerOps, RootTakingOp> & {
-  resolveStory: (filePath: string, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["resolveStory"]>;
-  beatImageOp: (filePath: string, beatIndex: number, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatImageOp"]>;
-  beatAudioOp: (filePath: string, beatIndex: number, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatAudioOp"]>;
-  beatMovieOp: (filePath: string, beatIndex: number, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatMovieOp"]>;
-  characterImageOp: (filePath: string, key: string, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["characterImageOp"]>;
-  movieStatusOp: (filePath: string, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["movieStatusOp"]>;
-  pdfStatusOp: (filePath: string, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["pdfStatusOp"]>;
+  resolveStory: (filePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["resolveStory"]>;
+  beatImageOp: (filePath: string, beatIndex: number, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatImageOp"]>;
+  beatAudioOp: (filePath: string, beatIndex: number, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatAudioOp"]>;
+  beatMovieOp: (filePath: string, beatIndex: number, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["beatMovieOp"]>;
+  characterImageOp: (filePath: string, key: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["characterImageOp"]>;
+  movieStatusOp: (filePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["movieStatusOp"]>;
+  pdfStatusOp: (filePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["pdfStatusOp"]>;
   renderBeatOp: (args: RootedGenerateArgs<Parameters<MulmoScriptServerOps["renderBeatOp"]>[0]>) => ReturnType<MulmoScriptServerOps["renderBeatOp"]>;
   generateBeatAudioOp: (
     args: RootedGenerateArgs<Parameters<MulmoScriptServerOps["generateBeatAudioOp"]>[0]>,
@@ -113,22 +128,45 @@ type RootedMulmoScriptOps = Omit<MulmoScriptServerOps, RootTakingOp> & {
   renderCharacterOp: (
     args: RootedGenerateArgs<Parameters<MulmoScriptServerOps["renderCharacterOp"]>[0]>,
   ) => ReturnType<MulmoScriptServerOps["renderCharacterOp"]>;
-  uploadBeatImageOp: (filePath: string, beatIndex: number, imageData: string, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["uploadBeatImageOp"]>;
+  uploadBeatImageOp: (filePath: string, beatIndex: number, imageData: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["uploadBeatImageOp"]>;
   uploadCharacterImageOp: (
     filePath: string,
     key: string,
     imageData: string,
-    root?: ParsedStoryRoot,
+    root: ParsedStoryRoot,
   ) => ReturnType<MulmoScriptServerOps["uploadCharacterImageOp"]>;
-  outputRef: (outputPath: string, wireFilePath: string, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["outputRef"]>;
+  outputRef: (outputPath: string, wireFilePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["outputRef"]>;
   guardStoryWriteRoot: (root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["guardStoryWriteRoot"]>;
   guardStoryGenerationRoot: (root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["guardStoryGenerationRoot"]>;
-  guardStoryWirePath: (filePath: unknown, root?: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["guardStoryWirePath"]>;
+  guardStoryWirePath: (filePath: unknown, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["guardStoryWirePath"]>;
   artifactsForRoot: (root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["artifactsForRoot"]>;
+  generateMovieOp: (filePath: string, chatSessionId: string | undefined, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["generateMovieOp"]>;
+  generatePdfOp: (filePath: string, chatSessionId: string | undefined, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["generatePdfOp"]>;
+  guardStoryRootRegistered: (root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["guardStoryRootRegistered"]>;
+  pendingGenerations: (filePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["pendingGenerations"]>;
+  publishScriptChanged: (filePath: string, origin: string | undefined, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["publishScriptChanged"]>;
+  toStoryRef: (absolutePath: string, root: ParsedStoryRoot) => ReturnType<MulmoScriptServerOps["toStoryRef"]>;
+  /** Takes its root in an options OBJECT rather than a position — the same rule in a different
+   *  shape, and the one a hand-written list missed. Only the options are re-declared; the five
+   *  positional parameters come straight off the underlying signature. */
+  publishGeneration: (
+    chatSessionId: Parameters<MulmoScriptServerOps["publishGeneration"]>[0],
+    kind: Parameters<MulmoScriptServerOps["publishGeneration"]>[1],
+    filePath: Parameters<MulmoScriptServerOps["publishGeneration"]>[2],
+    key: Parameters<MulmoScriptServerOps["publishGeneration"]>[3],
+    finished: Parameters<MulmoScriptServerOps["publishGeneration"]>[4],
+    opts: Omit<NonNullable<Parameters<MulmoScriptServerOps["publishGeneration"]>[5]>, "root"> & { root: ParsedStoryRoot },
+  ) => ReturnType<MulmoScriptServerOps["publishGeneration"]>;
+  triggerAutoBackgroundMovie: (
+    absoluteFilePath: string,
+    wireFilePath: string,
+    chatSessionId: string | undefined,
+    root: ParsedStoryRoot,
+  ) => ReturnType<MulmoScriptServerOps["triggerAutoBackgroundMovie"]>;
 };
 
 /** The object-argument ops take their root in a field rather than a position. */
-type RootedGenerateArgs<T> = Omit<T, "root"> & { root?: ParsedStoryRoot };
+type RootedGenerateArgs<T> = Omit<T, "root"> & { root: ParsedStoryRoot };
 
 export const mulmoScriptOps: RootedMulmoScriptOps = rawOps;
 

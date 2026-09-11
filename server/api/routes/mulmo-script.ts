@@ -154,7 +154,10 @@ function sendPackageFailure(res: Response, failure: MulmoScriptFailure): void {
 bindRoute(router, API_ROUTES.mulmoScript.save, async (req: Request<object, object, SaveMulmoScriptArgs>, res: Response) => {
   // Realpath symlink containment before the package's lexical guard —
   // see mulmoScriptOps.guardStoryWirePath.
-  const guard = mulmoScriptOps.guardStoryWirePath(req.body?.filePath);
+  // `undefined` is the DEFAULT root, said out loud: this is the agent's tool path and `root` is
+  // not in the tool schema, so there is none to name (#3015). The parameter is required now
+  // precisely so that has to be written rather than meant by silence (#3086).
+  const guard = mulmoScriptOps.guardStoryWirePath(req.body?.filePath, undefined);
   if (guard) {
     sendOpFailure(res, guard);
     return;
@@ -173,9 +176,9 @@ bindRoute(router, API_ROUTES.mulmoScript.save, async (req: Request<object, objec
     // schema so a model cannot name one (#3015). Every save that reaches here is in the
     // default root by construction. Named as an exception in
     // `test/plugins/mulmoscript/test_storyRootSweep.ts`.
-    const resolved = mulmoScriptOps.resolveStory(outcome.filePath);
+    const resolved = mulmoScriptOps.resolveStory(outcome.filePath, undefined);
     if (resolved.ok) {
-      mulmoScriptOps.triggerAutoBackgroundMovie(resolved.absolutePath, outcome.filePath, getSessionQuery(req) || undefined);
+      mulmoScriptOps.triggerAutoBackgroundMovie(resolved.absolutePath, outcome.filePath, getSessionQuery(req) || undefined, undefined);
     }
   }
 

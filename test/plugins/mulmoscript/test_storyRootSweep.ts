@@ -1,90 +1,99 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
 
 /**
- * A `resolveStory` call NAMES a root, or is exempted with a reason.
+ * The one root rule a TYPE cannot state.
  *
- * `stories/deck.json` exists in every registered stories root (#3014), so a call that resolves a
+ * `stories/deck.json` exists in every registered stories root (#3014), so a call that addresses a
  * path alone reads the DEFAULT root's file of that name — silently, because that path is
- * perfectly well-formed in both. The root parameter is OPTIONAL on the ops, so omitting it
- * type-checks; that is the part a type cannot say, and it is all that is left here.
+ * well-formed in both. Everything about which VALUE may be a root, and about naming one at all,
+ * is now settled by `ParsedStoryRoot`: the brand can only be minted by `parseSuppliedRoot`, and
+ * the parameter is REQUIRED, so an aliased or destructured call that omits it is a compile error
+ * where the textual sweep this file used to be could not see it.
  *
- * WHAT USED TO BE HERE, and where it went (#3086):
+ * What a type cannot say is that the host narrowed every member it should have. A root-taking op
+ * left out of `RootedMulmoScriptOps` keeps its `string | undefined` parameter and silently
+ * accepts a raw request value — which is what happened: the first draft narrowed seventeen of the
+ * twenty-five (#3086 round 1, found by this check and by Codex independently).
  *
- * This file also enforced that a root handed to a story op had been through `parseSuppliedRoot`.
- * That was a textual rule, and a review spent five rounds on spellings it missed — a same-file
- * helper, a typed binding, `let root; root = raw;`. A textual rule has infinitely many blind
- * spellings, so enumerating them was a queue rather than a specification.
- *
- * The host's ops are now exposed through a type whose root parameters are `ParsedStoryRoot`, a
- * branded string only `parseSuppliedRoot` can mint, and the raw ops object is no longer exported
- * at all. Every one of those spellings is now a COMPILE error, including the ones this file could
- * not see. So the provenance rules are gone from here rather than rewritten a fourth time.
- *
- * Stated as what is PERMITTED, which is why a NEW call site is red by default rather than correct
- * by luck: the exceptions are a list someone has to justify, not a silence.
+ * So this file is now one rule, derived from BOTH sources rather than listed in either.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, "..", "..", "..");
-const SEARCHED = ["server", "src"] as const;
 
 /**
- * Call sites that may address a story by path alone, and why.
+ * Every ops member that TAKES a root is narrowed to require a parsed one.
  *
- * Keyed by `<path-from-repo-root>:<the call's own line text, trimmed>` so moving a file or
- * changing the call breaks the exemption rather than silently carrying it.
+ * `RootedMulmoScriptOps` in `server/plugins/mulmoscript-server.ts` re-declares the root-taking
+ * members with `ParsedStoryRoot`. A member left OUT of that list keeps its `string | undefined`
+ * parameter and silently accepts a raw request value again — which is exactly what happened: the
+ * first draft narrowed seventeen of the twenty-four (#3086).
+ *
+ * Both sides are DERIVED and compared, rather than either being a list to keep in step: the
+ * package's own source says which members take a root, the host's union says which are narrowed,
+ * and a new root-taking op in the package turns this red the day it lands.
  */
-const ROOTLESS_BY_DESIGN = new Map<string, string>([
-  [
-    "server/api/routes/mulmo-script.ts:const resolved = mulmoScriptOps.resolveStory(outcome.filePath);",
-    "The AGENT's tool path: this route's body IS `SaveMulmoScriptArgs`, and `root` is deliberately not in the tool schema, so a model cannot name one (#3015). Every save reaching here is in the default root by construction.",
-  ],
-]);
+describe("every root-taking op is narrowed to a parsed root", () => {
+  const OPS_SOURCE = join(REPO_ROOT, "packages", "plugins", "mulmoscript-plugin", "src", "server", "ops.ts");
+  const TYPES_SOURCE = join(REPO_ROOT, "packages", "plugins", "mulmoscript-plugin", "src", "server", "types.ts");
+  const HOST_SOURCE = join(REPO_ROOT, "server", "plugins", "mulmoscript-server.ts");
 
-/** Every `.ts` file under the searched directories. */
-function sourceFiles(): string[] {
-  const walk = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : walk(full);
-      return entry.name.endsWith(".ts") ? [full] : [];
-    });
-  return SEARCHED.flatMap((dir) => walk(join(REPO_ROOT, dir)));
-}
+  /**
+   * The one ARGUMENT-OBJECT type in this package that carries a root.
+   *
+   * Three ops take their root inside it (`renderBeatOp(args: GenerateOpArgsWith<…>)`), so their
+   * parameter list never spells `root` and a parameter-text scan alone calls them "not
+   * root-taking". Named rather than resolved: resolving a mapped type textually is more machinery
+   * than this is worth, and the test below asserts the name still exists AND still carries a
+   * root, so a rename or a moved field turns this red instead of quietly widening the sweep.
+   */
+  const ROOT_CARRYING_ARGS = "GenerateOpArgs";
 
-/** `resolveStory(` calls whose arguments never mention a root, as `<repo-relative path>:<line>`. */
-function rootlessCalls(): string[] {
-  const found: string[] = [];
-  sourceFiles().forEach((file) => {
-    readFileSync(file, "utf-8")
-      .split("\n")
-      .forEach((line) => {
-        const call = /\bresolveStory\(([^;]*)/.exec(line);
-        if (!call) return;
-        if (!/\broot\b/.test(call[1] ?? "")) found.push(`${relative(REPO_ROOT, file)}:${line.trim()}`);
-      });
+  /** Members the package returns that can be HANDED a root — positionally or in an object. */
+  function opsTakingARoot(): string[] {
+    const source = readFileSync(OPS_SOURCE, "utf-8");
+    const returned = source.slice(source.lastIndexOf("  return {"));
+    const members = [...returned.matchAll(/^ {4}(\w+),?$/gm)].map((match) => match[1] ?? "");
+    return members
+      .filter((member) => {
+        const declaration = new RegExp(`(?:function|const)\\s+${member}\\s*[(=]`).exec(source);
+        if (!declaration) return false;
+        const from = source.indexOf("(", declaration.index);
+        const params = source.slice(from, source.indexOf(")", from));
+        return /\broot\b/.test(params) || params.includes(ROOT_CARRYING_ARGS);
+      })
+      .sort();
+  }
+
+  /** Members the host re-declares with `ParsedStoryRoot`. */
+  function narrowedInHost(): string[] {
+    const source = readFileSync(HOST_SOURCE, "utf-8");
+    const union = source.slice(source.indexOf("type RootTakingOp ="), source.indexOf(";", source.indexOf("type RootTakingOp =")));
+    return [...union.matchAll(/"(\w+)"/g)].map((match) => match[1] ?? "").sort();
+  }
+
+  it("finds both sides at all — a comparison of two empty sets proves nothing", () => {
+    assert.ok(opsTakingARoot().length > 10, "the package declares root-taking ops");
+    assert.ok(narrowedInHost().length > 10, "the host narrows some of them");
   });
-  return found;
-}
 
-describe("a story is addressed by the pair, not the path", () => {
-  it("finds the resolveStory call sites at all — a sweep that matches nothing proves nothing", () => {
-    const total = sourceFiles().filter((file) => readFileSync(file, "utf-8").includes("resolveStory(")).length;
-    assert.ok(total > 0, "at least one file calls resolveStory");
+  it(`${ROOT_CARRYING_ARGS} still exists and still carries a root — the one name this leans on`, () => {
+    const types = readFileSync(TYPES_SOURCE, "utf-8");
+    const declaration = new RegExp(`interface ${ROOT_CARRYING_ARGS} \\{([\\s\\S]*?)\\n\\}`).exec(types);
+    assert.ok(declaration, `${ROOT_CARRYING_ARGS} is declared in the package's server types`);
+    assert.match(declaration[1] ?? "", /\broot\?:/, `${ROOT_CARRYING_ARGS} still carries the root the object-argument ops pass`);
   });
 
-  it("every resolveStory call names a root, or is exempted with a reason", () => {
-    const unexplained = rootlessCalls().filter((site) => !ROOTLESS_BY_DESIGN.has(site));
-    assert.deepEqual(unexplained, [], `these resolve a story by path alone: ${unexplained.join(" | ")}`);
-  });
-
-  it("every exemption still exists — a stale one hides the next real call site", () => {
-    const rootless = new Set(rootlessCalls());
-    const gone = [...ROOTLESS_BY_DESIGN.keys()].filter((site) => !rootless.has(site));
-    assert.deepEqual(gone, [], `these exemptions no longer match any call: ${gone.join(" | ")}`);
+  it("narrows exactly the members that take a root — no more, no fewer", () => {
+    const taking = opsTakingARoot();
+    const narrowed = narrowedInHost();
+    const unnarrowed = taking.filter((member) => !narrowed.includes(member));
+    const stale = narrowed.filter((member) => !taking.includes(member));
+    assert.deepEqual(unnarrowed, [], `these take a root and still accept a raw string: ${unnarrowed.join(", ")}`);
+    assert.deepEqual(stale, [], `these are narrowed but take no root — the list has drifted: ${stale.join(", ")}`);
   });
 });

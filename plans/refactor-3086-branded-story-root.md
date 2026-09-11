@@ -16,7 +16,8 @@ mulmoScript の story root が `string | undefined` なので、**parse して�
 ## 測ったこと（設計の根拠）
 
 - root を渡す呼び出しは **14 箇所 / 2 ファイル**
-- ルートが使う ops のメンバーは **24 種、うち 12 種が root を取る**
+- ops が export するメンバーは 32 種、うち **root を引数に取るのは 25 種**（位置引数が 22、
+  引数オブジェクト経由が 3）。最初はこれを手で数えて **17 しか narrow していなかった**
 - `mulmoScriptOps` を import しているのは **その2ファイルだけ**
 
 最後の1つが効いた。**生の ops を export しなければ、未 parse の root は届きようがない。**
@@ -43,7 +44,7 @@ mint できるのは `parseSuppliedRoot` の中だけ。
 ### 2. 生の ops を隠す（`server/plugins/mulmoscript-server.ts`）
 
 `createMulmoScriptServerOps(...)` の結果を **export しない**（`rawOps`）。
-代わりに、**root を取る 17 メンバーだけ `ParsedStoryRoot` を要求する型**で見せる:
+代わりに、**root を取る 25 メンバーすべてに `ParsedStoryRoot` を要求する型**で見せる:
 
 ```ts
 export const mulmoScriptOps: RootedMulmoScriptOps = rawOps;
@@ -56,13 +57,34 @@ export const mulmoScriptOps: RootedMulmoScriptOps = rawOps;
 
 `suppliedRoot()` の戻り、`parseBeatQuery` の結果、`resolveStoryRequest` の戻り、
 `BeatOpArgs.root`、`StoryWriteGuards`、`resolveStoryWriteTarget` の引数。
-**型検査が 18 エラーで全箇所を指してくれる**ので、漏れは構造的に起きない。
+**型検査が全箇所を指してくれる**ので、漏れは構造的に起きない。
 
 ### 4. sweep から、型が肩代わりした規則を外す
 
-`test_storyRootSweep.ts` は **240行超 → 90行**。残したのは **#3014 のルール
-「`resolveStory` の呼び出しは root を名指す」**だけ —— root が **optional** なので省略は今も
-コンパイルが通り、これは型では言えない。
+### 4. root を**必須**にする —— 省略も型で閉じる
+
+`ParsedStoryRoot` は `undefined` を含むので、**既定 root は `undefined` と明示的に書く**。
+optional のままだと「沈黙で既定を意味する」ことができ、それは #3014 のルール
+（「呼び出しは root を名指す」）そのもので、**エイリアス経由だと textual sweep には見えない**:
+
+```ts
+const rs = mulmoScriptOps.resolveStory;
+rs(filePath); // optional だった間はコンパイルが通った
+```
+
+必須にすると、直接呼び / エイリアス / destructure のどれもコンパイルエラーになる。
+
+### 5. sweep は「型では言えない1つ」だけに
+
+`test_storyRootSweep.ts` は **240行超 → 99行**、ルールは1つ。
+
+**どの値が root になれるか**も**名指しするか**も型が決めるようになったので、残るのは
+**「ホストが narrow すべきメンバーを全部 narrow したか」**だけ。narrow し忘れたメンバーは
+`string | undefined` のまま生き残るので、これは型では言えない。
+
+そのチェックは**両側をソースから導出して突き合わせる** —— パッケージの source が
+「どのメンバーが root を取るか」を、ホストの union が「どれを narrow したか」を語り、
+パッケージに新しい root 付き op が入った日に赤くなる。
 
 provenance（誰が root を作ったか）の規則は全部削除。型が、しかも**テキストルールが原理的に
 見えなかった形まで含めて**保証するようになったため。
