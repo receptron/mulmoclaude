@@ -679,31 +679,44 @@ export class Converter {
     return mesh;
   }
 
-  /** `mesh { … }`: every polygon its body produces, and every mesh it builds,
-   *  merged into one mesh in the current frame. */
-  private convertMesh(node: MeshNode): THREE.Mesh {
+  /** Build `nodes` at the origin in a throwaway group, collecting the values
+   *  their statements produced and the geometry of every mesh they built (in
+   *  the group's frame). The group is disposed and its vertex charge refunded;
+   *  what is returned is the caller's to charge. */
+  private buildScratch(
+    nodes: readonly SceneNode[],
+    after?: (captured: Value[]) => void,
+  ): { captured: Value[]; geometries: THREE.BufferGeometry[]; name: string | undefined } {
     const temporary = new THREE.Group();
     const captured: Value[] = [];
     const charged = this.vertexCount;
-    let geometry: THREE.BufferGeometry;
     try {
       this.captureValues(captured, () =>
         this.inScope(temporary, () => {
           this.currentTransform().matrix.identity();
-          this.addChildren(temporary, node.children);
+          this.addChildren(temporary, nodes);
+          after?.(captured);
         }),
       );
-      const polygons = flattenShapeValues(captured).filter((value): value is PolygonValue => value.kind === "polygon");
-      const meshes = flattenShapeValues(captured).filter((value): value is MeshValue => value.kind === "mesh");
-      const built = this.meshesIn(temporary).map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
-      const colored = polygons.some((polygon) => polygon.colors !== undefined);
-      const parts = [...(polygons.length ? [geometryFromPolygons(polygons, colored)] : []), ...meshes.map((mesh) => mesh.geometry), ...built];
-      if (parts.length === 0) throw new Error("`mesh` needs at least one polygon");
-      geometry = mergeMeshGeometries(parts);
+      const meshes = this.meshesIn(temporary);
+      const geometries = meshes.map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+      return { captured, geometries, name: meshes.length === 1 && meshes[0]!.name ? meshes[0]!.name : undefined };
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = charged;
     }
+  }
+
+  /** `mesh { … }`: every polygon its body produces, and every mesh it builds,
+   *  merged into one mesh in the current frame. */
+  private convertMesh(node: MeshNode): THREE.Mesh {
+    const { captured, geometries } = this.buildScratch(node.children);
+    const polygons = flattenShapeValues(captured).filter((value): value is PolygonValue => value.kind === "polygon");
+    const meshes = flattenShapeValues(captured).filter((value): value is MeshValue => value.kind === "mesh");
+    const colored = polygons.some((polygon) => polygon.colors !== undefined);
+    const parts = [...(polygons.length ? [geometryFromPolygons(polygons, colored)] : []), ...meshes.map((mesh) => mesh.geometry), ...geometries];
+    if (parts.length === 0) throw new Error("`mesh` needs at least one polygon");
+    const geometry = mergeMeshGeometries(parts);
     const mesh = this.makeMesh(geometry, this.createMaterial({ properties: {} }, undefined, geometry.hasAttribute("color")));
     this.applyCurrentTransform(mesh);
     return mesh;
@@ -775,29 +788,15 @@ export class Converter {
    *  merged into one geometry the script can read members of and place. A
    *  polygon block or a function that returned one is that value itself. */
   private shapeValue(node: SceneNode): Value {
-    const temporary = new THREE.Group();
-    const captured: Value[] = [];
-    const charged = this.vertexCount;
-    try {
-      this.captureValues(captured, () =>
-        this.inScope(temporary, () => {
-          this.currentTransform().matrix.identity();
-          this.addChildren(temporary, [node]);
-        }),
-      );
-      const meshes = this.meshesIn(temporary);
-      if (meshes.length === 0) {
-        if (captured.length === 1) return captured[0]!;
-        if (captured.length > 1) return captured;
-        throw new Error("The shape used as a value produced nothing");
-      }
-      const geometry = mergeMeshGeometries(meshes.map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld)));
-      this.chargeEstimate(geometry.getAttribute("position").count);
-      return { kind: "mesh", geometry, ...(meshes.length === 1 && meshes[0]!.name ? { name: meshes[0]!.name } : {}) };
-    } finally {
-      disposeObject3D(temporary);
-      this.vertexCount = charged;
+    const { captured, geometries, name } = this.buildScratch([node]);
+    if (geometries.length === 0) {
+      if (captured.length === 1) return captured[0]!;
+      if (captured.length > 1) return captured;
+      throw new Error("The shape used as a value produced nothing");
     }
+    const geometry = mergeMeshGeometries(geometries);
+    this.chargeEstimate(geometry.getAttribute("position").count);
+    return { kind: "mesh", geometry, ...(name === undefined ? {} : { name }) };
   }
 
   /** A function whose body builds shapes: run it at the origin with its
@@ -805,24 +804,10 @@ export class Converter {
   private callShapeFunction(fn: FunctionValue, args: Value[]): Value {
     const { params = [], body = [], value, name } = fn.definition;
     return this.evaluator.withArguments(params, args, () => {
-      const temporary = new THREE.Group();
-      const captured: Value[] = [];
-      const charged = this.vertexCount;
-      try {
-        this.captureValues(captured, () =>
-          this.inScope(temporary, () => {
-            this.currentTransform().matrix.identity();
-            this.addChildren(temporary, body);
-            if (value !== undefined) captured.push(this.evaluator.evaluate(value));
-          }),
-        );
-        for (const mesh of this.meshesIn(temporary)) {
-          captured.push({ kind: "mesh", geometry: mesh.geometry.clone().applyMatrix4(mesh.matrixWorld) });
-        }
-      } finally {
-        disposeObject3D(temporary);
-        this.vertexCount = charged;
-      }
+      const { captured, geometries } = this.buildScratch(body, (values) => {
+        if (value !== undefined) values.push(this.evaluator.evaluate(value));
+      });
+      for (const geometry of geometries) captured.push({ kind: "mesh", geometry });
       if (captured.length === 0) throw new Error(`Function \`${name}\` produced no value`);
       return captured.length === 1 ? captured[0]! : captured;
     });
