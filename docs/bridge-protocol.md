@@ -306,11 +306,13 @@ For the production-grade TS version with error paths baked in, use
 
 ## Operational notes
 
-- **Server restart invalidates the token.** Every bridge caches it
-  at startup. After a server bounce, the bridge sees
-  `invalid token` and must re-read the token. For long-running
-  bridges, pin the token with `MULMOCLAUDE_AUTH_TOKEN` on both
-  sides (#316).
+- **Server restart rewrites BOTH sidecars.** Re-read the pair on
+  every failed connection and rebuild when it has changed — see
+  "Re-read the pair on every connection failure" above. Do not wait
+  for `invalid token`: a restart that lands on a different port never
+  produces one, because nothing answers. Pinning the token with
+  `MULMOCLAUDE_AUTH_TOKEN` on both sides (#316) is for a bridge on a
+  DIFFERENT machine, which cannot read the workspace at all.
 - **Bridges are stateless.** All chat state lives server-side under
   `~/mulmoclaude/transports/<transportId>/chats/<externalChatId>.json`.
   A bridge can be killed and restarted freely.

@@ -28,8 +28,11 @@
 - `credentialsChanged(current, fresh)` — 対が変わったか。変わっていなければ何もしない
   （socket.io 自身のリトライに任せる。無駄に socket を作り直さない）。
 - `backoffMs(attempt)` — 上限付き指数バックオフ。時刻も fs も注入しないで済むよう純関数。
-- `createSupervisor({ resolve, create, onSwitch, schedule })` — `connect_error` を受けたら
-  バックオフ後に `resolve()` し、対が変われば古い socket を破棄して新しく作る。
+
+配線そのものは `client.ts` のクロージャに置く（`createSupervisor(...)` のような注入可能な
+殻は作らない）。socket・購読・保留中の send・リトライタイマは同じ寿命を共有しており、
+それを外へ出すと引数で配り直すだけになるため。**テスト可能性は殻ではなく実サーバで担保する**
+（下の検証を参照）。
 
 `client.ts` 側:
 
