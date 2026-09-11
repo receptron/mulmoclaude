@@ -251,6 +251,8 @@ conventions, so a script written against the upstream docs renders the same here
   make a surface or solid of it.
 - `size 1 2` pads to `1 2 1` (Euclid's `Vector(size:)`), so `cylinder { size 1 2 }` is a
   cylinder of diameter 1 and height 2.
+- `extrude` is centred on its profile plane, spanning ±depth/2 (2.1.0; it ran 0…depth
+  before), and a lathe always faces outward whichever way its profile is drawn.
 
 Deviations that remain: an *open* path whose first or last point is a `curve` treats it as a
 corner (upstream extrapolates a tangent), path points are 2D, nested sub-paths (holes) are not

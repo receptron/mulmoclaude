@@ -52,6 +52,8 @@ Found while running the upstream examples (fixed in 2.1.0, also phase-1 class):
 | 17 | `size` on a builder / group, `material` inside a builder block | scales the result; sets its material | ignored | fixed in 2.1.0 |
 | 18 | options on a custom block call (`post { position 1 orientation 0.5 }`) | place the block's output | bound as symbols; `orientation` was a parse error | fixed in 2.1.0 |
 | 19 | lathe profile on the −X side | same solid | inside-out | fixed in 2.1.0 |
+| 20 | lathe profile drawn top-down | oriented outward (Euclid) | inside out, so `union` dropped it (Chessboard queens) | fixed in 2.1.0 |
+| 21 | `extrude` depth placement | centred: ±depth/2 around the profile plane | 0…depth (Train running board offset) | fixed in 2.1.0 |
 
 ## Phase 2 — commands that parse but fail to render — DONE (2.1.0)
 

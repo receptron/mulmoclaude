@@ -40,8 +40,11 @@ Dodecahedron, Fillet and Spirals are refused with a message naming the missing f
 
 **Behaviour changes** toward upstream: `for` / `if` / `switch` bodies no longer reset transforms
 and materials at their closing brace (only symbols are scoped there, per upstream's scope rules
-— Chessboard depends on it), and a bare `path` at scene level draws as a line rather than a
-filled face (`fill` it for the old result).
+— Chessboard depends on it); a bare `path` at scene level draws as a line rather than a
+filled face (`fill` it for the old result); `extrude` spans ±depth/2 around its profile plane
+as upstream does (it ran 0…depth, which offset the train's running board); and a lathe whose
+profile is drawn top-down is oriented outward (it was inside out, and booleans dropped it —
+the chess queens lost their bodies).
 
 ### Changed
 
