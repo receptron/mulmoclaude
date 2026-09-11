@@ -297,6 +297,9 @@ function isPresentMulmoScriptToolResult(entry: unknown): entry is PresentMulmoSc
   const { result } = entry;
   if (!isRecord(result) || result.toolName !== "presentMulmoScript") return false;
   const { data } = result;
+  // `root` is optional and stays untyped here — it is read through a `typeof` check at the
+  // one place that uses it, so a malformed value degrades to the default root rather than
+  // rejecting an entry that is otherwise fine to replay.
   return isRecord(data) && typeof data.filePath === "string";
 }
 
@@ -313,7 +316,11 @@ function isPresentMulmoScriptToolResult(entry: unknown): entry is PresentMulmoSc
 // replaying the script as it was when the tool call ran).
 async function enrichWithMulmoScript(entry: PresentMulmoScriptToolResult): Promise<unknown> {
   try {
-    const resolved = mulmoScriptOps.resolveStory(entry.result.data.filePath);
+    // The PAIR, not the path: `stories/deck.json` exists in every registered stories root, so
+    // rehydrating by path alone re-reads the DEFAULT root's file of that name and replays a
+    // different deck into the session (#3014). `root` is what the card carries; absent = default.
+    const { filePath, root } = entry.result.data;
+    const resolved = mulmoScriptOps.resolveStory(filePath, typeof root === "string" ? root : undefined);
     if (!resolved.ok) return entry;
     const scriptJson = (await readTextSafe(resolved.absolutePath)) ?? "";
     const script: unknown = JSON.parse(scriptJson);
