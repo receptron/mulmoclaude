@@ -45,15 +45,22 @@
 
 ## 検証
 
-- 単体: `credentialsChanged` の表、`backoffMs` の単調性と上限。
+- 単体: `credentialsChanged` の表、`backoffMs` の単調性と上限、
+  `resolvePublishedApiUrl`（既定値を持たない解決）と `resolveApiUrl`（起動用、既定値あり）の差。
 - **e2e（実 socket.io サーバ）**: #3081 の `test/bridges/` と同じ形で、
   ① token だけ変えたサーバ再起動にブリッジが自力で追従する
   ② **ポートが変わる**再起動に追従する（A-3 の本体）
   ③ 再起動中の token 不在を跨いでも死なない
-  ④ **入れ替えた socket が止まること**（`connected` も `active` も false。再起動ごとに
+  ④ **token だけ publish された窓で既定値に作り直さない**（サーバは起動時に
+     `.server-port` を消してから新しい token を書く #3082 ので「token あり・port 無し」は
+     実在かつ頻出の状態。ここで既定値に解決すると**下ろしたての token を 3001 の住人に渡す**）
+  ⑤ **入れ替えた socket が止まること**（`connected` も `active` も false。再起動ごとに
      死んだポートを叩き続ける manager が積み上がると leak になる）
-  ⑤ 対が変わっていなければ socket を作り直さない（negative control）
-- break-verify: 追従ロジックを無効化すると **5 件中 4 件が赤**になり、⑤ だけ緑のまま。
+  ⑥ **入れ替えで捨てられる send が即座に失敗すること**（切断中に出した send は socket.io が
+     queue するので、来ない再接続を 6 分待つ）
+  ⑦ 対が変わっていなければ socket を作り直さない（negative control）
+- break-verify: 追従ロジックを無効化すると **7 件中 5 件が赤**になり、negative control 2 件
+  （④ と ⑦ — どちらも「作り直さないこと」を主張するので、何も作り直さなければ通る）だけ緑。
 
 ## 対象外
 

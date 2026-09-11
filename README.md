@@ -150,7 +150,9 @@ All bridges support **real-time text streaming** (typing updates as the agent wr
 
 #### Auth token persistence for long-running bridges
 
-The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset). A bridge that started before the server restart keeps the **old** token in memory and every API call then returns **401**, silently.
+The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset), alongside the port it bound in `.server-port`.
+
+**A bridge follows a restart on its own.** When the connection fails it re-reads both files and rebuilds its socket once the server has published a new generation — new token, new port, or both (#3078). Restarting the bridge is not required.
 
 Pinning the token is still useful when the bridge runs **on a different machine** from the server, where it cannot read the workspace at all: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on both sides. The server then uses it verbatim instead of regenerating.
 

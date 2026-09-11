@@ -56,6 +56,25 @@ export function readPublishedApiUrl(): string | null {
 }
 
 /**
+ * Everything except the default: an explicit argument, `MULMOCLAUDE_API_URL`,
+ * or the port the server published — and `null` when none of those says
+ * anything.
+ *
+ * The distinction matters exactly once, and it is a security boundary rather
+ * than a nicety. A caller RECONNECTING must be able to tell "the server has not
+ * published a port yet" from "here is a port", because the server clears
+ * `.server-port` at startup and writes the new token before publishing the new
+ * one (#3082). Collapsing the first into `DEFAULT_API_URL` there would take a
+ * freshly minted bearer token to whatever holds 3001 (Codex, #3078).
+ */
+export function resolvePublishedApiUrl(explicit?: string): string | null {
+  if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  const fromEnv = process.env.MULMOCLAUDE_API_URL;
+  if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
+  return readPublishedApiUrl();
+}
+
+/**
  * Resolution order: explicit argument → `MULMOCLAUDE_API_URL` → the port the
  * server published → `DEFAULT_API_URL`.
  *
@@ -63,10 +82,11 @@ export function readPublishedApiUrl(): string | null {
  * An EMPTY value falls through instead of being used verbatim, matching how
  * `readBridgeToken` treats an empty `MULMOCLAUDE_AUTH_TOKEN` — an empty
  * string reached `io("")` before this.
+ *
+ * The default at the end is a STARTUP affordance: a bridge run against a
+ * machine where no server has published anything still tries the conventional
+ * port. Do not reuse it for reconnection — see `resolvePublishedApiUrl`.
  */
 export function resolveApiUrl(explicit?: string): string {
-  if (typeof explicit === "string" && explicit.length > 0) return explicit;
-  const fromEnv = process.env.MULMOCLAUDE_API_URL;
-  if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv;
-  return readPublishedApiUrl() ?? DEFAULT_API_URL;
+  return resolvePublishedApiUrl(explicit) ?? DEFAULT_API_URL;
 }

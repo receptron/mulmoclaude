@@ -16,7 +16,7 @@ import { io, type Socket } from "socket.io-client";
 import { CHAT_SOCKET_EVENTS, CHAT_SOCKET_PATH, type Attachment, type BridgeOptions } from "@mulmobridge/protocol";
 import { readBridgeToken, tokenFilePath } from "./token.js";
 import { readBridgeEnvOptions } from "./options.js";
-import { resolveApiUrl } from "./apiUrl.js";
+import { resolveApiUrl, resolvePublishedApiUrl } from "./apiUrl.js";
 import { backoffMs, credentialsChanged, type Credentials } from "./supervisor.js";
 
 // 6 min > the server's REPLY_TIMEOUT_MS (5 min) so the server's
@@ -141,15 +141,25 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   const options = opts.options ?? readBridgeEnvOptions(opts.transportId, process.env);
   const subscriptions = emptySubscriptions();
 
+  const pending: Pending = new Set();
   let current: Credentials = { apiUrl: resolveApiUrl(opts.apiUrl), token };
   let attempt = 0;
   let retry: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
 
-  /** The pair as the workspace has it NOW, or null while the server is mid-restart. */
+  /** The pair as the workspace has it NOW, or null while the server is mid-restart.
+   *
+   *  BOTH halves have to be present. The startup default is deliberately not
+   *  consulted here: the server clears `.server-port` before writing the new
+   *  token (#3082), so "token, no port" is a real and frequent state, and
+   *  resolving it to `http://localhost:3001` would carry a freshly minted
+   *  bearer token to whatever holds that port (Codex, #3078). Half a generation
+   *  is not a generation. */
   const reread = (): Credentials | null => {
-    const fresh = readBridgeToken();
-    return fresh === null ? null : { apiUrl: resolveApiUrl(opts.apiUrl), token: fresh };
+    const freshToken = readBridgeToken();
+    const freshApiUrl = resolvePublishedApiUrl(opts.apiUrl);
+    if (freshToken === null || freshApiUrl === null) return null;
+    return { apiUrl: freshApiUrl, token: freshToken };
   };
 
   const open = (credentials: Credentials): Socket => {
@@ -178,6 +188,7 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
     attempt += 1;
     if (!credentialsChanged(current, fresh) || fresh === null) return;
     console.error(`\nServer moved: reconnecting to ${fresh.apiUrl}.\n`);
+    abandon(pending, "the server restarted before this was acknowledged — resend");
     socket.removeAllListeners();
     socket.close();
     current = fresh;
@@ -192,7 +203,7 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   }
 
   return {
-    send: (externalChatId, text, attachments) => sendMessage(socket, externalChatId, text, attachments),
+    send: (externalChatId, text, attachments) => sendMessage(socket, pending, externalChatId, text, attachments),
     onPush: (handler) => {
       subscriptions.push.push(handler);
       socket.on(CHAT_SOCKET_EVENTS.push, handler);
@@ -214,6 +225,7 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
     close: () => {
       closed = true;
       if (retry !== null) clearTimeout(retry);
+      abandon(pending, "the bridge closed before this was acknowledged");
       socket.disconnect();
     },
     get socket() {
@@ -222,18 +234,38 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   };
 }
 
-function sendMessage(socket: Socket, externalChatId: string, text: string, attachments?: Attachment[]): Promise<MessageAck> {
+/** Resolvers for sends whose ack has not arrived, so a socket being replaced
+ *  can settle them instead of leaving them to time out (see `abandon`). */
+type Pending = Set<(ack: MessageAck) => void>;
+
+function sendMessage(socket: Socket, pending: Pending, externalChatId: string, text: string, attachments?: Attachment[]): Promise<MessageAck> {
   const payload: Record<string, unknown> = { externalChatId, text };
   if (attachments && attachments.length > 0) payload.attachments = attachments;
   return new Promise((resolve) => {
+    const settle = (ack: MessageAck): void => {
+      if (!pending.delete(settle)) return;
+      resolve(ack);
+    };
+    pending.add(settle);
     socket.timeout(REPLY_TIMEOUT_MS).emit(CHAT_SOCKET_EVENTS.message, payload, (err: Error | null, ack: MessageAck | undefined) => {
-      if (err) {
-        resolve({ ok: false, error: `timeout: ${err.message}` });
-        return;
-      }
-      resolve(ack ?? { ok: false, error: "no ack from server" });
+      settle(err ? { ok: false, error: `timeout: ${err.message}` } : (ack ?? { ok: false, error: "no ack from server" }));
     });
   });
+}
+
+/**
+ * Fail every unacknowledged send, because the socket carrying them is going.
+ *
+ * socket.io settles an IN-FLIGHT ack immediately when its socket closes, but a
+ * send issued while the socket was already disconnected is queued for a
+ * reconnection that will never happen here — the socket is being replaced, not
+ * reconnected — so its callback would sit for the full 6-minute ack timeout
+ * (measured, Codex). The bridge's user would wait six minutes for a message the
+ * client already knows it cannot deliver.
+ */
+function abandon(pending: Pending, reason: string): void {
+  Array.from(pending).forEach((settle) => settle({ ok: false, error: reason }));
+  pending.clear();
 }
 
 function installDefaultLogging(socket: Socket): void {

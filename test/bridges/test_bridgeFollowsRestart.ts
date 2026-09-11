@@ -21,7 +21,7 @@ import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { Server as IOServer } from "socket.io";
 import { CHAT_SOCKET_PATH, CHAT_SOCKET_EVENTS } from "@mulmobridge/protocol";
-import { createBridgeClient, type BridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, resolveApiUrl, resolvePublishedApiUrl, type BridgeClient } from "@mulmobridge/client";
 
 const RECONNECT_BUDGET_MS = 25_000;
 const POLL_MS = 100;
@@ -108,6 +108,15 @@ function unpublish(): void {
 
 const sleep = (delayMs: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, delayMs));
 
+/** Fail loudly rather than let the 6-minute ack timeout decide the test. */
+function withDeadline<T>(work: Promise<T>, budgetMs: number): Promise<T> {
+  const expiry = new Promise<never>((_resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`still unsettled after ${budgetMs}ms`)), budgetMs);
+    timer.unref?.();
+  });
+  return Promise.race([work, expiry]);
+}
+
 /** Poll `send` until the answer names the generation we are waiting for. */
 async function waitForGeneration(client: BridgeClient, label: string): Promise<string> {
   const deadline = Date.now() + RECONNECT_BUDGET_MS;
@@ -182,6 +191,66 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
       publish(second);
       try {
         assert.equal(await waitForGeneration(client, "gen-y"), "gen-y", "an absent sidecar must not be fatal mid-life");
+      } finally {
+        await second.stop();
+      }
+    } finally {
+      client.close();
+    }
+  });
+
+  // The window #3082's startup clear deliberately creates: the new token is
+  // written BEFORE the new port is published, so "token, no port" is a real and
+  // frequent state. Resolving it through the startup default would take a
+  // freshly minted bearer token to whatever holds 3001 (Codex).
+  it("will not rebuild against the default while only the token half is published", async () => {
+    const first = await startGeneration("gen-only-token", "token-before");
+    publish(first);
+    const client = createBridgeClient({ transportId: "cli", options: {} });
+    try {
+      assert.equal(await waitForGeneration(client, "gen-only-token"), "gen-only-token");
+      const original = client.socket;
+
+      await first.stop();
+      unpublish();
+      // Exactly the gap: a new token on disk, no port yet.
+      writeFileSync(path.join(workspace, ".session-token"), "token-after\n", "utf-8");
+      await sleep(3000);
+
+      assert.equal(client.socket, original, "half a generation must not trigger a rebuild");
+      assert.equal(resolvePublishedApiUrl(undefined), null, "the runtime resolver must report the absent port rather than the default");
+      assert.equal(resolveApiUrl(undefined), "http://localhost:3001", "the STARTUP resolver still has its default");
+    } finally {
+      client.close();
+    }
+  });
+
+  // A send issued while the socket is already disconnected is QUEUED by
+  // socket.io for a reconnection that will never happen — the socket is being
+  // replaced, not reconnected — so its callback would sit for the full
+  // 6-minute ack timeout. The bridge's user would wait six minutes for a
+  // message the client already knows it cannot deliver (Codex).
+  it("fails a send the replaced socket can never acknowledge, instead of timing out", async () => {
+    const first = await startGeneration("gen-p", "token-p");
+    publish(first);
+    const client = createBridgeClient({ transportId: "cli", options: {} });
+    try {
+      assert.equal(await waitForGeneration(client, "gen-p"), "gen-p");
+
+      await first.stop();
+      // Wait for the socket to notice, so the send is QUEUED rather than in flight.
+      while (client.socket.connected) await sleep(50);
+      const queued = client.send("chat-1", "sent into the outage");
+
+      unpublish();
+      const second = await startGeneration("gen-q", "token-q");
+      publish(second);
+      try {
+        const ack = await withDeadline(queued, 20_000);
+        assert.equal(ack.ok, false, "the abandoned send must report failure");
+        assert.match(ack.error ?? "", /restarted/, `expected a restart error, got ${JSON.stringify(ack)}`);
+        // And the client itself is healthy on the new generation.
+        assert.equal(await waitForGeneration(client, "gen-q"), "gen-q");
       } finally {
         await second.stop();
       }

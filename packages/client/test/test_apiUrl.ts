@@ -12,6 +12,7 @@ import path from "node:path";
 
 interface ApiUrlModule {
   resolveApiUrl: (explicit?: string) => string;
+  resolvePublishedApiUrl: (explicit?: string) => string | null;
   readPublishedApiUrl: () => string | null;
   parsePublishedPort: (raw: string | null) => number | null;
   DEFAULT_API_URL: string;
@@ -162,5 +163,48 @@ describe("resolveApiUrl — empty values mean 'unset'", () => {
     publishPort("3002\n");
     const { resolveApiUrl } = await loadFresh();
     assert.equal(resolveApiUrl(), "http://127.0.0.1:3002");
+  });
+});
+
+// The runtime/startup split is a security boundary, not a convenience (#3078).
+// A reconnecting client must be able to tell "nothing published yet" from "here
+// is a port": the server clears `.server-port` at startup and writes the new
+// token BEFORE republishing, so "token, no port" is a real and frequent state,
+// and resolving it through the default would carry a freshly minted bearer
+// token to whatever holds 3001 (Codex).
+describe("resolvePublishedApiUrl — the same order, without the default", () => {
+  it("reports null when nothing is published, where resolveApiUrl gives the default", async () => {
+    const { resolveApiUrl, resolvePublishedApiUrl, DEFAULT_API_URL } = await loadFresh();
+    assert.equal(resolvePublishedApiUrl(), null);
+    assert.equal(resolveApiUrl(), DEFAULT_API_URL);
+  });
+
+  it("reports null when the published value is unusable", async () => {
+    publishPort("not-a-port\n");
+    const { resolvePublishedApiUrl } = await loadFresh();
+    assert.equal(resolvePublishedApiUrl(), null);
+  });
+
+  it("returns the published origin when there is one", async () => {
+    publishPort("3099\n");
+    const { resolvePublishedApiUrl } = await loadFresh();
+    assert.equal(resolvePublishedApiUrl(), "http://127.0.0.1:3099");
+  });
+
+  it("an explicit argument still wins, and is never null", async () => {
+    const { resolvePublishedApiUrl } = await loadFresh();
+    assert.equal(resolvePublishedApiUrl("http://explicit.example:9999"), "http://explicit.example:9999");
+  });
+
+  it("MULMOCLAUDE_API_URL still wins, and is never null", async () => {
+    process.env.MULMOCLAUDE_API_URL = "http://env.example:1234";
+    const { resolvePublishedApiUrl } = await loadFresh();
+    assert.equal(resolvePublishedApiUrl(), "http://env.example:1234");
+  });
+
+  it("and the two agree whenever a value exists at all", async () => {
+    publishPort("3002\n");
+    const { resolveApiUrl, resolvePublishedApiUrl } = await loadFresh();
+    assert.equal(resolvePublishedApiUrl(), resolveApiUrl());
   });
 });
