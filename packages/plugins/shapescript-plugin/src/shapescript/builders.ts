@@ -189,7 +189,12 @@ export function sweepRings(section: THREE.Vector3[], path: THREE.Vector3[], clos
     if (binormal.lengthSq() < 1e-12) binormal.copy(perpendicularTo(tangent));
     binormal.normalize();
     const normal = tangent.clone().cross(binormal).normalize();
-    return section.map((point) => origin.clone().addScaledVector(binormal, point.x * widen).addScaledVector(normal, point.y));
+    return section.map((point) =>
+      origin
+        .clone()
+        .addScaledVector(binormal, point.x * widen)
+        .addScaledVector(normal, point.y),
+    );
   });
 }
 
@@ -219,7 +224,13 @@ export function ribbonGeometry(points: THREE.Vector3[], depth: number): THREE.Bu
   }
   const front = new THREE.BufferGeometry();
   front.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  front.setAttribute("uv", new THREE.Float32BufferAttribute(points.flatMap((_, i) => [i / (points.length - 1), 0, i / (points.length - 1), 1]), 2));
+  front.setAttribute(
+    "uv",
+    new THREE.Float32BufferAttribute(
+      points.flatMap((_, i) => [i / (points.length - 1), 0, i / (points.length - 1), 1]),
+      2,
+    ),
+  );
   front.setIndex(indices);
   front.computeVertexNormals();
   const back = front.clone();

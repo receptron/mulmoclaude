@@ -2039,7 +2039,14 @@ export class Converter {
       }
       this.chargeEstimate(geometry.getAttribute("position").count);
       const color = uniformColorOf(first!);
-      if (color) geometry.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(geometry.getAttribute("position").count * 3).map((_, i) => color[i % 3]!), 3));
+      if (color)
+        geometry.setAttribute(
+          "color",
+          new THREE.Float32BufferAttribute(
+            new Float32Array(geometry.getAttribute("position").count * 3).map((_, i) => color[i % 3]!),
+            3,
+          ),
+        );
       return geometry;
     });
   }
@@ -2174,7 +2181,13 @@ function coloredClone(mesh: THREE.Mesh): THREE.BufferGeometry {
   const color = uniformColorOf(mesh);
   if (color && !geometry.hasAttribute("color")) {
     const count = geometry.getAttribute("position").count;
-    geometry.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(count * 3).map((_, i) => color[i % 3]!), 3));
+    geometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(
+        new Float32Array(count * 3).map((_, i) => color[i % 3]!),
+        3,
+      ),
+    );
   }
   return geometry;
 }

@@ -919,6 +919,15 @@ describe("minkowski, inset and extrude along", () => {
     withMesh("minkowski {\n difference {\n  cube\n  cube { size 0.4 2 0.4 }\n }\n sphere { size 0.2 }\n}", (mesh) => {
       near(extent(mesh).toArray(), [1.2, 1.2, 1.2], 0.01);
     });
+    // Two non-convex operands: an L-shaped prism summed with itself has
+    // parallel faces whose sums are flat; those pairs are skipped, the rest
+    // merge into a solid with finite normals and the expected extent.
+    const L = "extrude path { point 0 0 point 2 0 point 2 1 point 1 1 point 1 2 point 0 2 point 0 0 }";
+    withMesh(`minkowski {\n ${L}\n ${L}\n}`, (mesh) => {
+      near(extent(mesh).toArray(), [4, 4, 2], 1e-4);
+      const normal = mesh.geometry.getAttribute("normal");
+      for (let i = 0; i < normal.count; i++) assert.ok(Number.isFinite(normal.getX(i)) && Number.isFinite(normal.getY(i)), `normal ${i}`);
+    });
     assert.throws(() => objectsOf("minkowski { cube }"), /at least two/);
     assert.throws(() => objectsOf("minkowski { cube path { point 0 0 point 1 0 } }"), /at least two/);
   });

@@ -66,21 +66,31 @@ export function isConvex(triangles: readonly THREE.Vector3[][], points: readonly
 }
 
 /** The convex hull of `points`, smooth-shaded: it is the rounded part of a
- *  Minkowski sum, so shared vertices average their face normals. */
-export function smoothHull(points: THREE.Vector3[]): THREE.BufferGeometry {
+ *  Minkowski sum, so shared vertices average their face normals. Coplanar
+ *  points (two parallel faces summed) give a flat sliver rather than a throw
+ *  from `ConvexGeometry`; that is `undefined` here. */
+export function smoothHull(points: THREE.Vector3[]): THREE.BufferGeometry | undefined {
   if (points.length > MAX_HULL_POINTS) throw new Error("`minkowski` operands are too detailed — lower `detail` or simplify the shapes");
   const hull = new ConvexGeometry(points);
   hull.deleteAttribute("normal");
   hull.deleteAttribute("uv");
   const merged = mergeVertices(hull, 1e-6);
   hull.dispose();
-  if (!merged.getAttribute("position")?.count) {
+  if (!merged.getAttribute("position")?.count || Math.abs(enclosedVolume(merged)) < DEGENERATE_VOLUME) {
     merged.dispose();
-    throw new Error("`minkowski` operands must enclose a volume");
+    return undefined;
   }
   merged.computeVertexNormals();
   merged.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(merged.getAttribute("position").count * 2), 2));
   return merged;
+}
+
+const DEGENERATE_VOLUME = 1e-12;
+
+function enclosedVolume(geometry: THREE.BufferGeometry): number {
+  let volume = 0;
+  for (const [a, b, c] of worldTriangles(geometry, new THREE.Matrix4())) volume += a!.dot(b!.clone().cross(c!)) / 6;
+  return volume;
 }
 
 export interface MinkowskiOperand {
@@ -99,15 +109,24 @@ export function minkowskiSum(a: MinkowskiOperand, b: MinkowskiOperand): THREE.Bu
   if (facesA.length === 0 || facesB.length === 0) throw new Error("`minkowski` needs solid operands");
   const convexA = isConvex(facesA, pointsA);
   const convexB = isConvex(facesB, pointsB);
-  if (convexA && convexB) return smoothHull(pairwiseSums(pointsA, pointsB));
+  if (convexA && convexB) {
+    const hull = smoothHull(pairwiseSums(pointsA, pointsB));
+    if (!hull) throw new Error("`minkowski` operands must enclose a volume");
+    return hull;
+  }
   // Sum the non-convex operand's faces with the whole of the other when that
   // one is convex; otherwise pair faces with faces.
   const [faces, other] = convexB ? [facesA, [pointsB]] : convexA ? [facesB, [pointsA]] : [facesA, facesB];
   if (faces.length * other.length > MAX_MINKOWSKI_PIECES) {
     throw new Error(`\`minkowski\` of non-convex shapes is limited to ${MAX_MINKOWSKI_PIECES} face pairs — lower \`detail\` or make the operands convex`);
   }
+  // A flat pair (two parallel faces) adds nothing to the union and is skipped.
   const pieces: THREE.BufferGeometry[] = [];
-  for (const face of faces) for (const corners of other) pieces.push(smoothHull(pairwiseSums(face, corners)));
+  for (const face of faces) for (const corners of other) {
+    const piece = smoothHull(pairwiseSums(face, corners));
+    if (piece) pieces.push(piece);
+  }
+  if (pieces.length === 0) throw new Error("`minkowski` operands must enclose a volume");
   const merged = pieces.length === 1 ? pieces[0]! : mergeGeometries(pieces);
   if (pieces.length > 1) pieces.forEach((piece) => piece.dispose());
   if (!merged) throw new Error("Could not combine the `minkowski` pieces");

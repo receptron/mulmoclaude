@@ -1689,7 +1689,9 @@ export class Parser {
     };
   }
 
-  private parseBuilder(builderType: "extrude" | "loft" | "lathe" | "fill" | "hull" | "minkowski"): ExtrudeNode | LoftNode | LatheNode | FillNode | HullNode | MinkowskiNode {
+  private parseBuilder(
+    builderType: "extrude" | "loft" | "lathe" | "fill" | "hull" | "minkowski",
+  ): ExtrudeNode | LoftNode | LatheNode | FillNode | HullNode | MinkowskiNode {
     this.advance(); // consume builder keyword
 
     // Use the same path parser for `lathe path { ... }` and nested paths,
