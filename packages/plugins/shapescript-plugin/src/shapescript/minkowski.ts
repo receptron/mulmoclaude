@@ -40,14 +40,23 @@ export function worldTriangles(geometry: THREE.BufferGeometry, matrix: THREE.Mat
   return triangles;
 }
 
-/** Whether every vertex lies on or behind every face plane: a convex solid
- *  (faces wound outward), whose Minkowski sum with another convex solid is the
- *  hull of their pairwise vertex sums. */
+/** +1 when the triangles wind outward, −1 when a mirroring `size` or `scale`
+ *  turned them inside out — the sign of the enclosed volume. */
+export function windingSign(triangles: readonly THREE.Vector3[][]): number {
+  let volume = 0;
+  for (const [a, b, c] of triangles) volume += a!.dot(b!.clone().cross(c!));
+  return volume < 0 ? -1 : 1;
+}
+
+/** Whether every vertex lies on or behind every face plane: a convex solid,
+ *  however its faces wind, whose Minkowski sum with another convex solid is
+ *  the hull of their pairwise vertex sums. */
 export function isConvex(triangles: readonly THREE.Vector3[][], points: readonly THREE.Vector3[]): boolean {
   if (triangles.length * points.length > MAX_CONVEXITY_CHECKS) return false;
+  const sign = windingSign(triangles);
   const normal = new THREE.Vector3();
   for (const [a, b, c] of triangles) {
-    normal.crossVectors(b!.clone().sub(a!), c!.clone().sub(a!));
+    normal.crossVectors(b!.clone().sub(a!), c!.clone().sub(a!)).multiplyScalar(sign);
     if (normal.lengthSq() < 1e-18) continue;
     normal.normalize();
     const offset = normal.dot(a!);
@@ -118,8 +127,11 @@ function pairwiseSums(a: readonly THREE.Vector3[], b: readonly THREE.Vector3[]):
 export function insetGeometry(geometry: THREE.BufferGeometry, distance: number): THREE.BufferGeometry {
   const position = geometry.getAttribute("position");
   const normalsAt = new Map<string, THREE.Vector3[]>();
-  for (const [a, b, c] of worldTriangles(geometry, new THREE.Matrix4())) {
-    const normal = new THREE.Vector3().crossVectors(b!.clone().sub(a!), c!.clone().sub(a!));
+  const triangles = worldTriangles(geometry, new THREE.Matrix4());
+  // Outward whichever way the faces wind, so a mirrored mesh insets inward too.
+  const sign = windingSign(triangles);
+  for (const [a, b, c] of triangles) {
+    const normal = new THREE.Vector3().crossVectors(b!.clone().sub(a!), c!.clone().sub(a!)).multiplyScalar(sign);
     if (normal.lengthSq() < 1e-18) continue;
     normal.normalize();
     for (const corner of [a!, b!, c!]) {

@@ -909,6 +909,11 @@ describe("minkowski, inset and extrude along", () => {
       near([volume(mesh)], [1.5 ** 3], 1e-4);
       assert.equal(mesh.geometry.hasAttribute("color"), false);
     });
+    // A mirrored operand is still convex: one hull, not per-face pieces.
+    withMesh("minkowski {\n cube { size -1 1 1 }\n cube { size 0.5 }\n}", (mesh) => {
+      near([volume(mesh)], [1.5 ** 3], 1e-4);
+      assert.ok(mesh.geometry.getAttribute("position").count < 100, `${mesh.geometry.getAttribute("position").count} vertices`);
+    });
   });
   it("sums a non-convex solid face by face", () => {
     withMesh("minkowski {\n difference {\n  cube\n  cube { size 0.4 2 0.4 }\n }\n sphere { size 0.2 }\n}", (mesh) => {
@@ -925,8 +930,15 @@ describe("minkowski, inset and extrude along", () => {
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.max.y, box.min.y], [0.5 - 0.1 * Math.sqrt(5), -0.4], 1e-3);
     });
+    // A mirrored mesh winds inward; inset still moves its faces inward.
+    withMesh("define c cube { size -1 1 1 }\ninset(c 0.1)", (mesh) => near(extent(mesh).toArray(), [0.8, 0.8, 0.8], 1e-5));
     assert.throws(() => objectsOf("inset(1 2)"), /mesh/);
     assert.throws(() => objectsOf("define c cube\ninset(c 1 / 0)"), /finite/);
+    // Every inset result is a retained allocation, charged against the budget.
+    assert.throws(
+      () => disposeObject3D(astToThreeJS(parseShapeScript("define c cube\ndefine d inset(c 0.1)\ndefine e inset(d 0.1)\ncube"), { maxVertices: 60 })),
+      /vertices/,
+    );
   });
   it("keeps the colour a shape value was given and takes the scope's colour otherwise", () => {
     withMesh("define c cone { color 1 0 0 }\ncolor 0 0 1\nc", (mesh) => {
@@ -964,6 +976,8 @@ describe("minkowski, inset and extrude along", () => {
       near([box.min.x, box.max.x, box.min.y, box.max.y, box.min.z, box.max.z], [-0.1, 0.1, 0, 2, -0.1, 0.1], 1e-5);
       near([volume(mesh)], [16 * 0.01 * Math.sin(Math.PI / 16) * 2], 1e-4);
     });
+    // Points closer than the coordinate tolerance merge; a short real segment does not.
+    withMesh("extrude {\n square { size 0.1 }\n along path { point 0 0 point 0.00001 0 }\n}", (mesh) => near([extent(mesh).x], [0.00001], 1e-7));
     // A closed path sweeps a ring with no caps; `size` scales the whole result.
     withMesh("extrude {\n size 2 1 1\n square { size 0.2 }\n along circle { size 2 }\n}", (mesh) => {
       near(extent(mesh).toArray(), [4.4, 2.2, 0.2], 0.01);

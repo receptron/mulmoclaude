@@ -94,7 +94,7 @@ function linePoints(line: THREE.Line): THREE.Vector3[] {
   for (let i = 0; i < position.count; i++) {
     const point = new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(line.matrixWorld);
     const previous = points[points.length - 1];
-    if (previous === undefined || previous.distanceToSquared(point) > PATH_POINT_EPSILON) points.push(point);
+    if (previous === undefined || previous.distanceToSquared(point) > PATH_POINT_EPSILON ** 2) points.push(point);
   }
   return points;
 }
@@ -307,7 +307,11 @@ export class Converter {
     // `detail` is readable as a symbol before any `detail` command runs.
     this.symbols.set("detail", this.detailLevel);
     // Shapes as values and shape-building functions are built here.
-    this.evaluator.hooks = { shape: (node) => this.shapeValue(node), call: (fn, args) => this.callShapeFunction(fn, args) };
+    this.evaluator.hooks = {
+      shape: (node) => this.shapeValue(node),
+      call: (fn, args) => this.callShapeFunction(fn, args),
+      retain: (geometry) => this.chargeRetained(geometry),
+    };
     this.evaluator.maxLoopIterations = this.maxLoopIterations;
     // Initialize with identity transform
     this.pushTransform();

@@ -12,6 +12,7 @@ import {
   trianglesOf,
   triangulatePolygon,
 } from "./meshValues";
+import type * as THREE from "three";
 import { insetGeometry } from "./minkowski";
 
 export type { MeshValue, PolygonValue, BoundsValue, PointValue } from "./meshValues";
@@ -58,6 +59,9 @@ export const isObjectValue = (value: Value | undefined): value is ObjectValue =>
 export interface EvaluatorHooks {
   shape(node: SceneNode): Value;
   call(fn: FunctionValue, args: Value[]): Value;
+  /** A geometry a builtin allocated that stays alive as a value: charged
+   *  against the vertex budget by the converter, or refused. */
+  retain(geometry: THREE.BufferGeometry): void;
 }
 
 /** Upstream's predefined colour constants (materials.md), as RGB tuples. A
@@ -382,13 +386,6 @@ const builtInFunctions: Record<string, (...args: Value[]) => Value> = {
   split: (s: Value, separator: Value) => String(s).split(String(separator ?? "")),
 
   // Colours: `rgb(r g b [a])` passes through, `hsb(h s b [a])` converts.
-  inset: (mesh: Value, distance: Value) => {
-    if (!isObjectValue(mesh) || mesh.kind !== "mesh") throw new Error("`inset` takes a mesh and a distance");
-    const by = toNumber(distance);
-    if (!Number.isFinite(by)) throw new Error("`inset` distance must be a finite number");
-    // The faces move, so the polygons kept from a `mesh { }` block no longer apply.
-    return { kind: "mesh", geometry: insetGeometry(mesh.geometry, by), ...(mesh.name === undefined ? {} : { name: mesh.name }) } as Value;
-  },
   rgb: (...args: Value[]) => args.flat(),
   hsb: (...args: Value[]) => {
     const [h = 0, s = 0, b = 0, a] = args.flat().map(toNumber);
@@ -401,7 +398,8 @@ const builtInFunctions: Record<string, (...args: Value[]) => Value> = {
 };
 
 /** Every built-in a bare call may name (`max 0 1`). */
-export const BUILT_IN_FUNCTION_NAMES: readonly string[] = Object.keys(builtInFunctions);
+// `rand` and `inset` are served by the evaluator itself (see `evaluate`).
+export const BUILT_IN_FUNCTION_NAMES: readonly string[] = [...Object.keys(builtInFunctions), "inset"];
 
 // Accepts `undefined` so callers can index into a `Value[]` under
 // `noUncheckedIndexedAccess` without a guard at every call site; an
@@ -700,6 +698,7 @@ export class Evaluator {
         // `rand()` shares the seeded generator behind `rnd`, so it cannot be
         // served from the shared function table.
         if (name === "rand") return this.random();
+        if (name === "inset") return this.inset(expr.args.map((arg) => this.evaluate(arg)));
         const func = Object.prototype.hasOwnProperty.call(builtInFunctions, name) ? builtInFunctions[name] : undefined;
         if (!func) {
           throw new Error(`Unknown function: ${expr.name}`);
@@ -801,6 +800,26 @@ export class Evaluator {
     if (roughness !== undefined) material.roughness = this.evaluateToNumber(roughness);
     if (texture) material.texture = String(this.evaluate(texture));
     return material;
+  }
+
+  /** `inset(mesh distance)`: a new mesh value with the faces moved inward.
+   *  Its geometry is a fresh allocation that lives on as a value, so it is
+   *  charged the way a defined shape is. */
+  private inset(args: Value[]): Value {
+    const [mesh, distance] = args;
+    if (args.length !== 2 || !isObjectValue(mesh) || mesh.kind !== "mesh") throw new Error("`inset` takes a mesh and a distance");
+    const by = toNumber(distance);
+    if (!Number.isFinite(by)) throw new Error("`inset` distance must be a finite number");
+    if (!this.hooks) throw new Error("`inset` builds a mesh, which cannot be evaluated here");
+    const geometry = insetGeometry(mesh.geometry, by);
+    try {
+      this.hooks.retain(geometry);
+    } catch (error) {
+      geometry.dispose();
+      throw error;
+    }
+    // The faces move, so the polygons kept from a `mesh { }` block no longer apply.
+    return { kind: "mesh", geometry, ...(mesh.name === undefined ? {} : { name: mesh.name }) };
   }
 
   /** Bind the parameters in a fresh scope, run the body's `define`s, and
