@@ -31,6 +31,7 @@ import {
   FillNode,
   HullNode,
   MinkowskiNode,
+  TextNode,
   ShapeProperties,
   ShapePrimitive,
 } from "./types";
@@ -44,8 +45,6 @@ const IGNORED_BLOCKS = new Set(["camera", "light"]);
 /** Upstream commands this renderer has no equivalent for. Named individually
  *  so the diagnostic says what was meant rather than "Unknown shape". */
 const UNSUPPORTED_COMMANDS: Record<string, string> = {
-  text: "`text` (3D text) is not supported by this renderer",
-  font: "`font` is not supported by this renderer",
   import: "`import` is not supported by this renderer — inline the shapes instead",
   svgpath: "`svgpath` is not supported by this renderer — write the outline as a `path`",
   object: "`object` values are not supported by this renderer — use tuples",
@@ -168,6 +167,7 @@ class Lexer {
       fill: TokenType.FILL,
       hull: TokenType.HULL,
       minkowski: TokenType.MINKOWSKI,
+      text: TokenType.TEXT,
       group: TokenType.GROUP,
       mesh: TokenType.MESH,
       path: TokenType.PATH,
@@ -581,6 +581,7 @@ const SHAPE_VALUE_TOKENS = new Set([
   TokenType.FILL,
   TokenType.HULL,
   TokenType.MINKOWSKI,
+  TokenType.TEXT,
   TokenType.GROUP,
   TokenType.MESH,
   TokenType.PATH,
@@ -1179,80 +1180,69 @@ export class Parser {
 
     while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
       this.skipNewlines();
-
-      const token = this.current();
-
-      switch (token.type) {
-        case TokenType.POSITION:
-          this.advance();
-          properties.position = this.parseVectorOrExpression();
-          break;
-
-        case TokenType.ROTATION:
-          this.advance();
-          properties.rotation = this.parseVectorOrExpression();
-          break;
-
-        case TokenType.ORIENTATION:
-          this.advance();
-          properties.orientation = this.parseVectorOrExpression();
-          break;
-
-        case TokenType.SIZE:
-          this.advance();
-          properties.size = this.parseVectorOrExpression();
-          break;
-
-        case TokenType.COLOR:
-          this.advance();
-          properties.color = this.parseVectorOrExpression();
-          break;
-
-        case TokenType.OPACITY:
-          this.advance();
-          properties.opacity = this.parseExpression();
-          break;
-
-        case TokenType.MATERIAL:
-          this.advance();
-          properties.material = this.parseExpression();
-          break;
-
-        case TokenType.METALLICITY:
-        case TokenType.ROUGHNESS:
-        case TokenType.GLOW:
-        case TokenType.TEXTURE:
-          this.advance();
-          properties[String(token.value).toLowerCase() as "glow"] = this.parseVectorOrExpression();
-          break;
-
-        case TokenType.DETAIL:
-        case TokenType.SMOOTHING:
-          this.advance();
-          properties[String(token.value).toLowerCase() as "detail"] = this.parseExpression();
-          break;
-
-        case TokenType.RBRACE:
-          // End of properties block
-          return properties;
-
-        case TokenType.IDENTIFIER: {
-          const key = String(token.value);
-          if (!["sides", "radiusTop", "radiusBottom", "height", "innerRadius", "outerRadius", "radius", "name"].includes(key)) return properties;
-          this.advance();
-          properties[key as "sides"] = this.parseExpression();
-          break;
-        }
-
-        default:
-          // Not a property token - stop parsing properties and return
-          return properties;
-      }
-
+      if (!this.parseProperty(properties)) return properties;
       this.skipNewlines();
     }
 
     return properties;
+  }
+
+  /** One property statement into `properties`; false when the current token
+   *  does not begin one (the caller decides what it is instead). */
+  private parseProperty(properties: ShapeProperties): boolean {
+    const token = this.current();
+    switch (token.type) {
+      case TokenType.POSITION:
+        this.advance();
+        properties.position = this.parseVectorOrExpression();
+        return true;
+      case TokenType.ROTATION:
+        this.advance();
+        properties.rotation = this.parseVectorOrExpression();
+        return true;
+      case TokenType.ORIENTATION:
+        this.advance();
+        properties.orientation = this.parseVectorOrExpression();
+        return true;
+      case TokenType.SIZE:
+        this.advance();
+        properties.size = this.parseVectorOrExpression();
+        return true;
+      case TokenType.COLOR:
+        this.advance();
+        properties.color = this.parseVectorOrExpression();
+        return true;
+      case TokenType.OPACITY:
+        this.advance();
+        properties.opacity = this.parseExpression();
+        return true;
+      case TokenType.MATERIAL:
+        this.advance();
+        properties.material = this.parseExpression();
+        return true;
+      case TokenType.METALLICITY:
+      case TokenType.ROUGHNESS:
+      case TokenType.GLOW:
+      case TokenType.TEXTURE:
+        this.advance();
+        properties[String(token.value).toLowerCase() as "glow"] = this.parseVectorOrExpression();
+        return true;
+      case TokenType.DETAIL:
+      case TokenType.SMOOTHING:
+        this.advance();
+        properties[String(token.value).toLowerCase() as "detail"] = this.parseExpression();
+        return true;
+      case TokenType.IDENTIFIER: {
+        const key = String(token.value);
+        if (!["sides", "radiusTop", "radiusBottom", "height", "innerRadius", "outerRadius", "radius", "name"].includes(key)) return false;
+        this.advance();
+        properties[key as "sides"] = this.parseExpression();
+        return true;
+      }
+      default:
+        // Not a property token: the caller reads it.
+        return false;
+    }
   }
 
   private parseBlockContents(): SceneNode[] {
@@ -1678,6 +1668,75 @@ export class Parser {
     return { type: "ignored", command };
   }
 
+  /** `font "Name"`: consumed and dropped, as the built-in face is the only one. */
+  private isFontCommand(token: Token): boolean {
+    return token.type === TokenType.IDENTIFIER && token.value === "font" && !this.values.has("font") && !this.blocks.has("font") && !this.callable.has("font");
+  }
+
+  private skipFont(): SceneNode {
+    this.advance();
+    this.parseVectorOrExpression();
+    return { type: "ignored", command: "font" };
+  }
+
+  /** `text "Hello"` / `text i " apples"`, or a block of lines with options:
+   *  `text { size 0.5; wrapwidth 3; "Hello,"; "World!" }`. */
+  private parseText(): TextNode {
+    this.advance(); // consume 'text'
+    const node: TextNode = { type: "text", lines: [], properties: {} };
+    if (this.current().type !== TokenType.LBRACE) {
+      const token = this.current();
+      if (!this.startsValue()) throw new ParseError("`text` needs a string, a value or a block", token.line, token.column);
+      node.lines.push(this.parseVectorOrExpression());
+      return node;
+    }
+    this.expect(TokenType.LBRACE);
+    this.skipNewlines();
+    this.scoped(() => {
+      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+        this.parseTextLine(node);
+        this.skipNewlines();
+      }
+    });
+    this.expect(TokenType.RBRACE);
+    return node;
+  }
+
+  /** One line of a `text` block: an option, a property, or a line of text. */
+  private parseTextLine(node: TextNode): void {
+    const token = this.current();
+    const option = this.textOption(token);
+    if (option === "font") {
+      this.advance();
+      node.font = this.parseVectorOrExpression();
+      return;
+    }
+    if (option !== undefined) {
+      this.advance();
+      node[option] = this.parseExpression();
+      return;
+    }
+    // A bound symbol on its own line is a line of text, even if it is spelled
+    // like a property (`define label(name) { text { name } }`).
+    if (this.isBoundKeyword(token) || (token.type === TokenType.IDENTIFIER && this.values.has(String(token.value)))) {
+      node.lines.push(this.parseVectorOrExpression());
+      return;
+    }
+    if (this.parseProperty(node.properties)) return;
+    if (!this.startsValue()) throw new ParseError(`Unexpected token in \`text\`: ${token.type}`, token.line, token.column);
+    node.lines.push(this.parseVectorOrExpression());
+  }
+
+  /** An option of the text block, unless a binding of that exact spelling
+   *  claims it — options are lowercase, like `along`, and symbols are
+   *  case-sensitive (`define WrapWidth "W"` then `text { WrapWidth }`). */
+  private textOption(token: Token): "wrapWidth" | "lineSpacing" | "font" | undefined {
+    if (token.type !== TokenType.IDENTIFIER) return undefined;
+    const name = String(token.value);
+    if (this.values.has(name) || this.blocks.has(name)) return undefined;
+    return name === "wrapwidth" ? "wrapWidth" : name === "linespacing" ? "lineSpacing" : name === "font" ? "font" : undefined;
+  }
+
   private parseGroup(): GroupNode {
     this.advance(); // consume 'group'
     this.expect(TokenType.LBRACE);
@@ -2076,6 +2135,9 @@ export class Parser {
         this.advance();
         return { type: "mesh", children: this.parseBlock() };
 
+      case TokenType.TEXT:
+        return this.parseText();
+
       case TokenType.RBRACE:
       case TokenType.EOF:
         return null;
@@ -2085,6 +2147,7 @@ export class Parser {
         const name = token.value as string;
         if (!this.blocks.has(name)) {
           if (IGNORED_BLOCKS.has(name)) return this.skipIgnoredBlock(name);
+          if (this.isFontCommand(token)) return this.skipFont();
           const unsupported = unsupportedMessage(name);
           if (unsupported !== undefined) throw new ParseError(unsupported, token.line, token.column);
           // A function called as a statement (`face data`), whose result is a

@@ -182,7 +182,12 @@ Loft sections must each have one perimeter and enclose an area; extrude/fill pri
 An extrude path is a solid only when it is closed (its last point repeats its first); an open path extrudes
 to a wall, as upstream. inset(mesh distance) moves a mesh value's faces inward (outward when negative).
 A material command inside a builder block (extrude { color red … }) colours the result; size on a builder or
-group scales it. Not supported: extrude twist, svgpath, text.
+group scales it. Not supported: extrude twist, svgpath.
+- text "Hello" / text { size 0.5 wrapwidth 3 linespacing 0.2 "Line one" "Line two" }: glyph outlines in the built-in
+  Helvetica-like font, left margin at x 0 and first baseline at y 0, one unit per line (size scales it). Bare text draws
+  outlines; fill text "Hi" makes faces and extrude { size 1 1 0.3 text "Hi" } solids. Values interpolate:
+  text "Bob has " apples " apples", text i. Centre it with its bounds: define t text "Hi" then
+  translate -t.bounds.width/2 -t.bounds.height/2 before fill t. font is accepted and ignored (one face only).
 - mesh { polygon { point x y z … } … }: a mesh from explicit faces; polygon { color red point a point b point c }
   takes 3D points (a tuple works: point v) and a colour per face. Faces may come from a function: mesh { for f in faces { face f } }.
 
@@ -212,8 +217,8 @@ post { height 3 }
 ### Compatibility:
 This plugin implements the documented modeling subset, not all upstream ShapeScript syntax; units, scoping,
 materials and path semantics follow upstream, so a script written against the upstream docs renders the
-same here. Not supported (each is refused by name): import, text/font, svgpath, extrude twist,
-object values and paths as values. Textures, cameras and lights are accepted but not drawn.
+same here. Not supported (each is refused by name): import, svgpath, extrude twist,
+object values and paths as values. Textures, fonts, cameras and lights are accepted but not drawn.
 
 ### Comments:
 // Single-line comment

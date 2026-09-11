@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { loftGeometry, profileOf, ribbonGeometry, sweepRings } from "./builders";
+import { boundaryLoops, loftGeometry, profileOf, ribbonGeometry, sweepRings } from "./builders";
+import { interpolate, layoutText, shapesFromRings, MAX_TEXT_LENGTH, type TextLayout } from "./text";
 import { Brush, Evaluator as CSGEvaluator, ADDITION, SUBTRACTION, INTERSECTION, HOLLOW_SUBTRACTION, HOLLOW_INTERSECTION } from "three-bvh-csg";
 import {
   SceneNode,
   ShapeNode,
+  TextNode,
   CSGNode,
   ForLoopNode,
   IfNode,
@@ -170,6 +172,8 @@ export const DEFAULT_MAX_DURATION_MS = 30_000;
 
 // `ShapeGeometry`'s own default when no `curveSegments` is passed. Named here
 // because the pre-flight estimate has to predict what the constructor will do.
+/** Segments per glyph curve: `detail` over this, so default text is as smooth as a circle. */
+const TEXT_CURVE_DETAIL_DIVISOR = 8;
 const SHAPE_GEOMETRY_CURVE_SEGMENTS = 12;
 
 // An extruded profile becomes two caps plus the wall ring between them, so it
@@ -437,6 +441,8 @@ export class Converter {
         return this.convertHull(node);
       case "minkowski":
         return this.convertMinkowski(node);
+      case "text":
+        return this.convertText(node);
       case "group":
         return this.convertBlock(node);
       case "detail":
@@ -1608,7 +1614,7 @@ export class Converter {
       const { depth, properties } = this.extrudeProperties(node);
       if (!node.path) {
         return this.buildFromChildren({ children: node.children ?? [], properties }, (meshes, lines) => {
-          const shapes = meshes.map((mesh) => this.planarShape(mesh));
+          const shapes = meshes.flatMap((mesh) => this.planarShapes(mesh));
           if (!shapes.length && !lines.length) throw new Error("Extrude requires a path or planar shape");
           for (const shape of shapes) this.chargePathEstimate(shape, 1, 12);
           const solids = shapes.length ? [new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 }).translate(0, 0, -depth / 2)] : [];
@@ -2011,10 +2017,77 @@ export class Converter {
     });
   }
 
-  private planarShape(mesh: THREE.Mesh): THREE.Shape {
-    const ring = profileOf(mesh);
-    if (ring.some((p) => Math.abs(p.z) > 1e-5)) throw new Error("Fill/extrude profiles must lie in the XY plane");
-    return new THREE.Shape(ring.map((p) => new THREE.Vector2(p.x, p.y)));
+  /** A flat child's faces as shapes, holes included, so a filled letter
+   *  extrudes with its counter. */
+  private planarShapes(mesh: THREE.Mesh): THREE.Shape[] {
+    const loops = boundaryLoops(mesh);
+    if (loops.some((ring) => ring.some((p) => Math.abs(p.z) > 1e-5))) throw new Error("Fill/extrude profiles must lie in the XY plane");
+    return shapesFromRings(loops.map((ring) => ring.map((p) => new THREE.Vector2(p.x, p.y))));
+  }
+
+  /** `text`: laid out from the origin (see `layoutText`). Inside a builder or
+   *  as a value it is the filled glyphs, which `fill` and `extrude` read back
+   *  as shapes with holes; in the scene it draws as outlines, as upstream
+   *  draws paths. `size` scales it — upstream's line height is one unit. */
+  private convertText(node: TextNode): THREE.Object3D | null {
+    return this.withShapeOptions(node.properties, () => {
+      if (node.font !== undefined) this.warn("`font` is not rendered by this viewer and was skipped");
+      const layout = layoutText(this.textOf(node), {
+        ...(node.wrapWidth === undefined ? {} : { wrapWidth: this.textWrapWidth(node.wrapWidth) }),
+        lineSpacing: node.lineSpacing === undefined ? 0 : this.evaluateNumber(node.lineSpacing),
+        curveSegments: Math.max(1, Math.floor(this.detailLevel / TEXT_CURVE_DETAIL_DIVISOR)),
+      });
+      if (layout.missing.length) this.warn(`The built-in font has no glyph for ${[...new Set(layout.missing)].map((c) => `"${c}"`).join(" ")} — drawn as "?"`);
+      const points = layout.rings.reduce((sum, ring) => sum + ring.length, 0);
+      if (layout.shapes.length === 0) return null;
+      if (this.operandDepth > 0 || this.valueSink !== null) {
+        this.chargeEstimate(points);
+        return this.finishMesh(new THREE.ShapeGeometry(layout.shapes, 1), node, true);
+      }
+      return this.textOutline(node, layout, points);
+    });
+  }
+
+  private textWrapWidth(value: Expression): number {
+    const width = this.evaluateNumber(value);
+    if (!(width > 0)) throw new Error("`wrapwidth` must be a positive number");
+    return width;
+  }
+
+  /** The lines of a `text` block joined, each line's values interpolated. */
+  private textOf(node: TextNode): string {
+    const lines = node.lines.map((line) => {
+      const value = this.evaluator.evaluate(line);
+      return interpolate(Array.isArray(value) ? value : [value], (item) => printable(item as Value));
+    });
+    const text = lines.join("\n");
+    if (text.length > MAX_TEXT_LENGTH) throw new Error(`\`text\` is limited to ${MAX_TEXT_LENGTH} characters`);
+    return text;
+  }
+
+  /** The glyph outlines as one set of line segments — two vertices per ring
+   *  point — in the text's own material (its `color`, `opacity`, `material`),
+   *  falling back to the enclosing one as a mesh would. */
+  private textOutline(node: TextNode, layout: TextLayout, points: number): THREE.LineSegments {
+    this.chargeEstimate(points * 2);
+    const positions = new Float32Array(points * 6);
+    let offset = 0;
+    for (const ring of layout.rings) {
+      ring.forEach((point, i) => {
+        const following = ring[(i + 1) % ring.length]!;
+        positions.set([point.x, point.y, 0, following.x, following.y, 0], offset);
+        offset += 6;
+      });
+    }
+    this.vertexCount += points * 2;
+    const geometry = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const state = this.materialFor(node.properties, this.currentTransform().material);
+    const opacity = Math.min(1, Math.max(0, state.alpha * state.opacity));
+    const color = state.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8);
+    const line = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color, opacity, transparent: opacity < 1 }));
+    this.applyExplicitTransforms(line, node.properties, true);
+    this.applyCurrentTransform(line);
+    return line;
   }
 
   private convertFill(node: FillNode): THREE.Object3D {
@@ -2024,7 +2097,7 @@ export class Converter {
       const pathNode = node.children.length === 1 ? node.children.find((child): child is PathNode => child.type === "path") : undefined;
       if (!pathNode) {
         return this.buildFromChildren(node, (meshes) => {
-          const shapes = meshes.map((mesh) => this.planarShape(mesh));
+          const shapes = meshes.flatMap((mesh) => this.planarShapes(mesh));
           if (!shapes.length) throw new Error("Fill requires a path or planar shape");
           for (const shape of shapes) this.chargePathEstimate(shape, 1, 3);
           return new THREE.ShapeGeometry(shapes, 1);

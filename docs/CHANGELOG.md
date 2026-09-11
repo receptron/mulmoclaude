@@ -8,6 +8,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Added
+
+#### `@mulmoclaude/shapescript-plugin@2.4.0` — `text`
+
+`text "Hello"` draws glyph outlines laid out as the upstream app lays them out: the left margin at
+x = 0, the first baseline at y = 0, one world unit per line, `size` scaling the line height (in
+one or two dimensions), `wrapwidth` and `linespacing` as options, several lines in a block, and
+values interpolated (`text "Bob has " apples " apples"`, `extrude text i`). `fill` and `extrude`
+turn the outlines into faces and solids — with their counters, since the builders now read a flat
+profile's holes rather than refusing them — and a text is a value with `.bounds`, so upstream's
+centring recipe (`translate -t.bounds.width/2 -t.bounds.height/2`) works. The face is a bundled
+Helvetiker (a Helvetica look-alike, licensed for redistribution) scaled to Helvetica's cap height;
+`font` is accepted and skipped with a warning, and a character the face lacks draws as `?` with a
+warning naming it. Text is capped at 2000 characters before the vertex budget applies.
+
 ### Fixed
 
 #### `@mulmoclaude/mulmoscript-plugin@4.7.0` — a failed deck save is on screen, not only in the console (PR #3071, closes #3070)
@@ -260,7 +275,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.3.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.4.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 

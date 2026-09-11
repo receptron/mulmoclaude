@@ -3,7 +3,10 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 
 /** Read an ordered perimeter from a triangulated planar profile. Interior
  * vertices (e.g. the centre of CircleGeometry) must never enter a loft ring. */
-export function profileOf(mesh: THREE.Mesh): THREE.Vector3[] {
+/** Every boundary loop of a mesh — the edges used by exactly one triangle,
+ *  chained into closed rings — in world space. A flat face has one; a face
+ *  with holes (a filled letter) has one per hole as well. */
+export function boundaryLoops(mesh: THREE.Mesh): THREE.Vector3[][] {
   mesh.updateWorldMatrix(true, false);
   const positions = mesh.geometry.getAttribute("position");
   const index = mesh.geometry.index;
@@ -41,17 +44,30 @@ export function profileOf(mesh: THREE.Mesh): THREE.Vector3[] {
   const boundary = [...edges.values()].filter((edge) => edge.count === 1);
   if (boundary.length < 3) throw new Error("Loft/extrude/fill requires planar profiles with a closed perimeter");
   const next = new Map(boundary.map(({ a, b }) => [a, b]));
-  const start = boundary[0]!.a;
-  let current = start;
-  const ring: THREE.Vector3[] = [];
-  do {
-    ring.push(vertices[current]!);
-    const following = next.get(current);
-    if (following === undefined || ring.length > boundary.length) throw new Error("Profile perimeter is not a simple closed loop");
-    current = following;
-  } while (current !== start);
-  if (ring.length !== boundary.length) throw new Error("Profiles with holes or multiple perimeters are not supported by this builder");
-  return ring;
+  const loops: THREE.Vector3[][] = [];
+  const visited = new Set<number>();
+  for (const { a: start } of boundary) {
+    if (visited.has(start)) continue;
+    const ring: THREE.Vector3[] = [];
+    let current = start;
+    do {
+      visited.add(current);
+      ring.push(vertices[current]!);
+      const following = next.get(current);
+      if (following === undefined || ring.length > boundary.length) throw new Error("Profile perimeter is not a simple closed loop");
+      current = following;
+    } while (current !== start);
+    loops.push(ring);
+  }
+  if (loops.reduce((sum, ring) => sum + ring.length, 0) !== boundary.length) throw new Error("Profile perimeter is not a simple closed loop");
+  return loops;
+}
+
+/** The single perimeter of a flat mesh, for builders that take one ring. */
+export function profileOf(mesh: THREE.Mesh): THREE.Vector3[] {
+  const loops = boundaryLoops(mesh);
+  if (loops.length !== 1) throw new Error("Profiles with holes or multiple perimeters are not supported by this builder");
+  return loops[0]!;
 }
 
 function resample(ring: THREE.Vector3[], count: number): THREE.Vector3[] {
