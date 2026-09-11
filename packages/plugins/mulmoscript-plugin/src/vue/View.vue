@@ -100,6 +100,19 @@
       </button>
     </div>
 
+    <!-- A deck save that failed, in the server's own words (#3070). The editor keeps showing the
+         edit either way, so without this the only difference between a save and a silent failure
+         is what comes back on the next reload. Shown in both panes: switching tabs does not make
+         an unsaved edit saved. -->
+    <div
+      v-if="deckSaveError"
+      class="shrink-0 mx-2 mt-1 px-2 py-1 rounded bg-red-50 border border-red-200 text-xs text-red-700 break-words"
+      role="alert"
+      data-testid="mulmo-script-deck-save-error"
+    >
+      {{ m.saveErrorSaveFailed(deckSaveError) }}
+    </div>
+
     <div v-if="showBeatEditor" class="flex-1 overflow-hidden" data-testid="mulmo-script-deck-editor" @focusout="onDeckFocusOut">
       <BeatListEditor :beats="deckBeats" @update:beats="onDeckBeatsUpdate" />
     </div>
@@ -716,7 +729,7 @@ function commitScript(next: MulmoScript): void {
 // interactive deck editor (@mulmocast/beat-editor). Mixed scripts (any non-slide
 // beat) fall back to the existing list. The debounce + flush-on-unmount live
 // in the composable.
-const { canEditBeats, deckScriptInput, onDeckUpdate, flushPendingDeckSave, watchForeignWrites } = useDeckEditor({
+const { canEditBeats, deckScriptInput, deckSaveError, resetForScriptChange, onDeckUpdate, flushPendingDeckSave, watchForeignWrites } = useDeckEditor({
   api,
   filePath,
   effectiveScript,
@@ -1173,6 +1186,10 @@ async function initializeScript() {
     audioErrors,
     beatDragOver,
   );
+  // Same reason as `beatSaveErrors` above: this View re-initializes in place on a result
+  // switch, so anything the previous script left behind — the failure banner, an answer still
+  // in flight, an edit still queued — would land on the new one.
+  resetForScriptChange();
   resetCharacters();
   resetBeatMovies();
   resetMedia();
