@@ -2,256 +2,227 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, relative } from "node:path";
+import { dirname, join } from "node:path";
+import typescript from "typescript";
 
 /**
- * A story is addressed by the PAIR `(root, filePath)`, everywhere in the host.
+ * The one root rule a TYPE cannot state.
  *
- * `stories/deck.json` exists in EVERY registered stories root (#3014), so a host call that
- * resolves a path alone reads the DEFAULT root's file of that name. This rule was patched three
- * times before it was written down — the media-byte download, the session rehydration, and the
- * movie/PDF generation body — so it is stated here as a rule instead of a fourth fix. #3077 then
- * used it to find and close the whole REST surface at once, which is what the rule is for.
+ * `stories/deck.json` exists in every registered stories root (#3014), so a call that addresses a
+ * path alone reads the DEFAULT root's file of that name — silently, because that path is
+ * well-formed in both. Everything about which VALUE may be a root, and about naming one at all,
+ * is settled by `ParsedStoryRoot`: the brand can only be minted by `parseSuppliedRoot`, and the
+ * parameter is REQUIRED, so an aliased or destructured call that omits it is a compile error
+ * where the textual sweep this file used to be could not see it.
  *
- * It is deliberately phrased as what is PERMITTED: a `resolveStory` call names a root, OR it is
- * in `ROOTLESS_BY_DESIGN` below with the reason it cannot have one. Everything else is reported.
- * That direction is the point — a new call site is red by default rather than correct by luck,
- * and the exceptions are a list someone has to justify rather than a silence.
+ * What a type cannot say is that the host narrowed every member it should have. A root-taking op
+ * left out of `RootedMulmoScriptOps` keeps its `string | undefined` parameter and silently
+ * accepts a raw request value again.
  *
- * It over-reports by construction: a call whose root genuinely does not exist has to be added to
- * the list with a sentence. That is the trade, and it is the right one here, because the failure
- * this guards against is silent — the wrong deck is read and nothing errors.
+ * So this reads the package with TYPESCRIPT'S OWN PARSER rather than with regexes. That is not
+ * fastidiousness: three review rounds in a row found a declaration shape the regexes read wrongly
+ * — a hand-written list of 17 members, a generic `async function f<T>(`, and a generic arrow whose
+ * type argument contains a nested `>`. Each fix was a new spelling, which is the queue this whole
+ * PR exists to end. An AST has no spellings.
  *
- * WHAT THIS DOES NOT COVER, said out loud rather than left to be discovered:
- *
- * - It is a TEXTUAL rule over host code under `server/` and `src/`. An aliased or computed call
- *   (`const rs = ops.resolveStory; rs(p)`) would slip past the argument check, so a second test
- *   below forbids naming these ops in any form other than a direct call. An AST rule would be
- *   stronger; this is the version that pays for itself today.
- * - It says nothing about the PACKAGE's own internals — `resolveStory` is defined there, and the
- *   package has its own root contract tests.
- * - A future helper that wraps one of these ops and takes `filePath` without `root` would be
- *   reported where it is WRITTEN, but its callers would not be. Exemptions are therefore kept at
- *   call granularity, never file granularity.
+ * What it still cannot follow, said out loud because a silent miss is the failure this file
+ * exists to prevent: a root reached through a TYPE QUERY (`typeof x`), an indexed access, a
+ * mapped type, or an import type. Those need a type checker rather than a parser. Every
+ * root-carrying type in the package today is a plain interface or alias, so if you add one of
+ * those shapes, this is the file to teach.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, "..", "..", "..");
-const SEARCHED = ["server", "src"] as const;
+const PACKAGE_SRC = join(REPO_ROOT, "packages", "plugins", "mulmoscript-plugin", "src");
+const PACKAGE_SERVER = join(PACKAGE_SRC, "server");
+const HOST_SOURCE = join(REPO_ROOT, "server", "plugins", "mulmoscript-server.ts");
+const FACTORY = "createMulmoScriptServerOps";
+const HOST_UNION = "RootTakingOp";
+const ROOT = "root";
 
-/**
- * Every ops entry point that resolves a story, and therefore takes a root.
- *
- * `resolveStory` was the one the first three findings landed on, but it is not the only door:
- * the beat / status / generation ops resolve internally through `runStoryOp`, and reach the same
- * wrong file when the host calls them with a path alone (Codex, round 3 step C-bis).
- */
-const ROOT_TAKING_OPS = [
-  "resolveStory",
-  "beatImageOp",
-  "beatAudioOp",
-  "beatMovieOp",
-  "characterImageOp",
-  "movieStatusOp",
-  "pdfStatusOp",
-  "renderBeatOp",
-  "generateBeatAudioOp",
-  "renderCharacterOp",
-  "uploadBeatImageOp",
-  "uploadCharacterImageOp",
-] as const;
+const parse = (file: string) => typescript.createSourceFile(file, readFileSync(file, "utf-8"), typescript.ScriptTarget.Latest, true);
+const OPS = parse(join(PACKAGE_SERVER, "ops.ts"));
 
-/**
- * An op call handed a root straight off the REQUEST — `movieStatusOp(p, req.query.root)` and its
- * siblings (Codex, round 5).
- *
- * Narrow on purpose. A request read is unambiguously unparsed; an arbitrary `x.root` may well be
- * an already-parsed root coming out of a helper's result, and telling those apart is provenance,
- * which a regex cannot do. Two widenings were tried and both misfired: every member read
- * (`\\w+\\.root`) reported `const { … root … } = parsed`, and a bare `query.root` reported
- * `beatImageOp(query.filePath, query.beatIndex, query.root)` — where `query` is the PARSED result
- * of `parseBeatQuery`, not `req.query`. Only `req.query.root` / `req.body.root` name the request
- * without ambiguity.
- */
-const OPS_RECEIVING_A_REQUEST_ROOT = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*?[(,]\\s*req\\.(?:query|body)\\.root\\b`);
+type Declared = [string, typescript.Node];
 
-/**
- * Call sites that may address a story by path alone, and why.
- *
- * Keyed by `<path-from-repo-root>:<the call's own line text, trimmed>` so moving a file or
- * changing the call breaks the exemption rather than silently carrying it.
- */
-const ROOTLESS_BY_DESIGN = new Map<string, string>([
-  [
-    "server/api/routes/mulmo-script.ts:const resolved = mulmoScriptOps.resolveStory(outcome.filePath);",
-    "The AGENT's tool path: this route's body IS `SaveMulmoScriptArgs`, and `root` is deliberately not in the tool schema, so a model cannot name one (#3015). Every save reaching here is in the default root by construction.",
-  ],
-]);
+/** Type declarations the package owns, by name — read from EVERY source in it, not just the two
+ *  beside the ops. A type it does NOT own cannot carry a root, because a stories root is this
+ *  package's own concept, and that argument only holds if "ours" means the whole package. */
+const PACKAGE_TYPES = new Map<string, typescript.Node>(
+  readdirSync(PACKAGE_SRC, { recursive: true, encoding: "utf-8" })
+    .filter((entry) => entry.endsWith(".ts"))
+    .flatMap((entry) =>
+      parse(join(PACKAGE_SRC, entry)).statements.flatMap((statement): Declared[] =>
+        typescript.isInterfaceDeclaration(statement) || typescript.isTypeAliasDeclaration(statement) ? [[statement.name.text, statement]] : [],
+      ),
+    ),
+);
 
-/**
- * Ops handed to a factory as a VALUE rather than called directly.
- *
- * `makeBeatOpHandler(op, …)` invokes them with a `BeatOpArgs` that carries `root` since #3077, so
- * the root reaches these ops through the factory rather than through an argument list this
- * textual rule can read.
- *
- * What makes that safe rather than a hole is a BEHAVIOURAL test, not this sentence:
- * `test/server/api/test_mulmoScriptBeatOp.ts` → "makeBeatOpHandler — the root it hands the op"
- * asserts the factory forwards a named root, reads an absent or empty one as the default, and
- * REFUSES a wrong-typed one with a 400 without running the op. Delete that suite and these two
- * entries become unchecked.
- */
-const OP_VALUES_BY_DESIGN = new Set<string>([
-  "server/api/routes/mulmo-script.ts:makeBeatOpHandler(mulmoScriptOps.generateBeatAudioOp, (result) => ({ audio: result.audio })),",
-  "server/api/routes/mulmo-script.ts:makeBeatOpHandler(mulmoScriptOps.renderBeatOp, (result) => ({ image: result.image })),",
-]);
+const named = (node: typescript.Node, name: string) =>
+  (typescript.isPropertySignature(node) || typescript.isParameter(node)) && typescript.isIdentifier(node.name) && node.name.text === name;
 
-/** Every `.ts` file under the searched directories. */
-function sourceFiles(): string[] {
-  const walk = (dir: string): string[] =>
-    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : walk(full);
-      return entry.name.endsWith(".ts") ? [full] : [];
-    });
-  return SEARCHED.flatMap((dir) => walk(join(REPO_ROOT, dir)));
+/** Does this type declare a `root` anywhere inside it — a field, or a parameter of a function it
+ *  holds? `RunStoryOpDeps` carries one that way, inside `resolveStory`'s signature. */
+const declaresARoot = (node: typescript.Node): boolean =>
+  named(node, ROOT) || typescript.forEachChild(node, (child) => (declaresARoot(child) ? true : undefined)) === true;
+
+function referencedTypeNames(node: typescript.Node): string[] {
+  const names: string[] = [];
+  const visit = (current: typescript.Node) => {
+    if (typescript.isTypeReferenceNode(current) && typescript.isIdentifier(current.typeName)) names.push(current.typeName.text);
+    typescript.forEachChild(current, visit);
+  };
+  visit(node);
+  return names;
+}
+
+/** A type hands its holder a root when it declares one, or refers to something that does —
+ *  `GenerateOpArgsWith<…>` names no root itself and resolves to an interface that does. */
+function carriesARoot(name: string, seen: Set<string>): boolean {
+  if (seen.has(name)) return false;
+  seen.add(name);
+  const declaration = PACKAGE_TYPES.get(name);
+  if (declaration === undefined) return false;
+  return declaresARoot(declaration) || referencedTypeNames(declaration).some((referenced) => carriesARoot(referenced, seen));
+}
+
+/** Every way an op can be handed a root: named in a position, or carried by a parameter's type. */
+const takesARoot = (parameters: readonly typescript.ParameterDeclaration[]) =>
+  parameters.some(
+    (parameter) =>
+      named(parameter, ROOT) ||
+      (parameter.type !== undefined && (declaresARoot(parameter.type) || referencedTypeNames(parameter.type).some((name) => carriesARoot(name, new Set())))),
+  );
+
+const factory = OPS.statements.find(
+  (statement): statement is typescript.FunctionDeclaration => typescript.isFunctionDeclaration(statement) && statement.name?.text === FACTORY,
+);
+
+/** The functions and variables a list of statements declares, by name. */
+function declaredBy(statements: readonly typescript.Statement[]): Declared[] {
+  return statements.flatMap((statement): Declared[] => {
+    if (typescript.isFunctionDeclaration(statement) && statement.name !== undefined) return [[statement.name.text, statement]];
+    if (!typescript.isVariableStatement(statement)) return [];
+    return statement.declarationList.declarations.flatMap((declaration): Declared[] =>
+      typescript.isIdentifier(declaration.name) ? [[declaration.name.text, declaration]] : [],
+    );
+  });
 }
 
 /**
- * Calls to a root-taking op whose arguments never mention a root.
+ * What a name in the return object can actually refer to: the module's declarations, then the
+ * factory's, which shadow them.
  *
- * The test is "does the argument text name `root`", NOT "is there a second argument": these ops
- * have different arities (`resolveStory(p, root)` but `beatImageOp(p, beatIndex, root)`), and a
- * positional count passed `beatImageOp(filePath, beatIndex)` as though it were rooted — a FALSE
- * NEGATIVE, which is the direction that matters. Naming the token is arity-independent.
+ * Deliberately NOT a walk over every descendant. A declaration nested inside some other function
+ * in this factory is not in scope at the return statement, and a walk that reached it first would
+ * answer about the wrong function — silently, because the answer has the same shape either way.
  */
-function rootlessCalls(): string[] {
-  const found: string[] = [];
-  sourceFiles().forEach((file) => {
-    readFileSync(file, "utf-8")
-      .split("\n")
-      .forEach((line) => {
-        const call = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\(([^;]*)`).exec(line);
-        if (!call) return;
-        if (!/\broot\b/.test(call[1] ?? "")) found.push(`${relative(REPO_ROOT, file)}:${line.trim()}`);
-      });
-  });
-  return found;
+function declarationsInScope(scope: typescript.FunctionDeclaration): Map<string, typescript.Node> {
+  return new Map<string, typescript.Node>([...declaredBy(OPS.statements), ...declaredBy(scope.body?.statements ?? [])]);
 }
 
-describe("a story is addressed by the pair, not the path", () => {
-  it("finds the resolveStory call sites at all — a sweep that matches nothing proves nothing", () => {
-    const total = sourceFiles().filter((file) => readFileSync(file, "utf-8").includes("resolveStory(")).length;
-    assert.ok(total > 0, "at least one file calls resolveStory");
+type Classified = { kind: "function"; parameters: readonly typescript.ParameterDeclaration[] } | { kind: "host-supplied" } | { kind: "value" };
+
+const parametersOf = (node: typescript.Node): Classified =>
+  typescript.isFunctionDeclaration(node) || typescript.isArrowFunction(node) || typescript.isFunctionExpression(node)
+    ? { kind: "function", parameters: node.parameters }
+    : { kind: "value" };
+
+/**
+ * What the factory declares `name` as, or null when this cannot tell.
+ *
+ * Null is a FAILURE, never a quiet "takes no root": from outside, an op whose declaration went
+ * unrecognised and an op that genuinely takes no root give the same answer, and only one of them
+ * is safe. `runStoryOp` spent a round on exactly that.
+ */
+function classify(scope: typescript.FunctionDeclaration, locals: Map<string, typescript.Node>, name: string): Classified | null {
+  if (scope.parameters.some((parameter) => named(parameter, name))) return { kind: "host-supplied" };
+  const declaration = locals.get(name);
+  if (declaration === undefined) return null;
+  if (!typescript.isVariableDeclaration(declaration)) return parametersOf(declaration);
+  return declaration.initializer === undefined ? { kind: "value" } : parametersOf(declaration.initializer);
+}
+
+interface Members {
+  takingARoot: string[];
+  unreadable: string[];
+}
+
+/** Everything the factory returns, sorted into what takes a root and what could not be read. */
+function returnedMembers(): Members {
+  if (factory === undefined) return { takingARoot: [], unreadable: [FACTORY] };
+  const returned = factory.body?.statements.filter(typescript.isReturnStatement).at(-1)?.expression;
+  if (returned === undefined || !typescript.isObjectLiteralExpression(returned))
+    return { takingARoot: [], unreadable: ["the factory's return value is not an object literal"] };
+  const locals = declarationsInScope(factory);
+  const classified = returned.properties.map((property) => ({ property, classified: classifyProperty(factory, locals, property) }));
+  return {
+    takingARoot: classified
+      .filter(({ classified: shape }) => shape?.kind === "function" && takesARoot(shape.parameters))
+      .map(({ property }) => property.name?.getText() ?? "")
+      .sort(),
+    unreadable: classified.filter(({ classified: shape }) => shape === null).map(({ property }) => property.getText().split("\n")[0] ?? ""),
+  };
+}
+
+/** A returned property is either a shorthand naming a local, a name bound to one, or a function
+ *  written inline. Anything else this cannot read, and says so. */
+function classifyProperty(
+  scope: typescript.FunctionDeclaration,
+  locals: Map<string, typescript.Node>,
+  property: typescript.ObjectLiteralElementLike,
+): Classified | null {
+  if (typescript.isShorthandPropertyAssignment(property)) return classify(scope, locals, property.name.text);
+  if (!typescript.isPropertyAssignment(property)) return null;
+  const { initializer } = property;
+  if (typescript.isIdentifier(initializer)) return classify(scope, locals, initializer.text);
+  return typescript.isArrowFunction(initializer) || typescript.isFunctionExpression(initializer) ? parametersOf(initializer) : null;
+}
+
+/** Members the host re-declares with `ParsedStoryRoot`. */
+function narrowedInHost(): string[] {
+  const alias = parse(HOST_SOURCE).statements.find(
+    (statement): statement is typescript.TypeAliasDeclaration => typescript.isTypeAliasDeclaration(statement) && statement.name.text === HOST_UNION,
+  );
+  if (alias === undefined || !typescript.isUnionTypeNode(alias.type)) return [];
+  return alias.type.types
+    .flatMap((member) => (typescript.isLiteralTypeNode(member) && typescript.isStringLiteral(member.literal) ? [member.literal.text] : []))
+    .sort();
+}
+
+describe("every root-taking op is narrowed to a parsed root", () => {
+  it("finds both sides at all — a comparison of two empty sets proves nothing", () => {
+    assert.ok(returnedMembers().takingARoot.length > 10, "the package declares root-taking ops");
+    assert.ok(narrowedInHost().length > 10, "the host narrows some of them");
   });
 
-  it("every resolveStory call names a root, or is exempted with a reason", () => {
-    const unexplained = rootlessCalls().filter((site) => !ROOTLESS_BY_DESIGN.has(site));
-    assert.deepEqual(unexplained, [], `these resolve a story by path alone: ${unexplained.join(" | ")}`);
+  it("can read every member it returns — an unreadable one would count as taking no root", () => {
+    const { unreadable } = returnedMembers();
+    assert.deepEqual(unreadable, [], `this cannot read these, so it cannot tell whether they take a root: ${unreadable.join(", ")}`);
   });
 
-  it("names these ops only as a direct call — an alias would walk straight past the argument check", () => {
-    // `const rs = ops.resolveStory; rs(p)` resolves a story with no root and matches no
-    // `resolveStory(` line. Rather than enumerate the spellings, this forbids every mention that
-    // is not immediately a call (Codex, round 3 step C-bis).
-    const evasions: string[] = [];
-    sourceFiles().forEach((file) => {
-      readFileSync(file, "utf-8")
-        .split("\n")
-        .forEach((line) => {
-          ROOT_TAKING_OPS.forEach((opName) => {
-            if (!new RegExp(`\\b${opName}\\b`).test(line)) return;
-            const asDirectCall = new RegExp(`\\b${opName}\\(`).test(line);
-            const asImportOrType = /^\s*(import|export)\b/.test(line) || line.includes("//");
-            const site = `${relative(REPO_ROOT, file)}:${line.trim()}`;
-            if (!asDirectCall && !asImportOrType && !OP_VALUES_BY_DESIGN.has(site)) evasions.push(site);
-          });
-        });
+  it("sees a root that arrives inside a TYPE, not only one named in a position", () => {
+    const locals = factory === undefined ? new Map<string, typescript.Node>() : declarationsInScope(factory);
+    ["renderBeatOp", "runStoryOp"].forEach((member) => {
+      const shape = factory === undefined ? null : classify(factory, locals, member);
+      assert.equal(shape?.kind, "function", `${member} is a function this can read`);
+      const parameters = shape?.kind === "function" ? shape.parameters : [];
+      assert.equal(
+        parameters.some((parameter) => named(parameter, ROOT)),
+        false,
+        `${member} names no root of its own — it takes one in an options object`,
+      );
+      assert.ok(takesARoot(parameters), `${member}'s options type resolves to one that carries a root`);
     });
-    assert.deepEqual(evasions, [], `these name a story op without calling it directly: ${evasions.join(" | ")}`);
   });
 
-  it("binds every root it passes from `parseSuppliedRoot`, never from an inline fold", () => {
-    // THIRD finding on one rule, so the rule is inverted rather than patched again: the REST
-    // readers (round 1), the claims about them (round 2), and the session replay (round 3) each
-    // folded a malformed root into the DEFAULT root. Folding is the silent misaddressing
-    // `guardSuppliedRoot` was added to dispatch to stop (#3015).
-    //
-    // Stated as what is PERMITTED, at BINDING level rather than file level: in a file that hands
-    // a root to a story op, every `const root`/`const { root }` must be initialised from
-    // `parseSuppliedRoot` or `suppliedRoot`. A file-level "does it mention the parser anywhere"
-    // check was the first draft and Codex walked past it in four ways — the file's other
-    // legitimate parse blinded it to `getOptionalStringQuery(req, "root")` in the same file,
-    // which was a live fold in the download routes.
-    //
-    // WHAT IT ASSERTS, exhaustively — and therefore what it does NOT.
-    //
-    // Exactly two shapes are reported:
-    //
-    //   A. a DIRECT declaration-with-initialiser of a name `root`, typed or not, whose
-    //      initialiser does not call `parseSuppliedRoot` / `suppliedRoot`;
-    //   B. an op call handed `req.query.root` / `req.body.root`.
-    //
-    // EVERYTHING ELSE IS NOT REPORTED. That is a closed statement; the earlier drafts of this
-    // comment listed missed spellings instead, and that list could never be finished — rounds 6,
-    // 7 and 9 of one review each added another one (a same-file helper, a typed binding, then
-    // `let root; root = raw;`). A textual rule has infinitely many blind spellings, so naming
-    // them is not a specification, it is a queue.
-    //
-    // Illustrative, NOT exhaustive: a root laundered through a helper (any file), a function
-    // PARAMETER, an intermediate object `{ root: raw }`, `ops["movieStatusOp"]` / `?.()` /
-    // aliases, a destructured root, and a declaration separated from its assignment
-    // (`let root; root = raw;`).
-    //
-    // The real closure for all four is a branded `ParsedStoryRoot` that only `parseSuppliedRoot`
-    // can produce, with the host's op wrappers typed to require it — a package signature change,
-    // so not this PR. What this DOES assert is the shape every fold in this loop actually took:
-    // a direct `const root = <something that is not the parser>`. Comments are stripped before
-    // scanning, so a `// parseSuppliedRoot` cannot forge compliance.
-    const stripComments = (source: string): string => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-    const offenders: string[] = [];
-    sourceFiles().forEach((file) => {
-      const source = stripComments(readFileSync(file, "utf-8"));
-      const passesARoot = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*\\broot\\b`).test(source);
-      if (!passesARoot) return;
-      // Every binding of a name `root` in this file has to come from the parser.
-      // Two simple alternatives rather than one nested-quantifier pattern: `[^}]*root[^}]*`
-      // backtracks super-linearly on a long brace body (sonarjs/super-linear-regex), and a
-      // linter finding inside the guard is the guard nobody keeps.
-      const bindings = [
-        // Everything between the name and the `=` is skipped in ONE character class that cannot
-        // contain an `=` — no optional group around a quantifier, which is what
-        // `security/detect-unsafe-regex` rejects and what backtracks (Codex, round 8). That span
-        // is the optional `: <type>`, and it is not cosmetic: `const root: string | undefined =
-        // <fold>` is the very shape this asserts, and the annotation alone hid a fold until
-        // round 7. `root\b` keeps `rootDir` out.
-        ...source.matchAll(/(?:const|let|var)\s+root\b[^=;\n]*=\s*([^;\n]*)/g),
-        ...source.matchAll(/(?:const|let|var)\s+(\{[^}]*\})\s*=\s*([^;\n]*)/g),
-      ].filter((binding) => /\broot\b/.test(binding[0]));
-      bindings.forEach((binding) => {
-        // A plain `const root = …` carries its initialiser in group 1; a destructure carries the
-        // brace body there and the initialiser in group 2.
-        const initialiser = binding[2] ?? binding[1] ?? "";
-        // A DESTRUCTURE is permitted, and listed as a limit below: `const { filePath, root } =
-        // parsed` may be taking an already-parsed root out of a helper's result, and a regex
-        // cannot tell that from `= entry.result.data`. Two earlier drafts tried — one trusted the
-        // file to mention the parser anywhere, one demanded that no op receive a bare `root` —
-        // and each was wrong in its own direction (Codex, rounds 4 and 5). What IS assertable is
-        // the direct assignment, and that is where every fold this loop actually found lived.
-        const parsed = /\b(parseSuppliedRoot|suppliedRoot)\(/.test(initialiser);
-        if (!parsed && !binding[0].includes("{")) offenders.push(`${relative(REPO_ROOT, file)}: ${binding[0].trim()}`);
-      });
-      // The one member read that needs no provenance chase: straight off the request.
-      if (OPS_RECEIVING_A_REQUEST_ROOT.test(source)) {
-        offenders.push(`${relative(REPO_ROOT, file)}: an op is handed a root straight off the request`);
-      }
-    });
-    assert.deepEqual(offenders, [], `these bind a root without parsing it: ${offenders.join(" | ")}`);
-  });
-
-  it("every exemption still exists — a stale one hides the next real call site", () => {
-    const rootless = new Set(rootlessCalls());
-    const gone = [...ROOTLESS_BY_DESIGN.keys()].filter((site) => !rootless.has(site));
-    assert.deepEqual(gone, [], `these exemptions no longer match any call: ${gone.join(" | ")}`);
+  it("narrows exactly the members that take a root — no more, no fewer", () => {
+    const taking = returnedMembers().takingARoot;
+    const narrowed = narrowedInHost();
+    const unnarrowed = taking.filter((member) => !narrowed.includes(member));
+    const stale = narrowed.filter((member) => !taking.includes(member));
+    assert.deepEqual(unnarrowed, [], `these take a root and still accept a raw string: ${unnarrowed.join(", ")}`);
+    assert.deepEqual(stale, [], `these are narrowed but take no root — the list has drifted: ${stale.join(", ")}`);
   });
 });

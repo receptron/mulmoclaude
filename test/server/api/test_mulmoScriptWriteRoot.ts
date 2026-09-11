@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { FileOps } from "gui-chat-protocol";
 import type { OpFailure } from "@mulmoclaude/mulmoscript-plugin/server";
-import { parseSuppliedRoot, resolveStoryWriteTarget, type StoryWriteGuards } from "../../../server/api/routes/mulmoScriptWriteRoot.ts";
+import { parseSuppliedRoot, resolveStoryWriteTarget, type ParsedStoryRoot, type StoryWriteGuards } from "../../../server/api/routes/mulmoScriptWriteRoot.ts";
 
 /**
  * Where a mulmoScript WRITE lands.
@@ -18,6 +18,16 @@ import { parseSuppliedRoot, resolveStoryWriteTarget, type StoryWriteGuards } fro
  * that a refusal never degrades into the default root's FileOps.
  */
 
+/**
+ * A root the way production gets one — through the parser, because nothing else can mint the
+ * brand (#3086). A test cannot fake a root any more than a route can, which is the point.
+ */
+function named(root: string): ParsedStoryRoot {
+  const parsed = parseSuppliedRoot(root);
+  assert.ok(parsed.ok, `${root} is a legal root spelling`);
+  return parsed.root;
+}
+
 const DEFAULT_OPS = { id: "default-artifacts" } as unknown as FileOps;
 const ACME_OPS = { id: "acme-artifacts" } as unknown as FileOps;
 
@@ -29,7 +39,7 @@ function permissiveGuards(overrides: Partial<StoryWriteGuards> = {}): StoryWrite
   return {
     guardStoryWriteRoot: () => null,
     guardStoryWirePath: () => null,
-    artifactsForRoot: (root) => (root === undefined ? DEFAULT_OPS : root === "acme" ? ACME_OPS : null),
+    artifactsForRoot: (root) => (root === undefined ? DEFAULT_OPS : root === named("acme") ? ACME_OPS : null),
     ...overrides,
   };
 }
@@ -41,7 +51,7 @@ describe("resolveStoryWriteTarget — what it permits", () => {
   });
 
   it("hands back the NAMED root's FileOps, not the default's — the whole point", () => {
-    const target = resolveStoryWriteTarget(permissiveGuards(), "stories/a.json", "acme");
+    const target = resolveStoryWriteTarget(permissiveGuards(), "stories/a.json", named("acme"));
     assert.deepEqual(target, { ok: true, artifacts: ACME_OPS });
   });
 
@@ -55,9 +65,9 @@ describe("resolveStoryWriteTarget — what it permits", () => {
         },
       }),
       "stories/a.json",
-      "acme",
+      named("acme"),
     );
-    assert.deepEqual(seen, [{ filePath: "stories/a.json", root: "acme" }]);
+    assert.deepEqual(seen, [{ filePath: "stories/a.json", root: named("acme") }]);
   });
 });
 
@@ -78,7 +88,7 @@ describe("resolveStoryWriteTarget — what it refuses", () => {
         },
       }),
       "stories/a.json",
-      "acme",
+      named("acme"),
     );
     assert.deepEqual(target, { ok: false, failure: REFUSED_ROOT });
     assert.equal(pathAsked, false, "a refused root is not asked about its path");
@@ -103,15 +113,15 @@ describe("resolveStoryWriteTarget — what it refuses", () => {
   });
 
   it("reports an unregistered root by name instead of writing somewhere else", () => {
-    const target = resolveStoryWriteTarget(permissiveGuards(), "stories/a.json", "never-registered");
-    assert.deepEqual(target, { ok: false, unregisteredRoot: "never-registered" });
+    const target = resolveStoryWriteTarget(permissiveGuards(), "stories/a.json", named("never-registered"));
+    assert.deepEqual(target, { ok: false, unregisteredRoot: named("never-registered") });
   });
 
   it("NEVER falls back to the default root on any refusal — the silent failure this exists for", () => {
     const refusals: StoryWriteTarget[] = [
-      resolveStoryWriteTarget(permissiveGuards({ guardStoryWriteRoot: () => REFUSED_ROOT }), "stories/a.json", "acme"),
-      resolveStoryWriteTarget(permissiveGuards({ guardStoryWirePath: () => REFUSED_PATH }), "stories/a.json", "acme"),
-      resolveStoryWriteTarget(permissiveGuards(), "stories/a.json", "never-registered"),
+      resolveStoryWriteTarget(permissiveGuards({ guardStoryWriteRoot: () => REFUSED_ROOT }), "stories/a.json", named("acme")),
+      resolveStoryWriteTarget(permissiveGuards({ guardStoryWirePath: () => REFUSED_PATH }), "stories/a.json", named("acme")),
+      resolveStoryWriteTarget(permissiveGuards(), "stories/a.json", named("never-registered")),
     ];
     refusals.forEach((target) => {
       assert.equal(target.ok, false);
