@@ -833,6 +833,14 @@ describe("shapes as values", () => {
       "define s mesh {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}\ncube { size s.polygons.count s.polygons.first.center.x 1 }",
       (mesh) => near(extent(mesh).toArray(), [1, 1 / 3, 1]),
     );
+    // A transform inside the block moves the polygons that follow it.
+    withMesh("mesh {\n translate 1 0 0\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.x, box.max.x], [1, 2]);
+    });
+    withMesh("define tri {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}\nmesh {\n translate 0 0 3\n tri\n}", (mesh) =>
+      near([new THREE.Box3().setFromObject(mesh).min.z], [3]),
+    );
     assert.throws(() => objectsOf("polygon { point 0 0 point 1 0 }"), /three points/);
     assert.throws(() => objectsOf("mesh { }"), /at least one polygon/);
   });
@@ -870,6 +878,12 @@ describe("shapes as values", () => {
     withMesh("define f(cube) { cube }\ncube { size f(3) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
     withMesh("define b {\n option sphere 2\n cube { size sphere }\n}\nb", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
     withMesh("for cone in 2 to 2 { cube { size cone } }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("define f(if) { if }\nfor point in 1 to 1 { cube { size f(3) point 1 } }", (mesh) => near(extent(mesh).toArray(), [3, 1, 1]));
+    // Retained shape values count against the vertex budget.
+    assert.throws(
+      () => disposeObject3D(astToThreeJS(parseShapeScript("for i in 1 to 100 { define s sphere { detail 64 } }\ncube"), { maxVertices: 50000 })),
+      /vertices/,
+    );
   });
   it("accepts line breaks inside parentheses", () => {
     withMesh("cube { size (1\n + 2) }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));

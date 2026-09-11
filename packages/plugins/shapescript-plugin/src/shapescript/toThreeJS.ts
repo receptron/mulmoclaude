@@ -631,7 +631,10 @@ export class Converter {
    *  upstream's "unused value" is. */
   private placeValue(value: Value): THREE.Mesh | null {
     if (this.valueSink) {
-      this.valueSink.push(value);
+      // Captured in the current frame, as a placed shape would be: a
+      // `translate` before a polygon inside `mesh { }` moves that polygon.
+      // A copy, so a symbol's value is not moved by using it.
+      this.valueSink.push(this.transformedForCapture(value));
       return null;
     }
     if (isObjectValue(value) && value.kind === "mesh") return this.placeMesh(value);
@@ -655,6 +658,21 @@ export class Converter {
     throw new Error("Unused value — a statement that is not a shape does nothing here; use `define` or `print`");
   }
 
+  private transformedForCapture(value: Value): Value {
+    const matrix = this.currentTransform().matrix;
+    const identity = matrix.equals(new THREE.Matrix4());
+    if (Array.isArray(value)) return identity ? value : value.map((item) => this.transformedForCapture(item));
+    if (!isShapeValue(value) || identity) return value;
+    if (value.kind === "polygon") {
+      return { ...value, points: value.points.map((point) => new THREE.Vector3(...point).applyMatrix4(matrix).toArray() as Point3) };
+    }
+    return {
+      ...value,
+      geometry: value.geometry.clone().applyMatrix4(matrix),
+      ...(value.polygons ? { polygons: value.polygons.map((polygon) => this.transformedForCapture(polygon) as PolygonValue) } : {}),
+    };
+  }
+
   private convertExpressionStatement(node: ExpressionStatementNode): THREE.Mesh | null {
     return this.placeValue(this.evaluator.evaluate(node.value));
   }
@@ -676,6 +694,15 @@ export class Converter {
     const mesh = this.makeMesh(geometry, this.createMaterial({ properties: {} }, undefined, colored));
     this.applyCurrentTransform(mesh);
     return mesh;
+  }
+
+  /** A geometry that stays alive as a value (a `define`d shape, a function's
+   *  result) counts against the vertex budget for good, since a script can
+   *  keep making them: refuse when it would overflow, then count it. */
+  private chargeRetained(geometry: THREE.BufferGeometry): void {
+    const count = geometry.getAttribute("position").count;
+    this.chargeEstimate(count);
+    this.vertexCount += count;
   }
 
   /** Build `nodes` at the origin in a throwaway group, collecting the values
@@ -819,7 +846,7 @@ export class Converter {
     }
     const geometry = mergeMeshGeometries(geometries);
     geometries.forEach((part) => part.dispose());
-    this.chargeEstimate(geometry.getAttribute("position").count);
+    this.chargeRetained(geometry);
     return { kind: "mesh", geometry, ...(name === undefined ? {} : { name }), ...(polygons === undefined ? {} : { polygons }) };
   }
 
@@ -831,7 +858,10 @@ export class Converter {
       const { captured, geometries } = this.buildScratch(body, (values) => {
         if (value !== undefined) values.push(this.evaluator.evaluate(value));
       });
-      for (const geometry of geometries) captured.push({ kind: "mesh", geometry });
+      for (const geometry of geometries) {
+        this.chargeRetained(geometry);
+        captured.push({ kind: "mesh", geometry });
+      }
       if (captured.length === 0) throw new Error(`Function \`${name}\` produced no value`);
       return captured.length === 1 ? captured[0]! : captured;
     });

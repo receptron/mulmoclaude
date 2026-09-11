@@ -621,6 +621,22 @@ const STATEMENT_TOKENS = new Set([
   TokenType.SIZE,
 ]);
 
+/** Keyword tokens a binding may claim as a value (see `isBoundKeyword`). */
+const BINDABLE_KEYWORD_TOKENS = new Set([
+  ...SHAPE_VALUE_TOKENS,
+  TokenType.FOR,
+  TokenType.IF,
+  TokenType.SWITCH,
+  TokenType.CASE,
+  TokenType.ELSE,
+  TokenType.OPTION,
+  TokenType.POINT,
+  TokenType.CURVE,
+  TokenType.ARC,
+  TokenType.PRINT,
+  TokenType.ASSERT,
+]);
+
 /** Tokens that can only begin a value, never a statement. */
 const VALUE_START_TOKENS = new Set([TokenType.NUMBER, TokenType.STRING, TokenType.HEXCOLOR, TokenType.LPAREN, TokenType.MINUS, TokenType.PLUS]);
 
@@ -940,6 +956,12 @@ export class Parser {
     if (token.type === TokenType.HEXCOLOR) {
       this.advance();
       return hexColorExpression(String(token.value));
+    }
+
+    // A keyword a binding in scope has claimed is that symbol.
+    if (this.isBoundKeyword(token)) {
+      this.advance();
+      return { type: "identifier", name: token.value as string };
     }
 
     // `for v in … { expr }` and `if c { a } else { b }` as values
@@ -1328,9 +1350,13 @@ export class Parser {
     return { type: "for", variable, iterable, body };
   }
 
-  /** A shape keyword that a binding in scope has claimed as a value. */
+  /** A keyword that a binding in scope has claimed as a value — a shape,
+   *  builder or control-flow word used as a parameter or loop variable.
+   *  Property and transform commands (`size`, `color`, `scale`, …) are not
+   *  included: `define size 1 2` must not turn a later `size` command into a
+   *  value, and inside a block they are read as properties anyway. */
   private isBoundKeyword(token: Token): boolean {
-    return SHAPE_VALUE_TOKENS.has(token.type) && typeof token.value === "string" && this.values.has(token.value);
+    return BINDABLE_KEYWORD_TOKENS.has(token.type) && typeof token.value === "string" && this.values.has(token.value);
   }
 
   /** A name bound in the current scope — loop variable, parameter, option —
@@ -1715,6 +1741,7 @@ export class Parser {
    *  several values rather than one arithmetic expression. */
   private startsValue(): boolean {
     const type = this.current().type;
+    if (this.isBoundKeyword(this.current())) return true;
     return (
       type === TokenType.NUMBER ||
       type === TokenType.MINUS ||
