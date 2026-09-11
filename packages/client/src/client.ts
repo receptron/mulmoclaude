@@ -16,7 +16,7 @@ import { io, type Socket } from "socket.io-client";
 import { CHAT_SOCKET_EVENTS, CHAT_SOCKET_PATH, type Attachment, type BridgeOptions } from "@mulmobridge/protocol";
 import { readBridgeToken, tokenFilePath } from "./token.js";
 import { readBridgeEnvOptions } from "./options.js";
-import { resolveApiUrl, resolvePublishedApiUrl } from "./apiUrl.js";
+import { DEFAULT_API_URL, resolvePublishedApiUrl } from "./apiUrl.js";
 import { backoffMs, credentialsChanged, type Credentials } from "./supervisor.js";
 
 // 6 min > the server's REPLY_TIMEOUT_MS (5 min) so the server's
@@ -142,7 +142,10 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   const subscriptions = emptySubscriptions();
 
   const pending: Pending = new Set();
-  let current: Credentials = { apiUrl: resolveApiUrl(opts.apiUrl), token };
+  // `DEFAULT_API_URL` is a placeholder here, never a destination: the idle
+  // socket below is built with `autoConnect: false` and is replaced before it
+  // ever handshakes, so the token cannot reach it.
+  let current: Credentials = { apiUrl: resolvePublishedApiUrl(opts.apiUrl) ?? DEFAULT_API_URL, token };
   let attempt = 0;
   let retry: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
@@ -177,7 +180,25 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
     return socket;
   };
 
-  let socket = open(current);
+  /**
+   * A socket that will never connect, for the case where the token is readable
+   * and the port is not.
+   *
+   * That window is not a race to lose sleep over — it is minutes wide on a cold
+   * start, because `setupSandbox()` (which can build a Docker image) runs
+   * between the server writing the token and binding its port. Connecting to
+   * `DEFAULT_API_URL` there would hand a freshly minted bearer token to whatever
+   * holds 3001 (Codex, #3078). Waiting is the only safe answer, and the
+   * supervisor is already the thing that waits.
+   */
+  const openIdle = (): Socket => io(DEFAULT_API_URL, { path: CHAT_SOCKET_PATH, transports: ["websocket"], autoConnect: false });
+
+  const published = resolvePublishedApiUrl(opts.apiUrl);
+  let socket = published === null ? openIdle() : open(current);
+  if (published === null) {
+    console.error("\nThe server has not published a port yet — waiting for it rather than guessing.\n");
+    scheduleReresolve();
+  }
 
   /** Replace the socket only when the pair actually moved — a server that is
    *  merely down must keep socket.io's own reconnection, not a worse copy. */
@@ -186,7 +207,16 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
     if (closed) return;
     const fresh = reread();
     attempt += 1;
-    if (!credentialsChanged(current, fresh) || fresh === null) return;
+    if (!credentialsChanged(current, fresh) || fresh === null) {
+      // Keep waiting. A LIVE socket would re-arm this itself through its next
+      // `connect_error`, but the idle socket built when nothing was published
+      // never connects and so never emits one — without this the wait is
+      // single-shot and a bridge started before its server would hang forever.
+      // The `retry !== null` guard in `scheduleReresolve` stops the two paths
+      // from doubling up, and the backoff caps the cost of an idle wait.
+      if (!socket.connected) scheduleReresolve();
+      return;
+    }
     console.error(`\nServer moved: reconnecting to ${fresh.apiUrl}.\n`);
     abandon(pending, "the server restarted before this was acknowledged — resend");
     socket.removeAllListeners();

@@ -225,6 +225,32 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
     }
   });
 
+  // The same window at STARTUP, which is the wider one: `setupSandbox()` runs
+  // between the server writing the token and binding its port, and on a cold
+  // start that can build a Docker image — minutes, not milliseconds. A bridge
+  // launched in there must not hand its fresh token to whatever holds 3001
+  // (Codex).
+  it("waits rather than connecting to the default when started with a token but no port", async () => {
+    writeFileSync(path.join(workspace, ".session-token"), "token-early\n", "utf-8");
+    const client = createBridgeClient({ transportId: "cli", options: {} });
+    try {
+      await sleep(1500);
+      assert.equal(client.socket.connected, false, "nothing may be connected while no port is published");
+      assert.equal(client.socket.active, false, "and it must not be attempting a connection either");
+
+      // Once the server finishes starting, the wait ends on its own.
+      const late = await startGeneration("gen-late", "token-early");
+      publish(late);
+      try {
+        assert.equal(await waitForGeneration(client, "gen-late"), "gen-late", "the wait must end when the port appears");
+      } finally {
+        await late.stop();
+      }
+    } finally {
+      client.close();
+    }
+  });
+
   // A send issued while the socket is already disconnected is QUEUED by
   // socket.io for a reconnection that will never happen — the socket is being
   // replaced, not reconnected — so its callback would sit for the full
