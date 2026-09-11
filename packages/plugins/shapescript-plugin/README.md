@@ -267,17 +267,22 @@ upstream ShapeScript**.
 Loft accepts ordered, closed planar sections with one perimeter each, resamples differing
 vertex counts, interpolates linearly, and triangulates the end caps. Sections must enclose
 a volume. Hull accepts geometry from child meshes and filled paths. Primitive profiles
-for fill/extrude must lie in XY; holes, swept/twisted extrusion (`along`, `twist`), and
-arbitrary 3D path commands are not implemented. `import`, `text` / `font`, `minkowski`, `inset`,
-`svgpath`, `object` values and paths as values are refused with a message naming the feature. Textures,
+for fill/extrude must lie in XY; holes, twisted extrusion (`twist`) and arbitrary 3D path
+commands are not implemented. `extrude … along` sweeps a section along a path (mitred at
+corners, capped at the ends of an open path); an open path extrudes to a two-sided wall, as
+upstream. `minkowski { a b }` is the hull of two convex solids' vertex sums, and for a
+non-convex operand the merged per-face hulls (overlapping shells, not a boolean union — fine to
+draw, not to feed to another boolean); `inset(mesh d)` slides every vertex to where its faces'
+offset planes meet. `import`, `text` / `font`, `svgpath`, `object` values and paths as values
+are refused with a message naming the feature. Textures,
 normal maps, `camera` and `light` blocks are accepted and skipped with a warning that the
 tool result and the View both report. Unsupported commands and failed CSG operations return
 errors instead of silently substituting different geometry. As with other polygonal CSG
 engines, degenerate or self-intersecting inputs may fail.
 
 The upstream project's own example scripts are test fixtures
-(`test/fixtures/upstream-examples/`, MIT): Ball, Chessboard, Cog, Dodecahedron, Earth, Spring and
-Train render; Fillet (`minkowski` / `inset`) and Spirals (`along`) are refused by name.
+(`test/fixtures/upstream-examples/`, MIT): all nine — Ball, Chessboard, Cog, Dodecahedron, Earth,
+Fillet, Spirals, Spring and Train — render.
 
 ## Shapes as values, meshes and polygons
 

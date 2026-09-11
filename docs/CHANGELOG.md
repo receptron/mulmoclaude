@@ -43,6 +43,22 @@ Also sweeps the `@mulmoclaude/core` peer and dev range to `^4.8.0` (PR #3056).
 
 ### Added
 
+#### `@mulmoclaude/shapescript-plugin@2.3.0` — minkowski, inset, extrude along; Fillet and Spirals
+
+The last two upstream examples render, so all nine do. `minkowski { a b }` sums shapes (one hull
+for convex operands, merged per-face hulls for a non-convex one), `inset(mesh distance)` moves a
+mesh value's faces inward (each vertex to where its faces' offset planes meet, exact at corners),
+and together they round edges as upstream's Fillet does. `extrude { section along path }` sweeps
+a section along a path, mitred at corners and capped at the ends of an open path; an open path
+extrudes to a two-sided wall; `detail` reads as a value and `detail 0` inside a path draws its
+curve points as corners; a `detail` inside a path no longer leaks past it. A shape kept as a
+value keeps the one colour it was given (the filleted cone stays blue); a mesh whose vertices
+differ in colour gives an uncoloured `minkowski` result. **Behaviour change** toward
+upstream: `extrude` no longer closes an open path for you — repeat the first point to get a
+solid, otherwise the path extrudes to a wall; and a lone `position` value is X alone
+(`position 1` is `1 0 0`, as `translate 1` already was — it padded to `1 1 1`, which laid the
+Spirals out diagonally and hung Fillet's cylinder off a cube corner).
+
 #### `@mulmoclaude/shapescript-plugin@2.2.0` — shapes as values, meshes from polygons, Dodecahedron
 
 The last upstream example that needed language work. A shape is now a value
@@ -244,7 +260,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.2.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.3.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 
