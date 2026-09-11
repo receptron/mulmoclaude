@@ -5,7 +5,7 @@
 
 import { reactive, type ComputedRef } from "vue";
 import { errorMessage } from "@mulmoclaude/common";
-import { clearReactiveRecords, staleSince as staleSinceOf } from "../helpers";
+import { clearReactiveRecords, staleSince as staleSinceOf, type StoryRef } from "../helpers";
 import type { MulmoScriptTransport } from "../transport";
 import type { MulmoScriptHostAdapter } from "../hostAdapter";
 
@@ -13,20 +13,24 @@ export interface UseBeatMovieOptions {
   api: MulmoScriptTransport;
   adapter: MulmoScriptHostAdapter;
   filePath: ComputedRef<string>;
+  /** Which registered root `filePath` is relative to; `undefined` = the host's default (#3014). */
+  root: ComputedRef<string | undefined>;
 }
 
-export function useBeatMovie({ api, adapter, filePath }: UseBeatMovieOptions) {
+export function useBeatMovie({ api, adapter, filePath, root }: UseBeatMovieOptions) {
   const beatMovies = reactive<Record<number, string>>({});
   const beatMovieUrls = reactive<Record<number, string>>({});
   const beatMovieOpen = reactive<Record<number, boolean>>({});
   const beatMovieLoading = reactive<Record<number, boolean>>({});
 
-  const staleSince = (requestedFilePath: string): boolean => staleSinceOf(filePath.value, requestedFilePath);
+  // The PAIR, not the path: `stories/deck.json` exists in every root (#3014).
+  const storyRef = (): StoryRef => ({ filePath: filePath.value, root: root.value });
+  const staleSince = (requested: StoryRef): boolean => staleSinceOf(storyRef(), requested);
 
   async function loadExistingBeatMovie(index: number): Promise<void> {
-    const requestedFilePath = filePath.value;
-    const response = await api.call("beatMovie", { filePath: requestedFilePath, beatIndex: index });
-    if (staleSince(requestedFilePath)) return;
+    const requested = storyRef();
+    const response = await api.call("beatMovie", { ...requested, beatIndex: index });
+    if (staleSince(requested)) return;
     // silently ignore errors — the clip simply hasn't been generated yet
     if (response.ok && response.data.moviePath) {
       beatMovies[index] = response.data.moviePath;

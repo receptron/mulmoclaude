@@ -21,6 +21,16 @@ export interface SaveMulmoScriptArgs {
 export interface MulmoScriptData {
   script: MulmoScript;
   filePath: string;
+  /**
+   * Which registered stories root `filePath` is relative to (#3014). Absent = the host's
+   * default root, which is what every card minted before roots carries.
+   *
+   * The HOST fills this in when it opens a deck the user can see — it is deliberately absent
+   * from the agent's tool schema, so a model cannot name a root (#3015). The View's job is to
+   * hand it back on every dispatch: the same `stories/deck.json` exists in every root, so the
+   * path alone addresses the wrong file and identifies the wrong card.
+   */
+  root?: string | undefined;
 }
 
 /** Host capabilities the phase-1 core needs, delivered through the GENERIC

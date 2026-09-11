@@ -4,6 +4,7 @@
 // helpers did not move — per-beat generation progress now arrives on the
 // plugin pubsub channel (see `core/contract.ts`).
 
+import { sameRoot } from "../core/contract";
 import { isRecord } from "./support";
 
 /**
@@ -157,13 +158,28 @@ export function isValidBeat(source: string | undefined, schema: SafeParseSchema)
   return validateBeatJSON(source ?? "", schema);
 }
 
-/** Stale-response guard: a per-beat / per-character response is stale
- *  once the View has navigated to a different result, i.e. the current
- *  file path no longer matches the one captured when the call was made.
- *  Keeping the direction pinned matters — an inverted check would let
- *  script A's late responses write into script B's state. */
-export function staleSince(currentFilePath: string, requestedFilePath: string): boolean {
-  return currentFilePath !== requestedFilePath;
+/** A story as the wire addresses it: the path plus the root it is relative to (absent = the
+ *  host's default root). The PAIR is the identity — see `staleSince`. */
+export interface StoryRef {
+  filePath: string;
+  root?: string | undefined;
+}
+
+/**
+ * Stale-response guard: a per-beat / per-character response is stale once the View has
+ * navigated to a different result.
+ *
+ * The identity is the PAIR `(root, filePath)`, not the path — `stories/deck.json` exists in
+ * every registered root (#3014), so comparing paths alone lets one repository's deck accept
+ * another's late response while both are open under the same name. `sameRoot` reads an absent
+ * root as the host's default rather than as "different", which is what keeps every pre-root
+ * caller's behaviour byte-identical.
+ *
+ * Keeping the direction pinned matters — an inverted check would let script A's late responses
+ * write into script B's state.
+ */
+export function staleSince(current: StoryRef, requested: StoryRef): boolean {
+  return current.filePath !== requested.filePath || !sameRoot(current.root, requested.root);
 }
 
 const JSON_INDENT = 2;
