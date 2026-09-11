@@ -21,6 +21,11 @@ follows the closing brace), so the agent corrects the script at authoring time i
 discovering it upstream. `tau` is removed for the same reason — upstream has no such constant;
 write `2 * pi`. The bundled samples and the tool description follow the rule.
 
+Also fixed: a USDZ export of a model with coloured polygons (`mesh { polygon { color … } }`) came
+out white in Quick Look. Those faces carry vertex colours on a white material, which the exporter
+writes as `displayColor` and USD viewers ignore in favour of the material's `diffuseColor`; the
+export now splits such a mesh into one mesh per colour with that colour on a plain material.
+
 ### Added
 
 #### `@mulmoclaude/shapescript-plugin@2.4.0` — `text`

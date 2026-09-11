@@ -89,6 +89,21 @@ describe("shapeScriptToUsdz", () => {
   it("reports ShapeScript errors rather than writing a broken file", async () => {
     await assert.rejects(shapeScriptToUsdz("cube {"), /RBRACE/);
   });
+  it("gives vertex-coloured faces plain materials, which USD viewers shade with", async () => {
+    // Coloured polygons carry vertex colours on a white material; the
+    // exporter's `displayColor` is ignored by Quick Look, so each colour
+    // becomes its own mesh and material.
+    const script =
+      "mesh {\n polygon {\n  color 1 0 0\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n polygon {\n  color 0 0 1\n  point 0 0 0\n  point 0 0 1\n  point 1 0 0\n }\n polygon {\n  color 1 0 0\n  point 0 0 0\n  point 0 1 0\n  point 0 0 1\n }\n}";
+    const [stage] = zipEntries(await shapeScriptToUsdz(script));
+    const diffuse = [...(stage?.text.matchAll(/diffuseColor = \(([^)]*)\)/g) ?? [])].map((m) => m[1]);
+    assert.deepEqual(diffuse.sort(), ["0, 0, 1", "1, 0, 0"]);
+    assert.equal((stage?.text.match(/def Material /g) ?? []).length, 2);
+    // A plain-coloured shape is unchanged: one mesh, its own colour.
+    const [cube] = zipEntries(await shapeScriptToUsdz("cube {\n color 0 1 0\n}"));
+    assert.equal((cube?.text.match(/def Material /g) ?? []).length, 1);
+    assert.match(cube?.text ?? "", /diffuseColor = \(0, 1, 0\)/);
+  });
 
   it("names the MIME type AR Quick Look expects", () => {
     assert.equal(USDZ_MIME_TYPE, "model/vnd.usdz+zip");
