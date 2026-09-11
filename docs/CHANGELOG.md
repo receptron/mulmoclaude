@@ -8,6 +8,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Fixed
+
+#### A bridge no longer has to be restarted every time the server is (#3078)
+
+`@mulmobridge/client` resolved the token and the port once, at construction, and a socket's URL
+is fixed when the socket is built. So a server restart left every bridge pinned to the
+generation it started against: rejected with `invalid token` if the port happened not to
+change, and addressing a port nobody was on if it did. The client printed "re-run the bridge"
+and stopped, which is where "I restart the server and then restart every bridge by hand" came
+from.
+
+The pair is now re-read after every failed connection, and the socket is rebuilt when the
+server comes back as a different generation. Handlers registered through `onPush`,
+`onTextChunk`, `onConnect` and `onDisconnect` are re-attached to the replacement, and `.socket`
+became a getter for the one in use now.
+
+An auth error is not a sufficient trigger, and that is why this needs a supervisor rather than
+a token refresh: `invalid token` only arrives when the bridge still REACHES the server. When
+the port moved, nothing answers, so the only evidence is a refused connection.
+
+Rebuilding happens only when the pair actually moved. A server that is simply down produces an
+unbroken stream of refusals, and tearing the socket down for each one would replace socket.io's
+reconnection with a worse copy of it. Mid-restart both sidecars are briefly absent; that is the
+absence of a generation rather than a new one, so it means "keep waiting" — the process must not
+exit there, which is a startup-only path.
+
 ### Changed
 
 #### `@mulmoclaude/shapescript-plugin@2.5.0` — one statement per line, no `tau`

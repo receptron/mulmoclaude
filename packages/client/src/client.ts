@@ -17,6 +17,7 @@ import { CHAT_SOCKET_EVENTS, CHAT_SOCKET_PATH, type Attachment, type BridgeOptio
 import { readBridgeToken, tokenFilePath } from "./token.js";
 import { readBridgeEnvOptions } from "./options.js";
 import { resolveApiUrl } from "./apiUrl.js";
+import { backoffMs, credentialsChanged, type Credentials } from "./supervisor.js";
 
 // 6 min > the server's REPLY_TIMEOUT_MS (5 min) so the server's
 // timeout surfaces as a reply, not a client-side cancellation.
@@ -68,8 +69,10 @@ export interface BridgeClient {
   onDisconnect(handler: (reason: string) => void): void;
   /** Explicit shutdown. */
   close(): void;
-  /** Escape hatch — raw socket for anything the helpers don't cover. */
-  socket: Socket;
+  /** Escape hatch — the socket in use NOW. Read it per use rather than
+   *  caching it: the client replaces the socket when the server comes back
+   *  as a different generation (#3078). */
+  readonly socket: Socket;
 }
 
 /**
@@ -94,56 +97,128 @@ export function requireBearerToken(): string {
   return process.exit(1) as never;
 }
 
+/** Every subscription the caller made, so a replacement socket gets them all. */
+interface Subscriptions {
+  push: ((event: PushEvent) => void)[];
+  textChunk: ((chunk: string) => void)[];
+  connect: (() => void)[];
+  disconnect: ((reason: string) => void)[];
+}
+
+const emptySubscriptions = (): Subscriptions => ({ push: [], textChunk: [], connect: [], disconnect: [] });
+
+/** The handshake bag. `options` is omitted when empty so a server too old to
+ *  know the field never sees an empty object on the wire. */
+function buildAuth(transportId: string, token: string, options: BridgeOptions): Record<string, unknown> {
+  const auth: Record<string, unknown> = { transportId, token };
+  if (Object.keys(options).length > 0) auth.options = options;
+  return auth;
+}
+
+function attach(socket: Socket, subscriptions: Subscriptions): void {
+  subscriptions.push.forEach((handler) => socket.on(CHAT_SOCKET_EVENTS.push, handler));
+  subscriptions.textChunk.forEach((handler) =>
+    socket.on(CHAT_SOCKET_EVENTS.textChunk, (event: { text: string }) => {
+      handler(event.text);
+    }),
+  );
+  subscriptions.connect.forEach((handler) => socket.on("connect", handler));
+  subscriptions.disconnect.forEach((handler) => socket.on("disconnect", handler));
+}
+
 export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   // Token BEFORE port. A restart rewrites both files and nothing marks them as
   // one generation, so a bridge starting mid-restart can read a torn pair in
   // either order. What the order decides is WHICH tear it gets. Port first
   // yields a NEW token with an OLD port — a fresh credential sent to the port
-  // the server has just left, retried in silence because the socket's URL is
-  // fixed at construction. Token first mostly yields the opposite, an OLD token
-  // with a NEW port, which the right server answers `invalid token` and the
-  // connect handler explains; the dangerous pairing survives only in the narrow
-  // window where BOTH reads fall between the token write and the port publish.
-  // Closing it needs a shared generation marker on the sidecars (Codex, #3082).
+  // the server has just left. Token first mostly yields the opposite, an OLD
+  // token with a NEW port, which the right server answers `invalid token`; the
+  // dangerous pairing survives only in the narrow window where BOTH reads fall
+  // between the token write and the port publish (Codex, #3082).
   const token = requireBearerToken();
-  const apiUrl = resolveApiUrl(opts.apiUrl);
   // `opts.options === undefined` → scrape env automatically.
   // `opts.options === {}` → opt out of the scrape explicitly.
   const options = opts.options ?? readBridgeEnvOptions(opts.transportId, process.env);
-  // Only include the `options` key in the handshake when there's
-  // something to send — keeps old servers unaware of the field from
-  // ever seeing an empty object on the wire.
-  const auth: Record<string, unknown> = { transportId: opts.transportId, token };
-  if (Object.keys(options).length > 0) auth.options = options;
+  const subscriptions = emptySubscriptions();
 
-  const socket = io(apiUrl, {
-    path: CHAT_SOCKET_PATH,
-    auth,
-    transports: ["websocket"],
-  });
+  let current: Credentials = { apiUrl: resolveApiUrl(opts.apiUrl), token };
+  let attempt = 0;
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  let closed = false;
 
-  installDefaultLogging(socket);
+  /** The pair as the workspace has it NOW, or null while the server is mid-restart. */
+  const reread = (): Credentials | null => {
+    const fresh = readBridgeToken();
+    return fresh === null ? null : { apiUrl: resolveApiUrl(opts.apiUrl), token: fresh };
+  };
+
+  const open = (credentials: Credentials): Socket => {
+    const socket = io(credentials.apiUrl, {
+      path: CHAT_SOCKET_PATH,
+      auth: buildAuth(opts.transportId, credentials.token, options),
+      transports: ["websocket"],
+    });
+    installDefaultLogging(socket);
+    socket.on("connect", () => {
+      attempt = 0;
+    });
+    socket.on("connect_error", scheduleReresolve);
+    attach(socket, subscriptions);
+    return socket;
+  };
+
+  let socket = open(current);
+
+  /** Replace the socket only when the pair actually moved — a server that is
+   *  merely down must keep socket.io's own reconnection, not a worse copy. */
+  function reresolve(): void {
+    retry = null;
+    if (closed) return;
+    const fresh = reread();
+    attempt += 1;
+    if (!credentialsChanged(current, fresh) || fresh === null) return;
+    console.error(`\nServer moved: reconnecting to ${fresh.apiUrl}.\n`);
+    socket.removeAllListeners();
+    socket.close();
+    current = fresh;
+    attempt = 0;
+    socket = open(current);
+  }
+
+  function scheduleReresolve(): void {
+    if (closed || retry !== null) return;
+    retry = setTimeout(reresolve, backoffMs(attempt));
+    retry.unref?.();
+  }
 
   return {
     send: (externalChatId, text, attachments) => sendMessage(socket, externalChatId, text, attachments),
     onPush: (handler) => {
+      subscriptions.push.push(handler);
       socket.on(CHAT_SOCKET_EVENTS.push, handler);
     },
     onTextChunk: (handler) => {
+      subscriptions.textChunk.push(handler);
       socket.on(CHAT_SOCKET_EVENTS.textChunk, (event: { text: string }) => {
         handler(event.text);
       });
     },
     onConnect: (handler) => {
+      subscriptions.connect.push(handler);
       socket.on("connect", handler);
     },
     onDisconnect: (handler) => {
+      subscriptions.disconnect.push(handler);
       socket.on("disconnect", handler);
     },
     close: () => {
+      closed = true;
+      if (retry !== null) clearTimeout(retry);
       socket.disconnect();
     },
-    socket,
+    get socket() {
+      return socket;
+    },
   };
 }
 
@@ -175,11 +250,11 @@ function installDefaultLogging(socket: Socket): void {
     // right after the server bounces. Tell the user instead of
     // spinning silently.
     if (msg === "invalid token" || msg === "server auth not ready") {
-      console.error(
-        "\nConnect error: bearer token rejected. The server likely\n" +
-          "restarted since this bridge started — re-run the bridge to\n" +
-          "pick up the new token.\n",
-      );
+      // No longer "re-run the bridge": the client re-reads the sidecar pair
+      // after every connect failure and rebuilds the socket when the server
+      // comes back as a different generation (#3078 A-3). This says what is
+      // happening so a run that never recovers is still diagnosable.
+      console.error("\nConnect error: bearer token rejected — waiting for the server to publish a new one.\n");
       return;
     }
     console.error(`\nConnect error: ${msg}`);

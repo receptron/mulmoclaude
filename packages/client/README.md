@@ -78,8 +78,17 @@ variable, or run the bridge from the directory holding the `.env`.
 | `readBridgeToken()` / `tokenFilePath()` | at call time |
 | `TOKEN_FILE_PATH` | at import time — a snapshot, kept for compatibility |
 
-The port is read once, when the client is created. A server that restarts onto a
-*different* port after that still needs the bridge restarted.
+### Following a restart
+
+The pair is re-read whenever the connection fails. If the server comes back as a
+different generation — a new token, a new port, or both — the client rebuilds its
+socket against it and your handlers are re-attached; nothing needs restarting
+(#3078). If the pair is unchanged, the socket is left alone so socket.io's own
+reconnection handles an ordinary outage.
+
+One case is outside this: a server-initiated disconnect (`io server disconnect`)
+is the one reason socket.io does not retry, so no connection failure follows it.
+The chat-service never issues one, so there is nothing to recover from today.
 
 ## Ecosystem
 

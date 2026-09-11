@@ -63,6 +63,32 @@ authenticated, no error — and answers the wrong server's users.
 
 ---
 
+### Re-read the pair on every connection failure
+
+Both files are rewritten when the server restarts, and a socket's URL is
+fixed when the socket is built — so resolving once pins your bridge to
+the generation it started against (#3078). Re-read them whenever a
+connection attempt fails, and when the pair has CHANGED, rebuild the
+socket against the new values.
+
+Two details decide whether this works:
+
+- **A failed connection is the trigger, not an auth error.** `invalid
+  token` only arrives when you still reach the server, i.e. when the
+  port happened not to change. When the port did change, nothing
+  answers and all you get is a refused connection.
+- **Rebuild only when the pair moved.** A server that is merely down
+  produces an unbroken stream of refusals; tearing the socket down for
+  each one replaces your socket library's reconnection with a worse
+  copy of it.
+
+Mid-restart both files are briefly absent. That is not a new
+generation — it is the absence of one — so treat it as "keep waiting",
+never as a reason to fall back or exit.
+
+---
+
+
 ## Authentication
 
 Every bridge needs the current server bearer token (#272). Two
