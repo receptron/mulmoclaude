@@ -8,6 +8,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Added
+
+#### `@mulmoclaude/shapescript-plugin@2.1.0` — materials, ranges, functions and the upstream examples
+
+Phase 2 and the first phase-3 batch of `plans/feat-shapescript-upstream-parity.md`, driven by the
+upstream project's own example scripts, which are now test fixtures
+(`test/fixtures/upstream-examples/`): Ball, Chessboard, Cog, Earth, Spring and Train render, and
+Dodecahedron, Fillet and Spirals are refused with a message naming the missing feature.
+
+- **Materials**: hex (`#F00`, `#FF000080`) and named colours (`red`, `orange`, `gray`, …), `rgb()`
+  / `hsb()`, colour alpha by count (`color 1 0.5`, `color red 0.5`), scoped `opacity` that
+  multiplies through nesting, `metallicity` / `roughness` / `glow` on the PBR material,
+  `material { … }` bundles applied with `material NAME`, `smoothing 0` for flat shading, and
+  `name`. A material command inside a builder block colours the builder's result.
+- **Phase 2**: `background R G B` reaches both viewers; `texture`, a background image, `camera`
+  and `light` are accepted and skipped, and the tool result says so ("Not rendered: …") instead
+  of failing. `print` output is returned with the tool result and shown in the View; `assert`.
+- **Shapes and paths**: `icosphere`, `roundrect { radius }`, `arc { angle }` inside a path,
+  `extrude circle` / `fill roundrect { … }` without a wrapping block, per-shape `detail` /
+  `smoothing`, `size` on builders and groups (an extrude's `size` scales its profile and sets
+  its depth), custom blocks placed and coloured through their call's `position` / `orientation`
+  / `size` / `color` / `material`, lathe profiles drawn on the −X side, and `size 1 2` padded
+  to `1 2 1` as Euclid does (was `1 2 0`, which a cube refused).
+- **Expressions**: bare calls (`max 0 1`, `sqrt 9`, `sin pi / 2`), custom functions
+  (`define hyp(a b) { sqrt(a * a + b * b) }`), ranges as values with `step` and the `in`
+  operator, `split`, negative and named subscripts (`v[-1]`, `v["y"]`), and the `.width/.height/
+  .depth`, `.roll/.yaw/.pitch`, `.hue/.saturation/.brightness` members.
+- Unsupported upstream commands (`import`, `text`, `mesh`, `minkowski`, `inset`, `svgpath`,
+  `along`, shapes as values) are refused by name instead of with a parse error on a brace.
+
+**Behaviour changes** toward upstream: `for` / `if` / `switch` bodies no longer reset transforms
+and materials at their closing brace (only symbols are scoped there, per upstream's scope rules
+— Chessboard depends on it), and a bare `path` at scene level draws as a line rather than a
+filled face (`fill` it for the old result).
+
 ### Changed
 
 #### `@mulmoclaude/shapescript-plugin@2.0.0` — upstream ShapeScript units and path semantics
@@ -162,7 +197,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@2.0.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@2.1.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 

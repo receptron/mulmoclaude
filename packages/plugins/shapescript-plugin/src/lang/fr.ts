@@ -12,6 +12,8 @@ const fr: Messages = {
   saveError: "Échec de l'enregistrement :",
   downloadUsdz: "Télécharger USDZ",
   exportError: "Échec de l'export :",
+  sceneWarnings: "Non rendu :",
+  printOutput: "Sortie :",
 };
 
 export default fr;

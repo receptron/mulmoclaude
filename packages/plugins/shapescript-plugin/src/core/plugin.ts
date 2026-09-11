@@ -6,7 +6,7 @@ import { locateShape } from "./dispatch";
 import { shapeArtifactPath } from "./paths";
 
 import { parseShapeScript } from "../shapescript/parser";
-import { astToThreeJS, ShapeScriptLimitError } from "../shapescript/toThreeJS";
+import { astToThreeJS, sceneInfoOf, ShapeScriptLimitError, type ShapeScriptSceneInfo } from "../shapescript/toThreeJS";
 import { disposeObject3D } from "../shapescript/dispose";
 import { ParseError } from "../shapescript/types";
 
@@ -34,9 +34,22 @@ const nonEmpty = (value: unknown): value is string => typeof value === "string" 
 
 /** Build + immediately dispose the model, so an unrenderable script is
  *  reported as a diagnostic instead of a blank viewport. Throws; the caller
- *  maps the cause to a `ShapeScriptDiagnostic`. */
-function validateGeometry(script: string): void {
-  disposeObject3D(astToThreeJS(parseShapeScript(script)));
+ *  maps the cause to a `ShapeScriptDiagnostic`. Returns what the build
+ *  reported: commands it skipped and `print` output, both for the agent. */
+function validateGeometry(script: string): ShapeScriptSceneInfo {
+  const group = astToThreeJS(parseShapeScript(script));
+  const info = sceneInfoOf(group);
+  disposeObject3D(group);
+  return info;
+}
+
+/** The tool message's tail: skipped commands and `print` lines, so the agent
+ *  learns that a `texture` was not drawn without the user having to say so. */
+function describeSceneInfo(info: ShapeScriptSceneInfo): string {
+  const parts: string[] = [];
+  if (info.warnings.length) parts.push(`Not rendered: ${info.warnings.join("; ")}`);
+  if (info.logs.length) parts.push(`Output:\n${info.logs.join("\n")}`);
+  return parts.length ? `\n${parts.join("\n")}` : "";
 }
 
 /** Read the source a `path` argument names, through whichever FileOps owns it. */
@@ -102,11 +115,11 @@ export const presentShapeScript = async (context: ShapeScriptExecuteContext, arg
     code = "EVALUATION_ERROR";
     // Geometry construction is headless: validate the same evaluator/builders
     // the browser uses, then release the temporary scene before returning.
-    validateGeometry(source.script);
+    const info = validateGeometry(source.script);
     // Only a NEW script is written; a `path` result already names its file.
     const filePath = source.filePath ?? (await saveShapeSource(context ?? {}, source.script, args.title));
     return {
-      message: filePath ? `Saved ShapeScript to ${filePath}` : `Created 3D visualization: ${args.title}`,
+      message: (filePath ? `Saved ShapeScript to ${filePath}` : `Created 3D visualization: ${args.title}`) + describeSceneInfo(info),
       title: args.title,
       data: filePath ? { script: source.script, filePath } : { script: source.script },
       instructions: PRESENT_ACK,

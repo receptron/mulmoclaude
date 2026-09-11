@@ -12,6 +12,8 @@ const ptBR: Messages = {
   saveError: "Falha ao salvar:",
   downloadUsdz: "Baixar USDZ",
   exportError: "Falha na exportação:",
+  sceneWarnings: "Não renderizado:",
+  printOutput: "Saída:",
 };
 
 export default ptBR;

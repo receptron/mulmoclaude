@@ -32,5 +32,6 @@ export { samples } from "./samples";
 
 // Re-export ShapeScript utilities
 export { parseShapeScript } from "../shapescript/parser";
-export { astToThreeJS } from "../shapescript/toThreeJS";
+export { astToThreeJS, sceneInfoOf } from "../shapescript/toThreeJS";
+export type { ShapeScriptSceneInfo } from "../shapescript/toThreeJS";
 export type { SceneNode } from "../shapescript/types";

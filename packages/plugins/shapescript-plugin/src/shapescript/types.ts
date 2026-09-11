@@ -4,7 +4,8 @@ export type Vector3 = [number, number, number];
 export type Color = [number, number, number];
 
 // Expression types
-export type Expression = NumberLiteral | StringLiteral | IdentifierExpr | BinaryExpr | UnaryExpr | FunctionCall | MemberAccess | SubscriptExpr | TupleExpr;
+export type Expression =
+  NumberLiteral | StringLiteral | IdentifierExpr | BinaryExpr | UnaryExpr | FunctionCall | MemberAccess | SubscriptExpr | TupleExpr | RangeExpr | MaterialExpr;
 
 export interface NumberLiteral {
   type: "number";
@@ -57,6 +58,31 @@ export interface TupleExpr {
   elements: Expression[];
 }
 
+/** `from to to [step s]`, or `existing step s` when `to` is absent — a range
+ *  value a `for` loop walks and the `in` operator tests, as upstream. */
+export interface RangeExpr {
+  type: "range";
+  from: Expression;
+  to?: Expression;
+  step?: Expression;
+}
+
+/** `material { color … roughness … }` — a bundle of material properties that
+ *  `define` can name and the `material` command re-applies. */
+export interface MaterialExpr {
+  type: "material";
+  properties: MaterialProperties;
+}
+
+export interface MaterialProperties {
+  color?: Color | Expression;
+  opacity?: number | Expression;
+  metallicity?: number | Expression;
+  roughness?: number | Expression;
+  glow?: Color | Expression;
+  texture?: Expression;
+}
+
 export type SceneNode =
   | ShapeNode
   | CSGNode
@@ -75,7 +101,11 @@ export type SceneNode =
   | SeedNode
   | PathNode
   | BackgroundNode
-  | TextureNode
+  | MaterialNode
+  | SmoothingNode
+  | PrintNode
+  | AssertNode
+  | IgnoredNode
   | ColorNode
   | RotateNode
   | OrientationNode
@@ -85,19 +115,27 @@ export type SceneNode =
 
 export interface ShapeNode {
   type: "shape";
-  primitive: "cube" | "sphere" | "cylinder" | "cone" | "torus" | "circle" | "square" | "polygon";
+  primitive: ShapePrimitive;
   properties: ShapeProperties;
   children?: SceneNode[];
 }
 
-export interface ShapeProperties {
+export type ShapePrimitive = "cube" | "sphere" | "icosphere" | "cylinder" | "cone" | "torus" | "circle" | "square" | "roundrect" | "polygon";
+
+export interface ShapeProperties extends MaterialProperties {
   position?: Vector3 | Expression;
   rotation?: Vector3 | Expression;
   orientation?: Vector3 | Expression; // Alias for rotation
   size?: Vector3 | Expression;
-  color?: Color | Expression;
-  opacity?: number | Expression;
+  /** `material name` inside a block: every property of the named bundle. */
+  material?: Expression;
+  /** Per-shape `detail` / `smoothing`, as upstream allows inside any block. */
+  detail?: number | Expression;
+  smoothing?: number | Expression;
+  name?: Expression;
   sides?: number | Expression;
+  /** `roundrect` corner radius, as a proportion of the smaller side. */
+  radius?: number | Expression;
   // For cylinder/cone specific properties
   radiusTop?: number | Expression;
   radiusBottom?: number | Expression;
@@ -118,15 +156,13 @@ export interface BlockNode {
   children: SceneNode[];
 }
 
+/** `for v in <iterable> { … }`. The iterable is one expression: a range
+ *  (`1 to 5 step 2`, or a symbol holding one) or a tuple of values. */
 export interface ForLoopNode {
   type: "for";
   variable: string;
-  from: Expression | number;
-  to: Expression | number;
-  step?: Expression | number;
-  iterableValues?: Expression; // For "for i in values"
+  iterable: Expression;
   body: SceneNode[];
-  transforms?: TransformNode[];
 }
 
 export interface IfNode {
@@ -154,9 +190,12 @@ export interface TransformNode {
 export interface DefineNode {
   type: "define";
   name: string;
-  value?: Expression; // For variable definitions
+  value?: Expression; // For variable definitions, or a function's result expression
   options?: OptionNode[]; // For custom shape definitions
-  body?: SceneNode[]; // For custom shape definitions
+  body?: SceneNode[]; // For custom shape definitions, or a function's leading `define`s
+  /** `define name(a b) { … }` — a function. `body` holds its `define`s and
+   *  `value` the expression it returns. */
+  params?: string[];
 }
 
 export interface OptionNode {
@@ -178,12 +217,40 @@ export interface SeedNode {
 
 export interface BackgroundNode {
   type: "background";
-  value: Expression; // Usually a string (filename)
+  value: Expression; // A colour, or a texture file name (which is not supported)
 }
 
-export interface TextureNode {
-  type: "texture";
-  value: Expression; // Usually a string (filename)
+/** A scoped material command: `opacity 0.5`, `metallicity 1`, `roughness 0.2`,
+ *  `glow red`, `texture "file.png"` (warned, not rendered) or `material name`. */
+export interface MaterialNode {
+  type: "material";
+  property: "opacity" | "metallicity" | "roughness" | "glow" | "texture" | "material";
+  value: Expression;
+}
+
+/** `smoothing N` — 0 draws every edge sharp (flat shading); anything else smooth. */
+export interface SmoothingNode {
+  type: "smoothing";
+  value: Expression;
+}
+
+/** `print a b …` — logged, and returned to the agent with the tool result. */
+export interface PrintNode {
+  type: "print";
+  value: Expression;
+}
+
+/** `assert condition` — a failing assertion stops the script. */
+export interface AssertNode {
+  type: "assert";
+  value: Expression;
+}
+
+/** A block upstream renders but this renderer does not (`camera`, `light`):
+ *  parsed and skipped, with a warning naming it. */
+export interface IgnoredNode {
+  type: "ignored";
+  command: string;
 }
 
 export interface ColorNode {
@@ -262,12 +329,27 @@ export interface PathNode {
   properties?: ShapeProperties;
 }
 
-export type PathCommand = DefineNode | PointCommand | CurveCommand | RotateCommand | TranslateCommand | ScaleCommand | DetailPathCommand | ForLoopPathCommand;
+export type PathCommand =
+  DefineNode | PointCommand | CurveCommand | ArcCommand | RotateCommand | TranslateCommand | ScaleCommand | DetailPathCommand | ForLoopPathCommand;
 
 export interface PointCommand {
   type: "point";
   x: number | Expression;
   y: number | Expression;
+  /** A third coordinate is accepted for upstream compatibility; paths here are
+   *  planar, so it must be zero. */
+  z?: Expression;
+}
+
+/** `arc { angle A [position] [orientation] [size] }` inside a path: a circular
+ *  arc of `angle` half-turns, clockwise from +Y, radius `size / 2` (default
+ *  0.5), sampled at the current detail. */
+export interface ArcCommand {
+  type: "arc";
+  angle?: Expression;
+  position?: Expression;
+  orientation?: Expression;
+  size?: Expression;
 }
 
 /** A quadratic Bézier CONTROL point. The curve passes through the neighbouring
@@ -277,6 +359,7 @@ export interface CurveCommand {
   type: "curve";
   x: number | Expression;
   y: number | Expression;
+  z?: Expression;
 }
 
 export interface RotateCommand {
@@ -306,9 +389,7 @@ export interface DetailPathCommand {
 export interface ForLoopPathCommand {
   type: "for";
   variable: string;
-  from: number | Expression;
-  to: number | Expression;
-  step?: number | Expression;
+  iterable: Expression;
   commands: PathCommand[];
 }
 
@@ -317,6 +398,8 @@ export enum TokenType {
   // Primitives
   CUBE = "CUBE",
   SPHERE = "SPHERE",
+  ICOSPHERE = "ICOSPHERE",
+  ROUNDRECT = "ROUNDRECT",
   CYLINDER = "CYLINDER",
   CONE = "CONE",
   TORUS = "TORUS",
@@ -334,10 +417,18 @@ export enum TokenType {
   PATH = "PATH",
   POINT = "POINT",
   CURVE = "CURVE",
+  ARC = "ARC",
   DETAIL = "DETAIL",
+  SMOOTHING = "SMOOTHING",
   SEED = "SEED",
   BACKGROUND = "BACKGROUND",
   TEXTURE = "TEXTURE",
+  MATERIAL = "MATERIAL",
+  METALLICITY = "METALLICITY",
+  ROUGHNESS = "ROUGHNESS",
+  GLOW = "GLOW",
+  PRINT = "PRINT",
+  ASSERT = "ASSERT",
 
   // CSG Operations
   UNION = "UNION",
@@ -373,6 +464,8 @@ export enum TokenType {
   NUMBER = "NUMBER",
   IDENTIFIER = "IDENTIFIER",
   STRING = "STRING",
+  /** `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA`; the value is the digits. */
+  HEXCOLOR = "HEXCOLOR",
 
   // Operators
   PLUS = "PLUS",

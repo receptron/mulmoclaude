@@ -12,11 +12,13 @@ import {
   ExtrudeNode,
   DetailNode,
   BackgroundNode,
-  TextureNode,
+  MaterialNode,
+  MaterialProperties,
   PathNode,
   PathCommand,
   PointCommand,
   CurveCommand,
+  ArcCommand,
   TranslateCommand,
   ScaleCommand,
   ForLoopPathCommand,
@@ -29,7 +31,36 @@ import {
   FillNode,
   HullNode,
   ShapeProperties,
+  ShapePrimitive,
 } from "./types";
+import { BUILT_IN_FUNCTION_NAMES } from "./evaluator";
+
+/** Blocks upstream renders through its own viewer and this renderer skips with
+ *  a warning: a camera only frames the upstream app, and lights are not
+ *  modelled here. Skipping keeps a script that carries them renderable. */
+const IGNORED_BLOCKS = new Set(["camera", "light"]);
+
+/** Upstream commands this renderer has no equivalent for. Named individually
+ *  so the diagnostic says what was meant rather than "Unknown shape". */
+const UNSUPPORTED_COMMANDS: Record<string, string> = {
+  text: "`text` (3D text) is not supported by this renderer",
+  font: "`font` is not supported by this renderer",
+  import: "`import` is not supported by this renderer — inline the shapes instead",
+  mesh: "raw `mesh { polygon … }` is not supported by this renderer — build the shape from primitives, paths and builders",
+  polygon: "`polygon { point … }` with explicit points is not supported — use `polygon { sides N }` or a `path`",
+  minkowski: "`minkowski` is not supported by this renderer",
+  inset: "`inset` is not supported by this renderer",
+  svgpath: "`svgpath` is not supported by this renderer — write the outline as a `path`",
+  object: "`object` values are not supported by this renderer — use tuples",
+  along: "`extrude … along` is not supported by this renderer",
+  normals: "`normals` (normal maps) are not supported by this renderer",
+  focus: "`focus` is not supported by this renderer",
+  debug: "`debug` is not supported by this renderer",
+};
+
+/** Own-property lookup: `toString` must not resolve off Object.prototype. */
+const unsupportedMessage = (name: string): string | undefined =>
+  Object.prototype.hasOwnProperty.call(UNSUPPORTED_COMMANDS, name) ? UNSUPPORTED_COMMANDS[name] : undefined;
 
 // Lexer/Tokenizer
 class Lexer {
@@ -127,6 +158,8 @@ class Lexer {
     const keywords: Record<string, TokenType> = {
       cube: TokenType.CUBE,
       sphere: TokenType.SPHERE,
+      icosphere: TokenType.ICOSPHERE,
+      roundrect: TokenType.ROUNDRECT,
       cylinder: TokenType.CYLINDER,
       cone: TokenType.CONE,
       torus: TokenType.TORUS,
@@ -142,10 +175,18 @@ class Lexer {
       path: TokenType.PATH,
       point: TokenType.POINT,
       curve: TokenType.CURVE,
+      arc: TokenType.ARC,
       detail: TokenType.DETAIL,
+      smoothing: TokenType.SMOOTHING,
       seed: TokenType.SEED,
       background: TokenType.BACKGROUND,
       texture: TokenType.TEXTURE,
+      material: TokenType.MATERIAL,
+      metallicity: TokenType.METALLICITY,
+      roughness: TokenType.ROUGHNESS,
+      glow: TokenType.GLOW,
+      print: TokenType.PRINT,
+      assert: TokenType.ASSERT,
       union: TokenType.UNION,
       difference: TokenType.DIFFERENCE,
       intersection: TokenType.INTERSECTION,
@@ -166,6 +207,7 @@ class Lexer {
       orientation: TokenType.ORIENTATION,
       size: TokenType.SIZE,
       color: TokenType.COLOR,
+      colour: TokenType.COLOR,
       opacity: TokenType.OPACITY,
       rotate: TokenType.ROTATE,
       translate: TokenType.TRANSLATE,
@@ -236,6 +278,19 @@ class Lexer {
     };
   }
 
+  /** `#RGB`, `#RGBA`, `#RRGGBB` or `#RRGGBBAA`, as in web colours. */
+  private readHexColor(): Token {
+    const line = this.line;
+    const column = this.column;
+    this.advance(); // #
+    let digits = "";
+    while (/[0-9a-fA-F]/.test(this.peek())) digits += this.advance();
+    if (![3, 4, 6, 8].includes(digits.length) || /[0-9a-zA-Z_]/.test(this.peek())) {
+      throw new ParseError("Invalid hex color — use #RGB, #RGBA, #RRGGBB or #RRGGBBAA", line, column);
+    }
+    return { type: TokenType.HEXCOLOR, value: digits, line, column };
+  }
+
   tokenize(): Token[] {
     const tokens: Token[] = [];
 
@@ -279,6 +334,12 @@ class Lexer {
       // String literals
       else if (char === '"') {
         const token = this.readString();
+        token.precedingWhitespace = hadWhitespace;
+        tokens.push(token);
+      }
+      // `#RRGGBB` colour literals
+      else if (char === "#") {
+        const token = this.readHexColor();
         token.precedingWhitespace = hadWhitespace;
         tokens.push(token);
       }
@@ -503,11 +564,84 @@ class Lexer {
   }
 }
 
+/** Tokens that begin a shape or builder — a value upstream can hold and this
+ *  renderer cannot. */
+const SHAPE_VALUE_TOKENS = new Set([
+  TokenType.CUBE,
+  TokenType.SPHERE,
+  TokenType.ICOSPHERE,
+  TokenType.CYLINDER,
+  TokenType.CONE,
+  TokenType.TORUS,
+  TokenType.CIRCLE,
+  TokenType.SQUARE,
+  TokenType.ROUNDRECT,
+  TokenType.POLYGON,
+  TokenType.EXTRUDE,
+  TokenType.LOFT,
+  TokenType.LATHE,
+  TokenType.FILL,
+  TokenType.HULL,
+  TokenType.GROUP,
+  TokenType.PATH,
+  TokenType.UNION,
+  TokenType.DIFFERENCE,
+  TokenType.INTERSECTION,
+  TokenType.XOR,
+  TokenType.STENCIL,
+]);
+
+/** Tokens that open a standard shape property inside a custom block call. */
+const STANDARD_PROPERTY_TOKENS = new Set([
+  TokenType.POSITION,
+  TokenType.ROTATION,
+  TokenType.ORIENTATION,
+  TokenType.SIZE,
+  TokenType.COLOR,
+  TokenType.OPACITY,
+  TokenType.MATERIAL,
+  TokenType.METALLICITY,
+  TokenType.ROUGHNESS,
+  TokenType.GLOW,
+  TokenType.TEXTURE,
+  TokenType.DETAIL,
+  TokenType.SMOOTHING,
+]);
+
+/** `#RGB[A]` / `#RRGGBB[AA]` as a literal RGBA tuple in 0–1. */
+function hexColorExpression(digits: string): Expression {
+  const wide = digits.length >= 6;
+  const channels: number[] = [];
+  for (let i = 0; i < digits.length; i += wide ? 2 : 1) {
+    const pair = wide ? digits.slice(i, i + 2) : digits[i]! + digits[i]!;
+    channels.push(parseInt(pair, 16) / 255);
+  }
+  if (channels.length === 3) channels.push(1);
+  return { type: "tuple", elements: channels.map((value) => ({ type: "number", value })) };
+}
+
+function materialSubset(properties: ShapeProperties): MaterialProperties {
+  const material: MaterialProperties = {};
+  for (const key of ["color", "opacity", "metallicity", "roughness", "glow", "texture"] as const) {
+    const value = properties[key];
+    if (value !== undefined) material[key] = value as Expression;
+  }
+  return material;
+}
+
 // Parser
 export class Parser {
   /** Whether the expression being parsed is one value of a whitespace-separated
    *  list. See `withValueList`. */
   private valueList = false;
+  /** Names a bare call may use (`max 0 1`, `sqrt 9`): the built-ins plus every
+   *  `define name(…)` seen so far, minus names a plain `define` shadows. Lexical
+   *  and unscoped — a shadow inside a block outlives the block, which only
+   *  matters to a script that reuses a function's name for a number. */
+  private callable = new Set<string>(BUILT_IN_FUNCTION_NAMES);
+  /** Custom block names, so a user-defined `light` is still invoked rather
+   *  than skipped as the upstream light source. */
+  private blocks = new Set<string>();
 
   private tokens: Token[];
   private pos = 0;
@@ -594,7 +728,27 @@ export class Parser {
       };
     }
 
-    return left;
+    return minPrec === 0 ? this.parseRangeTail(left) : left;
+  }
+
+  /** `a to b [step s]` after a full expression, or `range step s` to re-step a
+   *  range held in a symbol. Lowest precedence of all, so `1 to n - 1` runs to
+   *  `n - 1`; only a whole expression (minPrec 0) can become a range. */
+  private parseRangeTail(from: Expression): Expression {
+    if (this.current().type === TokenType.TO) {
+      this.advance();
+      const to = this.parseExpression(1);
+      if (this.current().type === TokenType.STEP) {
+        this.advance();
+        return { type: "range", from, to, step: this.parseExpression(1) };
+      }
+      return { type: "range", from, to };
+    }
+    if (this.current().type === TokenType.STEP) {
+      this.advance();
+      return { type: "range", from, step: this.parseExpression(1) };
+    }
+    return from;
   }
 
   private parsePrimary(): Expression {
@@ -693,6 +847,20 @@ export class Parser {
       };
     }
 
+    if (token.type === TokenType.HEXCOLOR) {
+      this.advance();
+      return hexColorExpression(String(token.value));
+    }
+
+    // `material { … }` — a bundle of material properties as a value
+    if (token.type === TokenType.MATERIAL && this.peek().type === TokenType.LBRACE) {
+      this.advance();
+      this.expect(TokenType.LBRACE);
+      const properties = this.parseProperties();
+      this.expect(TokenType.RBRACE);
+      return { type: "material", properties: materialSubset(properties) };
+    }
+
     // Identifier or function call
     if (token.type === TokenType.IDENTIFIER) {
       const name = token.value as string;
@@ -727,6 +895,17 @@ export class Parser {
         };
       }
 
+      // Bare call, upstream's Lisp-like spelling: `max 0 1`, `sqrt 9`, `sin pi / 2`.
+      // The function takes every value that follows it, each a full expression,
+      // so `sin pi / 2` is sin(pi / 2) and `size max 1 2` is one number.
+      if (this.callable.has(name) && this.startsValue()) {
+        const args: Expression[] = [];
+        this.withValueList(true, () => {
+          while (this.startsValue()) args.push(this.parseExpression());
+        });
+        return { type: "call", name, args };
+      }
+
       // Simple identifier
       return {
         type: "identifier",
@@ -756,6 +935,7 @@ export class Parser {
         return 2;
       case TokenType.EQUALS:
       case TokenType.NOT_EQUALS:
+      case TokenType.IN:
         return 3;
       case TokenType.LESS:
       case TokenType.LESS_EQUAL:
@@ -790,6 +970,8 @@ export class Parser {
         return "=";
       case TokenType.NOT_EQUALS:
         return "<>";
+      case TokenType.IN:
+        return "in";
       case TokenType.LESS:
         return "<";
       case TokenType.LESS_EQUAL:
@@ -865,13 +1047,32 @@ export class Parser {
           properties.opacity = this.parseExpression();
           break;
 
+        case TokenType.MATERIAL:
+          this.advance();
+          properties.material = this.parseExpression();
+          break;
+
+        case TokenType.METALLICITY:
+        case TokenType.ROUGHNESS:
+        case TokenType.GLOW:
+        case TokenType.TEXTURE:
+          this.advance();
+          properties[String(token.value).toLowerCase() as "glow"] = this.parseVectorOrExpression();
+          break;
+
+        case TokenType.DETAIL:
+        case TokenType.SMOOTHING:
+          this.advance();
+          properties[String(token.value).toLowerCase() as "detail"] = this.parseExpression();
+          break;
+
         case TokenType.RBRACE:
           // End of properties block
           return properties;
 
         case TokenType.IDENTIFIER: {
           const key = String(token.value);
-          if (!["sides", "radiusTop", "radiusBottom", "height", "innerRadius", "outerRadius"].includes(key)) return properties;
+          if (!["sides", "radiusTop", "radiusBottom", "height", "innerRadius", "outerRadius", "radius", "name"].includes(key)) return properties;
           this.advance();
           properties[key as "sides"] = this.parseExpression();
           break;
@@ -911,7 +1112,7 @@ export class Parser {
     return nodes;
   }
 
-  private parseShape(primitive: "cube" | "sphere" | "cylinder" | "cone" | "torus" | "circle" | "square" | "polygon"): ShapeNode {
+  private parseShape(primitive: ShapePrimitive): ShapeNode {
     this.advance(); // consume primitive token
 
     let properties: ShapeProperties = {};
@@ -941,79 +1142,23 @@ export class Parser {
     };
   }
 
+  /** `for [name in] <range or tuple> { … }`. The range is an ordinary
+   *  expression (`1 to n step 2`, or a symbol holding one), so `for 1 to 5`
+   *  and `for i in loops` read the same way. */
   private parseForLoop(): ForLoopNode {
     this.advance(); // consume 'for'
+    const { variable, iterable } = this.parseLoopHeader();
+    return { type: "for", variable, iterable, body: this.parseBlock() };
+  }
 
-    let variable = "i";
-
-    // Parse: for <identifier> in <expr> to <expr>
-    // or: for <identifier> in <expr>
-    if (this.current().type === TokenType.IDENTIFIER) {
+  private parseLoopHeader(): { variable: string; iterable: Expression } {
+    let variable = "_i";
+    if (this.current().type === TokenType.IDENTIFIER && this.peek().type === TokenType.IN) {
       variable = this.current().value as string;
       this.advance();
-    }
-
-    // Check for 'in' keyword
-    if (this.current().type === TokenType.IN) {
       this.advance();
-
-      const fromExpr = this.parseExpression();
-
-      // Check if there's a 'to' keyword (range) or not (values)
-      if (this.current().type === TokenType.TO) {
-        this.advance();
-        const toExpr = this.parseExpression();
-
-        // Optional step
-        let stepExpr: Expression | undefined;
-        if (this.current().type === TokenType.STEP) {
-          this.advance();
-          stepExpr = this.parseExpression();
-        }
-
-        const body = this.parseBlock();
-
-        return {
-          type: "for",
-          variable,
-          from: fromExpr,
-          to: toExpr,
-          ...(stepExpr === undefined ? {} : { step: stepExpr }),
-          body,
-        };
-      } else {
-        // for i in values
-        const body = this.parseBlock();
-
-        return {
-          type: "for",
-          variable,
-          from: { type: "number", value: 0 },
-          to: { type: "number", value: 0 },
-          iterableValues: fromExpr,
-          body,
-        };
-      }
     }
-
-    // Old syntax: for <from>? to <to>
-    let fromExpr: Expression = { type: "number", value: 1 };
-    if (this.current().type === TokenType.NUMBER) {
-      fromExpr = this.parseExpression();
-    }
-
-    this.expect(TokenType.TO);
-    const toExpr = this.parseExpression();
-
-    const body = this.parseBlock();
-
-    return {
-      type: "for",
-      variable,
-      from: fromExpr,
-      to: toExpr,
-      body,
-    };
+    return { variable, iterable: this.parseExpression() };
   }
 
   private parseIf(): IfNode {
@@ -1130,9 +1275,16 @@ export class Parser {
     const nameToken = this.expectIdentifier();
     const name = nameToken.value as string;
 
+    // `define name(a b) { … }` — a function with a return value
+    if (this.current().type === TokenType.LPAREN && !this.current().precedingWhitespace) {
+      return this.parseFunctionDefine(name);
+    }
+
     // Check if this is a custom shape definition with a block
     if (this.current().type === TokenType.LBRACE) {
       // This is a custom shape definition
+      this.blocks.add(name);
+      this.callable.delete(name);
       this.advance(); // consume '{'
 
       const options: OptionNode[] = [];
@@ -1177,13 +1329,63 @@ export class Parser {
     }
 
     // Parse the value - could be a single expression or space-separated tuple
+    this.refuseShapeValue(
+      `\`define ${name} <shape>\` (a shape as a value) is not supported by this renderer — write \`define ${name} { … }\` for a reusable block`,
+    );
     const value = this.parseVectorOrExpression();
+    this.callable.delete(name);
 
     return {
       type: "define",
       name,
       value,
     };
+  }
+
+  /** Upstream lets a shape be a value (`define s sphere { … }`, a function
+   *  returning a mesh); this renderer has no mesh values, so say so by name
+   *  instead of failing on the brace that follows. */
+  private refuseShapeValue(message: string): void {
+    const token = this.current();
+    const name = typeof token.value === "string" ? token.value : "";
+    const unsupported = token.type === TokenType.IDENTIFIER ? unsupportedMessage(name) : undefined;
+    if (unsupported !== undefined) throw new ParseError(unsupported, token.line, token.column);
+    if (SHAPE_VALUE_TOKENS.has(token.type)) throw new ParseError(message, token.line, token.column);
+  }
+
+  /** The body may hold `define`s and must end in the expression it returns.
+   *  Upstream also allows shapes there (a function returning a mesh); this
+   *  renderer has no mesh values, so that form is refused by name. */
+  private parseFunctionDefine(name: string): DefineNode {
+    this.expect(TokenType.LPAREN);
+    const params: string[] = [];
+    while (this.current().type !== TokenType.RPAREN) {
+      const token = this.current();
+      if (typeof token.value !== "string" || !/^[a-zA-Z_][a-zA-Z_0-9]*$/.test(token.value)) {
+        throw new ParseError("Expected a parameter name", token.line, token.column);
+      }
+      params.push(token.value);
+      this.advance();
+    }
+    this.expect(TokenType.RPAREN);
+    // Registered before the body so a function may call itself.
+    this.callable.add(name);
+    this.expect(TokenType.LBRACE);
+    this.skipNewlines();
+    const body: DefineNode[] = [];
+    while (this.current().type === TokenType.DEFINE) {
+      body.push(this.parseDefine());
+      this.skipNewlines();
+    }
+    const token = this.current();
+    if (token.type === TokenType.RBRACE) throw new ParseError(`Function \`${name}\` must end with the expression it returns`, token.line, token.column);
+    this.refuseShapeValue(
+      `Function \`${name}\` builds a shape — functions here may only compute values (numbers, tuples, strings); use \`define ${name} { … }\` with options for a reusable shape`,
+    );
+    const value = this.parseVectorOrExpression();
+    this.skipNewlines();
+    this.expect(TokenType.RBRACE);
+    return { type: "define", name, params, body, value };
   }
 
   private parseDetail(): DetailNode {
@@ -1204,24 +1406,30 @@ export class Parser {
 
   private parseBackground(): BackgroundNode {
     this.advance(); // consume 'background'
-
-    const value = this.parseExpression();
-
-    return {
-      type: "background",
-      value,
-    };
+    return { type: "background", value: this.parseVectorOrExpression() };
   }
 
-  private parseTexture(): TextureNode {
-    this.advance(); // consume 'texture'
+  /** `opacity` / `metallicity` / `roughness` / `glow` / `texture` / `material`
+   *  as a scoped command. */
+  private parseMaterialCommand(): MaterialNode {
+    const token = this.advance();
+    const property = String(token.value).toLowerCase() as MaterialNode["property"];
+    return { type: "material", property, value: this.parseVectorOrExpression() };
+  }
 
-    const value = this.parseExpression();
-
-    return {
-      type: "texture",
-      value,
-    };
+  /** `camera { … }` / `light { … }`: the block is consumed and dropped. */
+  private skipIgnoredBlock(command: string): SceneNode {
+    this.advance();
+    if (this.current().type === TokenType.LBRACE) {
+      let depth = 0;
+      do {
+        const token = this.advance();
+        if (token.type === TokenType.LBRACE) depth++;
+        else if (token.type === TokenType.RBRACE) depth--;
+        else if (token.type === TokenType.EOF) throw new ParseError(`Unterminated \`${command}\` block`, token.line, token.column);
+      } while (depth > 0);
+    }
+    return { type: "ignored", command };
   }
 
   private parseGroup(): GroupNode {
@@ -1244,13 +1452,20 @@ export class Parser {
       const path = this.parsePath();
       return builderType === "extrude" ? { type: "extrude", path, properties: {} } : { type: builderType, children: [path], properties: {} };
     }
+    // `extrude circle`, `fill roundrect { … }`, `extrude cog { teeth 8 }`: one
+    // child shape without a wrapping block, as upstream allows.
+    if (this.current().type !== TokenType.LBRACE) {
+      const child = this.parseNode();
+      if (!child) throw new ParseError(`\`${builderType}\` needs a path or shape`, this.current().line, this.current().column);
+      return { type: builderType, children: [child], properties: {} };
+    }
     this.expect(TokenType.LBRACE);
     this.skipNewlines();
     const properties: ShapeProperties = {};
     const children: SceneNode[] = [];
     while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
       const token = this.current();
-      if ([TokenType.SIZE, TokenType.COLOR, TokenType.OPACITY, TokenType.POSITION, TokenType.ROTATION, TokenType.ORIENTATION].includes(token.type)) {
+      if ([TokenType.SIZE, TokenType.COLOR, TokenType.POSITION, TokenType.ROTATION, TokenType.ORIENTATION].includes(token.type)) {
         Object.assign(properties, this.parseProperties());
       } else {
         const node = this.parseNode();
@@ -1284,7 +1499,15 @@ export class Parser {
    *  several values rather than one arithmetic expression. */
   private startsValue(): boolean {
     const type = this.current().type;
-    return type === TokenType.NUMBER || type === TokenType.MINUS || type === TokenType.PLUS || type === TokenType.IDENTIFIER || type === TokenType.LPAREN;
+    return (
+      type === TokenType.NUMBER ||
+      type === TokenType.MINUS ||
+      type === TokenType.PLUS ||
+      type === TokenType.IDENTIFIER ||
+      type === TokenType.LPAREN ||
+      type === TokenType.STRING ||
+      type === TokenType.HEXCOLOR
+    );
   }
 
   /** As `startsValue`, but `name {` is a custom shape invocation rather than the
@@ -1359,6 +1582,8 @@ export class Parser {
       case TokenType.POINT:
       case TokenType.CURVE:
         return this.parsePathPoint(token.type === TokenType.POINT ? "point" : "curve");
+      case TokenType.ARC:
+        return this.parseArc();
       case TokenType.ROTATE: {
         this.advance();
         return { type: "rotate", angle: this.parseExpression() };
@@ -1379,7 +1604,38 @@ export class Parser {
     this.advance();
     const x = this.parsePathValue();
     const y: Expression = this.startsValue() ? this.parsePathValue() : { type: "number", value: 0 };
+    if (this.startsValue()) return { type, x, y, z: this.parsePathValue() };
     return { type, x, y };
+  }
+
+  /** `arc` or `arc { angle … position … orientation … size … }` inside a path. */
+  private parseArc(): ArcCommand {
+    this.advance();
+    const arc: ArcCommand = { type: "arc" };
+    if (this.current().type !== TokenType.LBRACE) return arc;
+    this.expect(TokenType.LBRACE);
+    this.skipNewlines();
+    while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+      const token = this.current();
+      const key = String(token.value).toLowerCase();
+      if (key === "angle" && token.type === TokenType.IDENTIFIER) {
+        this.advance();
+        arc.angle = this.parseExpression();
+      } else if (
+        token.type === TokenType.POSITION ||
+        token.type === TokenType.SIZE ||
+        token.type === TokenType.ORIENTATION ||
+        token.type === TokenType.ROTATION
+      ) {
+        this.advance();
+        arc[token.type === TokenType.ROTATION ? "orientation" : (key as "position")] = this.parseVectorOrExpression();
+      } else {
+        throw new ParseError(`Unexpected token in arc: ${token.type}`, token.line, token.column);
+      }
+      this.skipNewlines();
+    }
+    this.expect(TokenType.RBRACE);
+    return arc;
   }
 
   /** `translate x [y]` / `scale x [y]` inside a path. A lone `translate x`
@@ -1395,22 +1651,9 @@ export class Parser {
 
   private parsePathFor(): ForLoopPathCommand {
     this.advance(); // consume 'for'
-
-    // Check if there's a variable name (for i in 1 to 5) or direct range (for 1 to 5)
-    let variable = "_i"; // Default variable name
-    if (this.current().type === TokenType.IDENTIFIER && this.peek(1).type === TokenType.IN) {
-      variable = this.current().value as string;
-      this.advance(); // consume variable
-      this.expect(TokenType.IN); // consume 'in'
-    }
-
-    const from = this.parseExpression();
-    this.expect(TokenType.TO);
-    const to = this.parseExpression();
-    const step = this.current().type === TokenType.STEP ? (this.advance(), this.parseExpression()) : { type: "number" as const, value: 1 };
-
+    const { variable, iterable } = this.parseLoopHeader();
     // The loop is expanded during rendering.
-    return { type: "for", variable, from, to, step, commands: this.parsePathBody("path for loop") };
+    return { type: "for", variable, iterable, commands: this.parsePathBody("path for loop") };
   }
 
   private parseNode(): SceneNode | null {
@@ -1418,7 +1661,6 @@ export class Parser {
 
     const token = this.current();
 
-    type ShapePrimitive = "cube" | "sphere" | "cylinder" | "cone" | "torus" | "circle" | "square" | "polygon";
     type CSGOperation = "union" | "difference" | "intersection" | "xor" | "stencil";
     type BuilderType = "extrude" | "loft" | "lathe" | "fill" | "hull";
     type TransformType = "color" | "rotate" | "translate" | "scale" | "orientation";
@@ -1427,6 +1669,8 @@ export class Parser {
     const shapeMap: Record<string, ShapePrimitive> = {
       [TokenType.CUBE]: "cube",
       [TokenType.SPHERE]: "sphere",
+      [TokenType.ICOSPHERE]: "icosphere",
+      [TokenType.ROUNDRECT]: "roundrect",
       [TokenType.CYLINDER]: "cylinder",
       [TokenType.CONE]: "cone",
       [TokenType.TORUS]: "torus",
@@ -1461,7 +1705,15 @@ export class Parser {
       [TokenType.SCALE]: "scale",
       [TokenType.POSITION]: "translate", // position is an alias for translate
       [TokenType.ORIENTATION]: "orientation", // orientation sets absolute rotation (not relative like rotate)
+      [TokenType.SIZE]: "scale", // `size` inside a group scales what follows, as the group's own size does upstream
     };
+
+    // A custom block named like a built-in (`define arc { … }`) shadows it,
+    // as a `define` does upstream — the script's own `arc { … }` is meant.
+    if (typeof token.value === "string" && token.type !== TokenType.IDENTIFIER && this.blocks.has(token.value)) {
+      this.advance();
+      return this.parseCustomShapeCall(token.value);
+    }
 
     // Check mapped operations first
     const shape = shapeMap[token.type];
@@ -1511,7 +1763,24 @@ export class Parser {
         return this.parseBackground();
 
       case TokenType.TEXTURE:
-        return this.parseTexture();
+      case TokenType.MATERIAL:
+      case TokenType.OPACITY:
+      case TokenType.METALLICITY:
+      case TokenType.ROUGHNESS:
+      case TokenType.GLOW:
+        return this.parseMaterialCommand();
+
+      case TokenType.SMOOTHING:
+        this.advance();
+        return { type: "smoothing", value: this.parseExpression() };
+
+      case TokenType.PRINT:
+        this.advance();
+        return { type: "print", value: this.parseVectorOrExpression() };
+
+      case TokenType.ASSERT:
+        this.advance();
+        return { type: "assert", value: this.parseExpression() };
 
       case TokenType.PATH:
         return this.parsePath();
@@ -1523,52 +1792,55 @@ export class Parser {
       case TokenType.IDENTIFIER: {
         // Custom shape invocation (e.g., "cog { teeth 8 }")
         const name = token.value as string;
-        this.advance();
-
-        const properties: Record<string, unknown> = {};
-
-        if (this.current().type === TokenType.LBRACE) {
-          this.expect(TokenType.LBRACE);
-          this.skipNewlines();
-
-          // Parse option overrides (e.g., "teeth 8")
-          while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
-            // Check for standard properties first
-            if (
-              this.current().type === TokenType.POSITION ||
-              this.current().type === TokenType.ROTATION ||
-              this.current().type === TokenType.SIZE ||
-              this.current().type === TokenType.COLOR ||
-              this.current().type === TokenType.OPACITY
-            ) {
-              const props = this.parseProperties();
-              Object.assign(properties, props);
-            } else if (this.current().type === TokenType.IDENTIFIER) {
-              // Parse custom option (e.g., "teeth 8")
-              const optionName = this.current().value as string;
-              this.advance();
-              const optionValue = this.parseVectorOrExpression();
-              properties[optionName] = optionValue;
-            } else {
-              break;
-            }
-
-            this.skipNewlines();
-          }
-
-          this.expect(TokenType.RBRACE);
+        if (!this.blocks.has(name)) {
+          if (IGNORED_BLOCKS.has(name)) return this.skipIgnoredBlock(name);
+          const unsupported = unsupportedMessage(name);
+          if (unsupported !== undefined) throw new ParseError(unsupported, token.line, token.column);
         }
-
-        return {
-          type: "customShape",
-          name,
-          properties,
-        };
+        this.advance();
+        return this.parseCustomShapeCall(name);
       }
 
       default:
         throw new ParseError(`Unexpected token: ${token.type}`, token.line, token.column);
     }
+  }
+
+  /** `name { option value … }` after the name has been consumed. */
+  private parseCustomShapeCall(name: string): SceneNode {
+    const properties: Record<string, unknown> = {};
+
+    if (this.current().type === TokenType.LBRACE) {
+      this.expect(TokenType.LBRACE);
+      this.skipNewlines();
+
+      // Parse option overrides (e.g., "teeth 8")
+      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+        // Check for standard properties first
+        if (STANDARD_PROPERTY_TOKENS.has(this.current().type)) {
+          const props = this.parseProperties();
+          Object.assign(properties, props);
+        } else if (this.current().type === TokenType.IDENTIFIER) {
+          // Parse custom option (e.g., "teeth 8")
+          const optionName = this.current().value as string;
+          this.advance();
+          const optionValue = this.parseVectorOrExpression();
+          properties[optionName] = optionValue;
+        } else {
+          break;
+        }
+
+        this.skipNewlines();
+      }
+
+      this.expect(TokenType.RBRACE);
+    }
+
+    return {
+      type: "customShape",
+      name,
+      properties,
+    };
   }
 
   // `parseNode()` answers `null` at a `}` so that a BLOCK's loop stops there and the

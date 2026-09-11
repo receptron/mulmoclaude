@@ -60,22 +60,28 @@ USDZ units are metres, so `size 1` is one metre in AR.
 
 ## ShapeScript language
 
-- **Primitives**: `cube`, `sphere`, `cylinder`, `cone`, `torus`, `circle`, `square`, `polygon`
-- **Properties**: `position X Y Z`, `orientation ROLL YAW PITCH` (alias `rotation`), `size X Y Z`, `color R G B` (0–1), `opacity`
+- **Primitives**: `cube`, `sphere`, `icosphere`, `cylinder`, `cone`, `torus`, `circle`, `square`,
+  `roundrect`, `polygon`
+- **Properties**: `position X Y Z`, `orientation ROLL YAW PITCH` (alias `rotation`), `size X Y Z`,
+  `detail`, `smoothing`, `name`
+- **Materials** (as properties or scoped commands): `color`, `opacity`, `metallicity`, `roughness`,
+  `glow`, `material NAME`; `texture` is accepted with a warning
 - **CSG**: `union`, `difference`, `intersection`, `xor`, `stencil`
 - **Builders**: `extrude`, `loft`, `lathe`, `fill`, `hull`
-- **Variables & expressions**: `define`, arithmetic / comparison / boolean operators, parentheses
-- **Control flow**: `for … in … to … step`, `if` / `else`, `switch` / `case`
+- **Variables & expressions**: `define`, arithmetic / comparison / boolean operators, `in`, ranges,
+  parentheses, custom functions
+- **Control flow**: `for … in …`, `if` / `else`, `switch` / `case`
 - **Built-ins**: `round floor ceil abs sign sqrt pow min max`, `sin cos tan asin acos atan atan2`
-  (radians), `dot cross length normalize sum`, `rnd`
-- **Commands**: `detail N`, `seed N` (both scoped to the enclosing block), `color`, and the relative
-  `rotate` / `translate` / `scale`
+  (radians), `dot cross length normalize sum`, `rgb hsb`, `join split trim`, `rnd`
+- **Commands**: `detail N`, `seed N`, `smoothing N`, `background`, `print`, `assert`, and the relative
+  `rotate` / `translate` / `scale`; `camera` / `light` blocks are skipped with a warning
 
-A function call takes **no space** before its parenthesis: `sin(x)` is a call, `sin (x)` is not.
-Arguments are a value list, so upstream's `max(0 (j - 1))` and `max(0, j - 1)` both work; write the
-space-separated form when a script also has to open in the upstream app. Upstream's bare
-`max 0 (j - 1)` (no parentheses) is not supported. This parser also accepts several statements on
-one line (`define a 1 define b 2`); upstream requires one per line, so portable scripts keep to that.
+A call is either C-like, with **no space** before its parenthesis (`sin(x)`; `sin (x)` is not a
+call), or bare, as upstream: `max 0 (j - 1)`, `sqrt 9`, `sin pi / 2` — the function takes every
+value after it, so parenthesise it inside a larger expression: `(sqrt 9) + (sqrt 16)`. Arguments are
+a value list; commas (`max(0, j - 1)`) also work here but not in the upstream app. This parser also
+accepts several statements on one line (`define a 1 define b 2`); upstream requires one per line, so
+portable scripts keep to that.
 
 ## Storage
 
@@ -165,15 +171,60 @@ stencil {
 
 define offsets ((1 2 3), (4 5 6))
 cube { position offsets[0].x offsets[1].y offsets.count }
+
+// Materials, as upstream: hex and named colours, alpha, PBR properties, bundles.
+define brass material {
+    color #d4a017
+    metallicity 1
+    roughness 0.3
+}
+material brass
+sphere
+cube {
+    position 2
+    color red 0.5      // red at 50% alpha
+    glow orange * 0.3  // emissive
+}
+
+// Ranges, the `in` operator, custom functions and bare calls.
+define steps 0 to 1 step 0.25
+define ease(t) { t * t * (3 - 2 * t) }
+for t in steps {
+    if t in 0.25 to 0.75 {
+        cube {
+            position (t * 4) (ease t) 0
+            size max 0.1 (t / 2)
+        }
+    }
+}
+
+// A rounded slab from two arcs, extruded; a bare path draws as a line.
+extrude path {
+    arc { angle -0.5 }
+    point -0.5 0
+    point 1.5 0
+    arc {
+        position 1 0
+        orientation 0.5
+        angle -0.5
+    }
+    curve 0 0.5
+}
 ```
 
 Also supported: `pi`, `tau` (plugin-only; upstream has no `tau`, so portable scripts write `2 * pi`), `true`, `false`, scientific notation, unary `+`,
-short-circuit `and`/`or`, string literals, `join`/`trim`, tuple arguments to `min`/`max`,
-zero-based tuple/string subscripts, `.count`, ordinal members `.first` … `.tenth`, `.last`,
-`.allButFirst`, `.allButLast`, vector `.x/.y/.z/.w`, color
-`.red/.green/.blue/.alpha` (or `.r/.g/.b/.a`), custom shape definitions with options,
-and `polygon { sides N }` (integer 3–256). Lathe samples curved profiles, and inline
-builder paths use the same parser as nested paths, including loops and definitions.
+short-circuit `and`/`or`, string literals, `join`/`split`/`trim`, tuple arguments to `min`/`max`,
+zero-based tuple/string subscripts (negative from the end, or by name: `v["y"]`), `.count`, ordinal
+members `.first` … `.tenth`, `.last`, `.allButFirst`, `.allButLast`, vector `.x/.y/.z/.w`, size
+`.width/.height/.depth`, rotation `.roll/.yaw/.pitch`, color `.red/.green/.blue/.alpha` (or
+`.r/.g/.b/.a`) and `.hue/.saturation/.brightness`, custom shape definitions with options (placed
+and coloured through `position` / `orientation` / `size` / `color` / `material` on the call), and
+`polygon { sides N }` (integer 3–256). Lathe samples curved profiles (drawn on either side of the
+axis), and inline builder paths use the same parser as nested paths, including loops and
+definitions. A `material` command inside a builder block applies to the builder's result, and
+`size` on a builder or group scales it (an extrude's Z is its depth). `print` lines and the
+commands that were skipped come back on the root group's `userData` (`sceneInfoOf(group)`) and in
+the tool result message.
 
 ## Units and path semantics — same as upstream
 
@@ -193,10 +244,18 @@ conventions, so a script written against the upstream docs renders the same here
   3D; `lathe` refuses a placed profile.
 - `rnd` uses upstream's generator (`x = x · 1664525 + 1013904223 mod 2³²`, seed 0) and `seed N`
   reseeds it for the enclosing block only.
+- **Scope** (2.1.0): a shape block, `group`, builder or custom block resets transforms and
+  materials at its closing brace; `for` / `if` / `switch` bodies scope only symbols, so a
+  `translate` inside a loop carries on after it, as upstream's scope rules say.
+- A **bare `path`** draws as a line (2.1.0), as upstream; `fill` / `extrude` / `lathe` / `loft`
+  make a surface or solid of it.
+- `size 1 2` pads to `1 2 1` (Euclid's `Vector(size:)`), so `cylinder { size 1 2 }` is a
+  cylinder of diameter 1 and height 2.
 
 Deviations that remain: an *open* path whose first or last point is a `curve` treats it as a
-corner (upstream extrapolates a tangent), and path points are 2D. The gap list lives in
-[`plans/feat-shapescript-upstream-parity.md`](../../../plans/feat-shapescript-upstream-parity.md).
+corner (upstream extrapolates a tangent), path points are 2D, nested sub-paths (holes) are not
+supported, and `smoothing` is flat (0) or smooth rather than an angle threshold. The gap list
+lives in [`plans/feat-shapescript-upstream-parity.md`](../../../plans/feat-shapescript-upstream-parity.md).
 
 ## Compatibility and limits
 
@@ -206,12 +265,19 @@ upstream ShapeScript**.
 Loft accepts ordered, closed planar sections with one perimeter each, resamples differing
 vertex counts, interpolates linearly, and triangulates the end caps. Sections must enclose
 a volume. Hull accepts geometry from child meshes and filled paths. Primitive profiles
-for fill/extrude must lie in XY; holes, swept/twisted extrusion, and arbitrary 3D path
-commands are not implemented. Imports, textures, text/fonts, lights/camera declarations,
-arbitrary objects, and general user-defined functions remain outside this subset.
-Unsupported commands and failed CSG operations return errors instead of silently
-substituting different geometry. As with other polygonal CSG engines, degenerate or
-self-intersecting inputs may fail.
+for fill/extrude must lie in XY; holes, swept/twisted extrusion (`along`, `twist`), and
+arbitrary 3D path commands are not implemented. `import`, `text` / `font`, raw `mesh`,
+`minkowski`, `inset`, `svgpath`, `object` values, shapes as values (`define s sphere { … }`)
+and functions that build shapes are refused with a message naming the feature. Textures,
+normal maps, `camera` and `light` blocks are accepted and skipped with a warning that the
+tool result and the View both report. Unsupported commands and failed CSG operations return
+errors instead of silently substituting different geometry. As with other polygonal CSG
+engines, degenerate or self-intersecting inputs may fail.
+
+The upstream project's own example scripts are test fixtures
+(`test/fixtures/upstream-examples/`, MIT): Ball, Chessboard, Cog, Earth, Spring and Train render;
+Dodecahedron (mesh values), Fillet (`minkowski` / `inset`) and Spirals (`along`) are refused by
+name.
 
 `rnd` and `rand()` draw from a seeded generator (`randomSeed`, default
 `DEFAULT_RANDOM_SEED` = 0, overridable in-script with `seed`) rather than `Math.random()`:

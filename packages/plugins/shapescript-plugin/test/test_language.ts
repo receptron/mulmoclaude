@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as THREE from "three";
 import { executePresentShapeScript, samples } from "../src/core/index";
 import { parseShapeScript } from "../src/shapescript/parser";
-import { astToThreeJS } from "../src/shapescript/toThreeJS";
+import { astToThreeJS, sceneInfoOf } from "../src/shapescript/toThreeJS";
 import { disposeObject3D } from "../src/shapescript/dispose";
 
 const context = {} as Parameters<typeof executePresentShapeScript>[0];
@@ -188,14 +188,11 @@ describe("geometry builders", () => {
     }
   });
   it("refuses a degenerate inline path instead of presenting an empty mesh", () => {
-    for (const script of [
-      "fill path { point 0 0 }",
-      "fill path { point 0 0 point 1 0 }",
-      "extrude path { point 0 0 point 1 0 point 2 0 }",
-      "path { point 0 0 }",
-    ]) {
+    for (const script of ["fill path { point 0 0 }", "fill path { point 0 0 point 1 0 }", "extrude path { point 0 0 point 1 0 point 2 0 }"]) {
       assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script))), /encloses an area/, script);
     }
+    // A bare path is a stroke, so it needs a segment rather than an area.
+    assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript("path { point 0 0 }"))), /at least two points/);
     withMesh("fill path { point 0 0 point 1 0 point 0 1 }", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count >= 3));
   });
   it("lofts sections whose winding a mirroring transform reversed", () => {
@@ -242,9 +239,11 @@ describe("expressions", () => {
     });
   });
   it("rejects unknown members and out-of-range indices", () => {
-    for (const expression of ["(1 2 3).constructor", "(1 2 3)[3]", "(1 2 3)[-1]"]) {
+    for (const expression of ["(1 2 3).constructor", "(1 2 3)[3]", "(1 2 3)[-4]", '(1 2 3)["w"]']) {
       assert.throws(() => astToThreeJS(parseShapeScript(`cube { size ${expression} }`)), /Unknown member|out of range/);
     }
+    // Negative indices count from the end and a string index is a member, as upstream.
+    withMesh('cube { size (1 2 3)[-1] (1 2 3)["y"] (5 6)[-2] }', (mesh) => assert.deepEqual(extent(mesh).toArray(), [3, 2, 5]));
   });
   it("supports constants, numeric literals, tuple min/max and string functions", () => {
     withMesh("if true { cube { position +2 .5 1e-3 size max((1, 2, 3)) } }", (mesh) => {
@@ -455,5 +454,254 @@ describe("path transform options", () => {
   it("refuses a placed profile on a lathe and a placement inside a path loop", () => {
     assert.throws(() => astToThreeJS(parseShapeScript("lathe path {\n position 1 0 0\n point 0 0\n point 1 0\n point 1 1\n point 0 1\n}")), /place the lathe/);
     assert.throws(() => parseShapeScript("fill path { for i in 1 to 3 { position 1 0 0 point i 0 } }"), /Unexpected token/);
+  });
+});
+
+function materialOf(script: string, check: (material: THREE.MeshStandardMaterial, mesh: THREE.Mesh) => void) {
+  withMesh(script, (mesh) => check(mesh.material as THREE.MeshStandardMaterial, mesh));
+}
+function infoOf(script: string) {
+  const group = astToThreeJS(parseShapeScript(script));
+  try {
+    return sceneInfoOf(group);
+  } finally {
+    disposeObject3D(group);
+  }
+}
+function objectsOf(script: string): THREE.Object3D[] {
+  const group = astToThreeJS(parseShapeScript(script));
+  const objects: THREE.Object3D[] = [];
+  group.traverse((object) => {
+    if ((object as THREE.Mesh).isMesh || (object as THREE.Line).isLine) objects.push(object);
+  });
+  disposeObject3D(group);
+  return objects;
+}
+
+describe("colours and materials", () => {
+  it("reads hex, named, hsb and luminance colours, with alpha as opacity", () => {
+    materialOf("cube { color #ff0000 }", (m) => near(m.color.toArray(), [1, 0, 0]));
+    materialOf("cube { color #f00 }", (m) => near(m.color.toArray(), [1, 0, 0]));
+    materialOf("cube { colour orange }", (m) => near(m.color.toArray(), [1, 0.5, 0]));
+    materialOf("cube { color hsb(1 / 3 1 1) }", (m) => near(m.color.toArray(), [0, 1, 0]));
+    materialOf("cube { color 0.8 }", (m) => near(m.color.toArray(), [0.8, 0.8, 0.8]));
+    materialOf("cube { color #ff000080 }", (m) => {
+      assert.ok(m.transparent);
+      near([m.opacity], [128 / 255]);
+    });
+    materialOf("cube { color 1 0.5 }", (m) => {
+      near(m.color.toArray(), [1, 1, 1]);
+      near([m.opacity], [0.5]);
+    });
+    // A colour followed by a number replaces its alpha, as upstream.
+    materialOf("cube { color red 0.25 }", (m) => near([m.opacity, ...m.color.toArray()], [0.25, 1, 0, 0]));
+    materialOf("define glass green 0.2\ncube { color glass }", (m) => near([m.opacity, ...m.color.toArray()], [0.2, 0, 1, 0]));
+    // Named colours are ordinary symbols a script may redefine.
+    materialOf("define red 1 0.3 0.1\ncube { color red }", (m) => near(m.color.toArray(), [1, 0.3, 0.1]));
+  });
+  it("multiplies `opacity` through nested scopes and by the colour's alpha", () => {
+    materialOf("opacity 0.5\ngroup {\n opacity 0.5\n cube\n}", (m) => near([m.opacity], [0.25]));
+    materialOf("opacity 0.5\ncube { opacity 2 }", (m) => near([m.opacity], [1]));
+    materialOf("opacity 0.5\ncube { color 1 0 0 0.5 }", (m) => near([m.opacity], [0.25]));
+    materialOf("opacity 0.5\nsphere", (m) => assert.ok(m.transparent));
+  });
+  it("maps metallicity, roughness and glow onto the PBR material, and smoothing 0 onto flat shading", () => {
+    materialOf("metallicity 0.9\nroughness 0.2\nglow red\ncube", (m) => {
+      near([m.metalness, m.roughness], [0.9, 0.2]);
+      near(m.emissive.toArray(), [1, 0, 0]);
+      assert.equal(m.flatShading, false);
+    });
+    materialOf("cube { glow green * 0.5 metallicity 1 }", (m) => {
+      near(m.emissive.toArray(), [0, 0.5, 0]);
+      near([m.metalness], [1]);
+    });
+    materialOf("smoothing 0\nsphere", (m) => assert.equal(m.flatShading, true));
+    materialOf("smoothing 0\nsphere { smoothing 0.5 }", (m) => assert.equal(m.flatShading, false));
+  });
+  it("bundles properties in `material { … }` and applies them as a command or a property", () => {
+    const bundle = "define shiny material {\n color blue\n metallicity 1\n roughness 0.1\n}\n";
+    materialOf(`${bundle}material shiny\ncube`, (m) => {
+      near(m.color.toArray(), [0, 0, 1]);
+      near([m.metalness, m.roughness], [1, 0.1]);
+    });
+    materialOf(`${bundle}sphere { material shiny color red }`, (m) => {
+      near(m.color.toArray(), [1, 0, 0]);
+      near([m.metalness], [1]);
+    });
+    assert.throws(() => infoOf("material 5\ncube"), /material \{/);
+  });
+  it("gives a builder the material its own block ends with", () => {
+    materialOf("extrude {\n color red\n square\n}", (m) => near(m.color.toArray(), [1, 0, 0]));
+    materialOf("lathe {\n color 0 1 0\n path {\n point 0 1\n point 0.5 1\n point 0.5 0\n point 0 0\n }\n}", (m) => near(m.color.toArray(), [0, 1, 0]));
+    materialOf("define star {\n path {\n point 0 0\n point 1 0\n point 0 1\n point 0 0\n }\n}\nextrude {\n color blue\n size 2 2 1\n star\n}", (m, mesh) => {
+      near(m.color.toArray(), [0, 0, 1]);
+      near(extent(mesh).toArray(), [2, 2, 1]);
+    });
+  });
+  it("accepts textures, cameras and lights with a warning instead of an error", () => {
+    assert.deepEqual(infoOf('texture "earth.png"\nsphere').warnings, ['texture "earth.png" is not supported — the shape is drawn with its colour instead']);
+    assert.match(infoOf("camera {\n position 1 2 3\n orientation 0 0.5\n}\ncube").warnings[0]!, /camera/);
+    assert.match(infoOf("light { position 1 1 1 }\ncube").warnings[0]!, /light/);
+    // A block the script defines itself is invoked, not skipped.
+    assert.deepEqual(infoOf("define light { cube }\nlight").warnings, []);
+    assert.equal(objectsOf("define light { cube }\nlight").length, 1);
+  });
+  it("keeps `background` for the viewer and warns about a background image", () => {
+    assert.deepEqual(infoOf("background 0 0 1\ncube").background, [0, 0, 1, 1]);
+    assert.deepEqual(infoOf("background #808080\ncube").background, [128 / 255, 128 / 255, 128 / 255, 1]);
+    assert.equal(infoOf("cube").background, undefined);
+    assert.match(infoOf('background "stars.jpg"\ncube').warnings[0]!, /background image "stars.jpg"/);
+    assert.throws(() => infoOf("group { background red cube }"), /root/);
+  });
+});
+
+describe("upstream shapes and paths", () => {
+  it("pads a short `size` the way Euclid does: one value is uniform, two are x y x", () => {
+    withMesh("cube { size 2 }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("cube { size 1 2 }", (mesh) => near(extent(mesh).toArray(), [1, 2, 1]));
+    withMesh("cylinder { size 1 2 }", (mesh) => near(extent(mesh).toArray(), [1, 2, 1], 0.01));
+    withMesh("group { size 2 cube }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+  });
+  it("builds an icosphere of the requested diameter", () => {
+    withMesh("icosphere { size 2 detail 16 }", (mesh) => {
+      assert.equal(mesh.geometry.type, "IcosahedronGeometry");
+      const size = extent(mesh);
+      assert.ok(size.x > 1.9 && size.x <= 2.001 && size.y > 1.9 && size.z > 1.9, size.toArray().join(","));
+    });
+  });
+  it("builds a roundrect whose corner radius is a proportion of the smaller side", () => {
+    withMesh("extrude roundrect {\n size 2 1\n radius 0.5\n}", (mesh) => {
+      near(extent(mesh).toArray(), [2, 1, 1], 0.01);
+      // A 2 × 1 rectangle with 0.5 corners is a stadium: 2·1 − (4 − π)·0.25.
+      near([volume(mesh)], [2 - (4 - Math.PI) * 0.25], 0.02);
+    });
+    withMesh("fill roundrect", (mesh) => near(extent(mesh).toArray(), [1, 1, 0], 0.01));
+  });
+  it("places `arc` segments inside a path, clockwise from +Y", () => {
+    // A half-turn arc from (0, .5) over (+.5, 0) to (0, −.5), closed along the axis: a semicircle.
+    withMesh("extrude path {\n arc { angle 1 }\n point 0 0.5\n}", (mesh) => {
+      near([volume(mesh)], [(Math.PI * 0.25) / 2], 0.02);
+      assert.ok(mesh.geometry.boundingBox === null || true);
+      const box = new THREE.Box3().setFromObject(mesh);
+      assert.ok(box.max.x > 0.49 && box.min.x > -0.001, `${box.min.x}..${box.max.x}`);
+    });
+    // Upstream's curved slab: two quarter arcs, placed and oriented.
+    withMesh(
+      "extrude path {\n arc { angle -0.5 }\n point -0.5 0\n point 1.5 0\n arc {\n position 1 0\n orientation 0.5\n angle -0.5\n }\n curve 0 0.5\n}",
+      (mesh) => {
+        near(extent(mesh).toArray(), [2, 0.5, 1], 0.02);
+      },
+    );
+    withMesh("extrude path { arc { angle 1 size 2 } point 0 1 }", (mesh) => near([volume(mesh)], [Math.PI / 2], 0.02));
+  });
+  it("draws a bare path as a line, open or closed, and still fills it on request", () => {
+    const [line] = objectsOf("path {\n point 0 0\n point 1 1\n point 2 0\n}");
+    assert.ok((line as THREE.Line).isLine);
+    assert.equal(objectsOf("path {\n point 0 0\n point 1 0\n point 0 1\n point 0 0\n}").filter((o) => (o as THREE.Mesh).isMesh).length, 0);
+    withMesh("fill path {\n point 0 0\n point 1 0\n point 0 1\n point 0 0\n}", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count >= 3));
+    assert.throws(() => objectsOf("path { point 0 0 }"), /two points/);
+    assert.throws(() => objectsOf("path { point 0 0 1 point 1 0 }"), /planar/);
+  });
+  it("revolves a lathe profile drawn on the −X side like one on +X", () => {
+    const right = "lathe path {\n point 0 1\n point 0.5 1\n point 0.5 0\n point 0 0\n}";
+    const left = "lathe path {\n point 0 1\n point -0.5 1\n point -0.5 0\n point 0 0\n}";
+    withMesh(right, (a) => withMesh(left, (b) => near([volume(b)], [volume(a)], 1e-6)));
+  });
+  it("scales a builder's result by its `size`, with an extrude's Z as the depth", () => {
+    withMesh("extrude { size 2 3 4 square }", (mesh) => near(extent(mesh).toArray(), [2, 3, 4]));
+    withMesh("extrude { size 0.5 square }", (mesh) => near(extent(mesh).toArray(), [0.5, 0.5, 0.5]));
+    withMesh("hull { size 2 cube }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+  });
+  it("places and colours a custom block through its standard options", () => {
+    materialOf("define post { cube }\npost { position 1 2 3 size 2 color red }", (m, mesh) => {
+      near(mesh.position.toArray(), [1, 2, 3]);
+      near(extent(mesh).toArray(), [2, 2, 2]);
+      near(m.color.toArray(), [1, 0, 0]);
+    });
+    withMesh("define post { cube { size 1 2 1 } }\npost { orientation 0 0 0.5 }", (mesh) => near(extent(mesh).toArray(), [1, 1, 2]));
+  });
+  it("applies a per-shape `detail`", () => {
+    withMesh("sphere { detail 8 }", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count < 100));
+    withMesh("detail 8\nsphere { detail 64 }\n", (mesh) => assert.ok(mesh.geometry.getAttribute("position").count > 4000));
+  });
+});
+
+describe("control flow, ranges and functions", () => {
+  it("lets `translate` / `rotate` / `color` inside for, if and switch carry on after the block, as upstream", () => {
+    withMesh("for 1 to 3 { translate 1 0 0 }\ncube", (mesh) => near(mesh.position.toArray(), [3, 0, 0]));
+    withMesh("if true { translate 0 1 0 }\ncube", (mesh) => near(mesh.position.toArray(), [0, 1, 0]));
+    withMesh("switch 1 {\ncase 1\n translate 0 0 1\n}\ncube", (mesh) => near(mesh.position.toArray(), [0, 0, 1]));
+    materialOf("for 1 to 1 { color red }\ncube", (m) => near(m.color.toArray(), [1, 0, 0]));
+    // Groups and custom blocks still scope them.
+    withMesh("group { translate 5 0 0 }\ncube", (mesh) => near(mesh.position.toArray(), [0, 0, 0]));
+    withMesh("define move { translate 5 0 0 }\nmove\ncube", (mesh) => near(mesh.position.toArray(), [0, 0, 0]));
+    // Symbols defined in a loop do not leak.
+    assert.throws(() => objectsOf("for i in 1 to 2 { define k i }\ncube { size k }"), /Undefined variable: k/);
+  });
+  it("treats ranges as values: stored, re-stepped and looped over", () => {
+    assert.equal(objectsOf("define r 1 to 5 step 2\nfor i in r { cube { position i 0 0 } }").length, 3);
+    assert.equal(objectsOf("define r 1 to 5\nfor i in r step 4 { cube }").length, 2);
+    assert.equal(objectsOf("for i in 5 to 1 step -2 { cube }").length, 3);
+    assert.equal(objectsOf("for i in 0.2 to 2.2 { cube }").length, 3);
+    assert.equal(objectsOf("for 1 to 3 { cube }").length, 3);
+    withMesh("define r 2 to 4\nfor i in r { translate i 0 0 }\ncube", (mesh) => near(mesh.position.toArray(), [9, 0, 0]));
+    assert.throws(() => objectsOf("define r 1 to 100000000\nfor i in r { cube }"), /iterations/);
+  });
+  it("supports the `in` operator on ranges, tuples and strings", () => {
+    const yes = (condition: string) => assert.equal(objectsOf(`${condition} { cube }`).length, 1, condition);
+    const no = (condition: string) => assert.equal(objectsOf(`${condition} { cube }`).length, 0, condition);
+    yes("define r 1 to 5 step 2\nif 3 in r");
+    no("define r 1 to 5 step 2\nif 2 in r");
+    yes("define r 1 to 5\nif 2.5 in r");
+    no("define r 1 to 5\nif 6 in r");
+    yes("if 2 in (1 2 3)");
+    no("if 4 in (1 2 3)");
+    yes('if "b" in "abc"');
+    yes("define c 1 0 0\nif (1 0 0) in (c (0 1 0))");
+  });
+  it("accepts bare function calls, which take every value that follows", () => {
+    withMesh("cube { size max 1 2 }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("define a sqrt 9\ncube { size a }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
+    withMesh("cube { size sin pi / 2 }", (mesh) => near(extent(mesh).toArray(), [1, 1, 1]));
+    withMesh("translate (cos 0) 1\ncube", (mesh) => near(mesh.position.toArray(), [1, 1, 0]));
+    withMesh("cube { size (sqrt 9) + (sqrt 16) }", (mesh) => near(extent(mesh).toArray(), [7, 7, 7]));
+    withMesh("cube { size max(1 2) 3 }", (mesh) => near(extent(mesh).toArray(), [2, 3, 2]));
+    // A `define` of the same name shadows the function.
+    withMesh("define max 5\ncube { size max }", (mesh) => near(extent(mesh).toArray(), [5, 5, 5]));
+  });
+  it("defines functions with parameters, local defines and a result", () => {
+    withMesh("define sq(a) { a * a }\ncube { size sq(3) }", (mesh) => near(extent(mesh).toArray(), [9, 9, 9]));
+    withMesh("define hyp(a b) {\n define s a * a + b * b\n sqrt s\n}\ncube { size hyp 3 4 }", (mesh) => near(extent(mesh).toArray(), [5, 5, 5]));
+    withMesh("define degrees(r) { r / pi * 180 }\ncube { position degrees(pi) 0 0 }", (mesh) => near(mesh.position.toArray(), [180, 0, 0]));
+    withMesh("define vec(a) { a 0 a }\ncube { position vec(2) }", (mesh) => near(mesh.position.toArray(), [2, 0, 2]));
+    assert.throws(() => objectsOf("define sq(a) { a * a }\ncube { size sq(1 2) }"), /takes 1 argument/);
+    assert.throws(() => objectsOf("define f(a) { f(a) }\ncube { size f(1) }"), /recursed/);
+    assert.throws(() => objectsOf("define f(a) { cube }\nf(1)"), /builds a shape/);
+    assert.throws(() => objectsOf("define f(a) { minkowski { cube } }\nf(1)"), /minkowski/);
+  });
+  it("collects `print` output and stops on a failed `assert`", () => {
+    assert.deepEqual(infoOf('print "size" 1 (2 3)\nprint 1 to 3\ncube').logs, ["size 1 (2 3)", "1 to 3 step 1"]);
+    assert.equal(objectsOf("assert 1 = 1\ncube").length, 1);
+    assert.throws(() => objectsOf("assert 1 = 2\ncube"), /Assertion failed/);
+  });
+  it("adds upstream's size, rotation and colour members, string subscripts and split", () => {
+    withMesh("define s 1 2 3\ncube { size s.width s.height s.depth }", (mesh) => near(extent(mesh).toArray(), [1, 2, 3]));
+    withMesh("define r 0.5 0.25 0\ncube { position r.roll r.yaw r.pitch }", (mesh) => near(mesh.position.toArray(), [0.5, 0.25, 0]));
+    withMesh("define c 1 0 0\ncube { position c.alpha c.hue c.brightness }", (mesh) => near(mesh.position.toArray(), [1, 0, 1]));
+    withMesh("define c 0 1 0\ncube { position c.hue c.saturation 0 }", (mesh) => near(mesh.position.toArray(), [1 / 3, 1, 0]));
+    withMesh('define parts split "a,bb,ccc" ","\ncube { size parts.count parts.second.count parts[-1].count }', (mesh) =>
+      near(extent(mesh).toArray(), [3, 2, 3]),
+    );
+  });
+  it("names the upstream features it lacks", () => {
+    for (const [script, message] of [
+      ['text "hi"', /text/],
+      ['import "other.shape"', /import/],
+      ["define s sphere { size 2 }", /shape as a value/],
+      ["extrude { square along path { point 0 0 point 1 1 } }", /along/],
+      ['fill svgpath "M 0 0 L 1 0 L 0 1 z"', /svgpath/],
+    ] as const) {
+      assert.throws(() => objectsOf(script), message, script);
+    }
   });
 });

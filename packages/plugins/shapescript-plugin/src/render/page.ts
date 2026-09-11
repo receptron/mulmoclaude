@@ -44,7 +44,7 @@ export function gridFor(count: number): { columns: number; rows: number } {
  *  sheet, and light the scene. Split from `drawScript` only because one
  *  template literal of the whole browser program is unreadable. */
 function sceneScript(threeUrl: string, config: string, grid: string): string {
-  return `import { AmbientLight, Box3, DirectionalLight, GridHelper, MathUtils, ObjectLoader, OrthographicCamera, PerspectiveCamera, Scene, Sphere, Vector3, WebGLRenderer } from ${JSON.stringify(threeUrl)};
+  return `import { AmbientLight, Box3, Color, DirectionalLight, GridHelper, MathUtils, ObjectLoader, OrthographicCamera, PerspectiveCamera, Scene, Sphere, Vector3, WebGLRenderer } from ${JSON.stringify(threeUrl)};
 
 const config = ${config};
 const { columns, rows } = ${grid};
@@ -66,7 +66,10 @@ const radius = sphere.radius > 0 && isFinite(sphere.radius) ? sphere.radius : 1;
 const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
 renderer.setPixelRatio(1);
 renderer.setSize(config.width, config.height, false);
-renderer.setClearColor(0xffffff, 1);
+// The script's own \`background r g b\` when it set one, else white paper.
+const background = Array.isArray(model.userData?.background) ? model.userData.background : null;
+if (background) renderer.setClearColor(new Color(background[0], background[1], background[2]), 1);
+else renderer.setClearColor(0xffffff, 1);
 
 const scene = new Scene();
 scene.add(model);

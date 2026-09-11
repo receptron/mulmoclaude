@@ -38,6 +38,16 @@
       <strong>{{ t.exportError }}</strong> {{ exportError }}
     </div>
 
+    <div v-if="sceneWarnings.length" class="notice" data-testid="shapescript-warnings">
+      <strong>{{ t.sceneWarnings }}</strong> {{ sceneWarnings.join(" · ") }}
+    </div>
+
+    <pre
+      v-if="printOutput.length"
+      class="notice output"
+      data-testid="shapescript-output"
+    ><strong>{{ t.printOutput }}</strong> {{ printOutput.join("\n") }}</pre>
+
     <div ref="viewport" class="viewport" data-testid="shapescript-viewport" />
 
     <details class="script-source">
@@ -62,7 +72,7 @@ import type { ToolResult } from "gui-chat-protocol";
 import type { PresentShapeScriptData } from "../core/types";
 import { readLoadShapeResult, readSaveShapeResult } from "../core/contract";
 import { parseShapeScript } from "../shapescript/parser";
-import { astToThreeJS } from "../shapescript/toThreeJS";
+import { astToThreeJS, sceneInfoOf } from "../shapescript/toThreeJS";
 import { removeAndDispose, disposeObject3D } from "../shapescript/dispose";
 import { shapeScriptToUsdz, USDZ_EXTENSION, USDZ_MIME_TYPE } from "../export/usdz";
 import { slugify } from "../core/paths";
@@ -101,6 +111,10 @@ const editableScript = ref(props.selectedResult.data?.script ?? "");
 // State
 const viewport = ref<HTMLDivElement | null>(null);
 const parseError = ref<string | null>(null);
+/** Commands the script used that this viewer does not draw (`texture`, `camera`, …). */
+const sceneWarnings = ref<string[]>([]);
+/** The script's `print` lines. */
+const printOutput = ref<string[]>([]);
 const saveError = ref<string | null>(null);
 const exportError = ref<string | null>(null);
 const exporting = ref(false);
@@ -203,7 +217,7 @@ function initScene() {
 
   // Create scene
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x1a1a1a);
+  scene.background = new THREE.Color(DEFAULT_BACKGROUND);
 
   // Create camera
   const width = viewport.value.clientWidth;
@@ -269,15 +283,24 @@ function clearScene() {
   sceneObjects = [];
 }
 
+const DEFAULT_BACKGROUND = 0x1a1a1a;
+
 function renderScript(script: string) {
   const group = astToThreeJS(parseShapeScript(script), { wireframe: showWireframe.value });
   scene.add(group);
   sceneObjects.push(group);
+  const info = sceneInfoOf(group);
+  sceneWarnings.value = info.warnings;
+  printOutput.value = info.logs;
+  // `background r g b` from the script, else the viewer's own dark ground.
+  scene.background = info.background ? new THREE.Color(info.background[0], info.background[1], info.background[2]) : new THREE.Color(DEFAULT_BACKGROUND);
 }
 
 function loadShapeScript() {
   try {
     clearScene();
+    sceneWarnings.value = [];
+    printOutput.value = [];
     const script = props.selectedResult.data?.script;
     // An empty script is valid and clears the scene — reached when a result
     // moves from an INVALID script to an empty one, where leaving the previous
@@ -578,6 +601,22 @@ watch(
   color: #ff6666;
   font-family: monospace;
   border-bottom: 1px solid #ff000040;
+}
+
+.notice {
+  padding: 0.5rem 1rem;
+  background: #ffaa0020;
+  color: #e0b060;
+  font-family: monospace;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #ffaa0040;
+}
+
+.output {
+  margin: 0;
+  background: #ffffff10;
+  color: #cccccc;
+  white-space: pre-wrap;
 }
 
 .script-source {

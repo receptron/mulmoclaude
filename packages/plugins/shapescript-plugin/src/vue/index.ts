@@ -54,10 +54,9 @@ Switch statements for multiple cases
 - Trig: sin, cos, tan, asin, acos, atan, atan2 (radians!)
 - Vector: dot, cross, length, normalize, sum
 
-CRITICAL: Function calls require NO space between name and (
-- sin(x) ✓ correct
-- sin (x) ✗ wrong - this is NOT a function call!
-Separate arguments with spaces, upstream style: max(0 (j - 1)). Commas work here but not in the upstream app.
+Calls: C-like max(0 (j - 1)) with NO space before the parenthesis, or bare max 0 (j - 1) / sqrt 9 as upstream.
+Separate arguments with spaces. Commas work here but not in the upstream app.
+Custom functions compute values: define hyp(a b) { sqrt(a * a + b * b) }
 One statement per line; the upstream app rejects two statements on one line.
 
 ### Best Practices:
@@ -93,9 +92,13 @@ for x in -5 to 5 {
 }
 
 ### Primitives & CSG:
-Shapes: cube, sphere, cylinder, cone, torus
+Shapes: cube, sphere, icosphere, cylinder, cone, torus, circle, square, roundrect, polygon
 CSG: union, difference, intersection, xor, stencil
-Properties: position, orientation (alias rotation), size, color, opacity
+Properties: position, orientation (alias rotation), size, detail, smoothing, name
+Materials: color (1–4 values, hex #FF0000, names like red/orange/gray, hsb(...)), opacity, metallicity, roughness, glow,
+material NAME (from define NAME material { … }); background R G B sets the scene colour.
+Scope: shape blocks, groups, builders and custom blocks reset transforms/materials at their closing brace;
+for / if / switch bodies do not (a translate in a loop carries on after it).
 
 ### Units (upstream ShapeScript conventions):
 - size = DIAMETER for sphere/cylinder/cone/circle/polygon/torus, edge length for cube/square. A bare sphere fits the unit cube.
@@ -110,10 +113,12 @@ loft {
     circle
 }
 Stencil preserves the first shape's volume and paints the intersecting surface.
-Constants: pi, true, false (avoid tau, upstream lacks it; write 2 * pi). Tuple/string access: values[0], vector.x, value.count.
-Polygon supports sides (3–256). String literals and join/trim are supported.
+Constants: pi, true, false (avoid tau, upstream lacks it; write 2 * pi). Tuple/string access: values[0], values[-1], vector.x, value.count.
+Ranges are values (define r 1 to 5 step 2; for i in r; if 3 in r). A bare path draws as a line; fill/extrude it for a surface.
+Polygon supports sides (3–256). String literals and join/split/trim are supported. print records output for you.
 Use the tool schema for exact syntax and builder limits. This is a modeling subset of upstream ShapeScript;
-imports, textures, text/fonts and general user-defined functions are not supported.
+imports, text/fonts, raw meshes, minkowski/inset/svgpath/along and shapes as values are refused by name;
+textures, cameras and lights are accepted but not drawn (the result reports them).
 If presentShapeScript returns an error diagnostic, correct the script and retry; no visualization was created.
 
 Keep visualizations clear, well-organized, and use expressions and control flow.`;

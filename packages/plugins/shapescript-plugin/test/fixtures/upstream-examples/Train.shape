@@ -1,0 +1,220 @@
+// ShapeScript document
+
+detail 32
+
+camera {
+    position 2.22 1.6111 1.8919
+    orientation 0 -0.2818 0.1264
+    width 1400
+    height 1000
+}
+
+// materials
+
+define bluePaint material {
+    color 0.4 0.7 1
+    metallicity 0.08
+    roughness 0.18
+}
+
+define redPaint material {
+    color red
+    metallicity 0.05
+    roughness 0.32
+}
+
+define steel material {
+    color 0.8
+    metallicity 1
+    roughness 0.18
+}
+
+define matteBlack material {
+    color black
+    roughness 0.85
+}
+
+define coal material {
+    color black
+    metallicity 0.2
+    roughness 0.65
+}
+
+// wheels
+
+define wheel {
+    union {
+        material matteBlack
+        cylinder { size 0.6 0.05 }
+        material steel
+        cylinder { size 0.56 0.1 }
+        translate 0 0.05 0
+        difference {
+            cylinder { size 0.4 0.05 }
+            cylinder { size 0.36 0.05 }
+        }
+        cylinder { size 0.2 0.1 }
+        define steps 5
+        for 1 to steps {
+            cube { size 0.03 0.025 0.37 }
+            rotate 0 1 / steps
+        }
+    }
+}
+
+for i in -1 to 1 {
+    group {
+        translate 0 0 (0.7 * i)
+        rotate 0.5 rnd
+        translate 0 0.5 0
+        wheel
+        translate 0 -0.5 0
+        material steel
+        cylinder { size 0.1 1 }
+        rotate 1
+        translate 0 0.5 0
+        wheel
+    }
+}
+
+// base
+
+union {
+    rotate 0 0.5 0
+    translate -1 -0.06
+    material matteBlack
+    extrude {
+        size 1 1 0.7
+        path {
+            point 0.1
+            point 1.8
+            point 2.1 0.15
+            point 2.1 0.4
+            point -0.05 0.4
+            point -0.05 0.15
+            point 0.1
+        }
+    }
+    material redPaint
+    extrude path {
+        point 1.95 0.5
+        point -0.1 0.5
+        point -0.1 0.2
+        point 0 0.2
+        point 0 0.4
+        point 1.92 0.4
+        point 2.05 0.34
+        point 2.05 0.2
+        point 2.15 0.2
+        point 2.15 0.4
+        point 1.95 0.5
+    }
+}
+
+// front
+
+lathe {
+    material steel
+    position 0 0.8 1
+    orientation 0 0 0.5
+    path {
+        point 0 0
+        point 0.3 0
+        curve 0.3 -0.1
+        point 0 -0.1
+    }
+}
+
+// chimney
+
+union {
+    material matteBlack
+    position 0 0.6 0.8
+    cube { size 0.7 0.4 0.4 }
+    cylinder {
+        position 0 0.2 0
+        orientation 0 0 0.5
+        size 0.7 0.4
+    }
+    lathe {
+        position 0 0.48
+        path {
+            point 0 0
+            point -0.2 0
+            curve -0.1 0.05
+            point -0.1 0.11
+            point -0.1 0.35
+            point -0.125 0.35
+            point -0.125 0.4
+            point -0.1 0.4
+            point -0.1 0.45
+            point -0.07 0.45
+            point 0 0.2
+            point 0 0
+        }
+    }
+}
+
+// body
+
+union {
+    material bluePaint
+    position 0 0.8 0.2
+    orientation 0 0 0.5
+    cylinder { size 0.7 0.8 }
+    translate 0 0.425 -0.085
+    difference {
+        cube { size 0.9 1.65 0.55 }
+        translate 0 0.6125 0
+        cube { size 0.8 0.325 0.6 }
+    }
+    translate 0 0.15 0.05
+    // cab
+    material bluePaint
+    rotate 0 0 -0.5
+    extrude {
+        size 1 1 0.6
+        path {
+            point -0.45
+            point 0.45
+            point 0.45 0.5
+            curve 0 0.65
+            point -0.45 0.5
+            point -0.45
+        }
+    }
+    // roof
+    extrude {
+        material matteBlack
+        size 1 1 0.5
+        path {
+            point -0.35
+            point 0.35
+            point 0.35 0.55
+            curve 0 0.65
+            point -0.35 0.55
+            point -0.35
+        }
+    }
+}
+
+// coal
+
+union {
+    material coal
+    position 0 0.73 -0.84
+    orientation 0 0 0.5
+    cube { size 0.8 0.325 0.4 }
+    translate 0.45 -0.1 0.2
+    for 1 to 3 {
+        for 1 to 8 {
+            translate -0.1
+            cube {
+                size 0.1
+                // apply a random rotation
+                orientation rnd rnd rnd
+            }
+        }
+        translate 0.8 0.1 0
+    }
+}
