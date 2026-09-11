@@ -188,7 +188,7 @@ describe("geometry builders", () => {
     }
   });
   it("refuses a degenerate inline path instead of presenting an empty mesh", () => {
-    for (const script of ["fill path { point 0 0 }", "fill path { point 0 0 point 1 0 }", "extrude path { point 0 0 point 1 0 point 2 0 }"]) {
+    for (const script of ["fill path { point 0 0 }", "fill path { point 0 0 point 1 0 }", "extrude path { point 0 0 point 1 0 point 2 0 point 0 0 }"]) {
       assert.throws(() => disposeObject3D(astToThreeJS(parseShapeScript(script))), /encloses an area/, script);
     }
     // A bare path is a stroke, so it needs a segment rather than an area.
@@ -287,8 +287,8 @@ describe("expressions", () => {
       withMesh(`cube { position ${vector} }`, (mesh) => assert.deepEqual(mesh.position.toArray(), [1, 2, 3]));
     }
     withMesh("cube { position -1 -2 -3 }", (mesh) => assert.deepEqual(mesh.position.toArray(), [-1, -2, -3]));
-    withMesh("extrude path { point +0 +0 point +1 +0 point +0 +1 point -1 +0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 1) < 1e-5));
-    withMesh("extrude path { point 0 0 point (1 + 2 * 3) 0 point 0 1 point -7 0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 7) < 1e-5));
+    withMesh("extrude path { point +0 +0 point +1 +0 point +0 +1 point -1 +0 point +0 +0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 1) < 1e-5));
+    withMesh("extrude path { point 0 0 point (1 + 2 * 3) 0 point 0 1 point -7 0 point 0 0 }", (mesh) => assert.ok(Math.abs(volume(mesh) - 7) < 1e-5));
   });
   it("evaluates `rnd` the same way twice, so validation and rendering agree", () => {
     // The server validates the script and the browser renders it from source;
@@ -405,7 +405,7 @@ describe("upstream conventions", () => {
     withMesh(circle, (mesh) => assert.ok(Math.abs(volume(mesh) - Math.PI) / Math.PI < 0.03, `${volume(mesh)}`));
     // The procedural semicircle from the upstream docs: half a unit disc once
     // filled, give or take the 4% that on-curve midpoints at cos(11.25°) cost.
-    withMesh("extrude path { for 0 to 8 { curve 0 1 rotate 1 / 8 } }", (mesh) =>
+    withMesh("extrude path { point 0 1 for 1 to 7 { rotate 1 / 8 curve 0 1 } rotate 1 / 8 point 0 1 point 0 -1 }", (mesh) =>
       assert.ok(Math.abs(volume(mesh) - Math.PI / 2) / (Math.PI / 2) < 0.05, `${volume(mesh)}`),
     );
     // One control between two corners bows the edge out without passing through the control.
@@ -745,7 +745,6 @@ describe("control flow, ranges and functions", () => {
       ['text "hi"', /text/],
       ['import "other.shape"', /import/],
       ["define p path { point 0 0 point 1 1 }", /path.*value/],
-      ["extrude { square along path { point 0 0 point 1 1 } }", /along/],
       ['fill svgpath "M 0 0 L 1 0 L 0 1 z"', /svgpath/],
     ] as const) {
       assert.throws(() => objectsOf(script), message, script);
@@ -892,5 +891,93 @@ describe("shapes as values", () => {
       near(extent(mesh).toArray(), [4, 5, 6]);
     });
     withMesh("cube { size max(\n 1\n 2\n) }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+  });
+});
+
+describe("minkowski, inset and extrude along", () => {
+  it("sums two convex solids into one hull that keeps the first one's colour", () => {
+    withMesh("minkowski {\n cube { color 1 0 0 }\n sphere { size 1 }\n}", (mesh) => {
+      near(extent(mesh).toArray(), [2, 2, 2], 0.01);
+      assert.ok(volume(mesh) > 1 && volume(mesh) < 8, `volume ${volume(mesh)}`);
+      assert.ok(mesh.geometry.hasAttribute("color"));
+      const color = mesh.geometry.getAttribute("color");
+      near([color.getX(0), color.getY(0), color.getZ(0)], [1, 0, 0]);
+      assert.equal((mesh.material as THREE.MeshStandardMaterial).vertexColors, true);
+    });
+    withMesh("minkowski {\n cube\n cube { size 0.5 }\n}", (mesh) => {
+      near(extent(mesh).toArray(), [1.5, 1.5, 1.5], 1e-4);
+      near([volume(mesh)], [1.5 ** 3], 1e-4);
+      assert.equal(mesh.geometry.hasAttribute("color"), false);
+    });
+  });
+  it("sums a non-convex solid face by face", () => {
+    withMesh("minkowski {\n difference {\n  cube\n  cube { size 0.4 2 0.4 }\n }\n sphere { size 0.2 }\n}", (mesh) => {
+      near(extent(mesh).toArray(), [1.2, 1.2, 1.2], 0.01);
+    });
+    assert.throws(() => objectsOf("minkowski { cube }"), /at least two/);
+    assert.throws(() => objectsOf("minkowski { cube path { point 0 0 point 1 0 } }"), /at least two/);
+  });
+  it("insets a mesh value along its faces, exactly at corners", () => {
+    withMesh("define c cube\ninset(c 0.1)", (mesh) => near(extent(mesh).toArray(), [0.8, 0.8, 0.8], 1e-5));
+    withMesh("define c cube\ninset(c -0.1)", (mesh) => near(extent(mesh).toArray(), [1.2, 1.2, 1.2], 1e-5));
+    // A cone's apex slides down to where the inset sides meet: 0.1 / cos(63.4°) below it.
+    withMesh("define k cone\ninset(k 0.1)", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.max.y, box.min.y], [0.5 - 0.1 * Math.sqrt(5), -0.4], 1e-3);
+    });
+    assert.throws(() => objectsOf("inset(1 2)"), /mesh/);
+    assert.throws(() => objectsOf("define c cube\ninset(c 1 / 0)"), /finite/);
+  });
+  it("keeps the colour a shape value was given and takes the scope's colour otherwise", () => {
+    withMesh("define c cone { color 1 0 0 }\ncolor 0 0 1\nc", (mesh) => {
+      const color = mesh.geometry.getAttribute("color");
+      near([color.getX(0), color.getY(0), color.getZ(0)], [1, 0, 0]);
+    });
+    withMesh("define c cone\ncolor 0 0 1\nc", (mesh) => {
+      assert.equal(mesh.geometry.hasAttribute("color"), false);
+      near((mesh.material as THREE.MeshStandardMaterial).color.toArray(), [0, 0, 1]);
+    });
+  });
+  it("extrudes an open path into a two-sided wall", () => {
+    withMesh("extrude { size 1 1 0.5 path { point 0 0 point 2 0 } }", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.x, box.max.x, box.min.z, box.max.z], [0, 2, -0.25, 0.25]);
+      assert.equal(mesh.geometry.getAttribute("position").count, 8);
+      near([volume(mesh)], [0]);
+    });
+    withMesh("define w {\n path { point 0 0 point 0 1 }\n}\nextrude {\n size 1 1 0.2\n w\n}", (mesh) => near(extent(mesh).toArray(), [0, 1, 0.2]));
+    assert.throws(() => objectsOf("extrude { path { point 0 0 } }"), /at least two/);
+  });
+  it("reads `detail` as a value, scopes it to a path, and draws curves as corners at `detail 0`", () => {
+    withMesh("cube { size detail / 32 }", (mesh) => near(extent(mesh).toArray(), [1, 1, 1]));
+    const corners = objectsOf("path {\n detail 0\n curve 0 0\n curve 1 0\n curve 1 1\n}")[0] as THREE.Line;
+    assert.equal(corners.geometry.getAttribute("position").count, 3);
+    const smooth = objectsOf("path {\n curve 0 0\n curve 1 0\n curve 1 1\n}")[0] as THREE.Line;
+    assert.ok(smooth.geometry.getAttribute("position").count > 3);
+    const [, sphere] = objectsOf("path {\n detail 4\n point 0 0\n point 1 0\n}\nsphere") as [THREE.Line, THREE.Mesh];
+    const [plain] = objectsOf("sphere") as [THREE.Mesh];
+    assert.equal(sphere.geometry.getAttribute("position").count, plain.geometry.getAttribute("position").count);
+  });
+  it("sweeps a section along a path with `along`", () => {
+    withMesh("extrude {\n circle { size 0.2 }\n along path { point 0 0 point 0 2 }\n}", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.x, box.max.x, box.min.y, box.max.y, box.min.z, box.max.z], [-0.1, 0.1, 0, 2, -0.1, 0.1], 1e-5);
+      near([volume(mesh)], [16 * 0.01 * Math.sin(Math.PI / 16) * 2], 1e-4);
+    });
+    // A closed path sweeps a ring with no caps; `size` scales the whole result.
+    withMesh("extrude {\n size 2 1 1\n square { size 0.2 }\n along circle { size 2 }\n}", (mesh) => {
+      near(extent(mesh).toArray(), [4.4, 2.2, 0.2], 0.01);
+      // The geometry itself (before `size`): a 0.2 square around a circumference of 2π.
+      assert.ok(volume(mesh) > 0.24 && volume(mesh) < 0.26, `volume ${volume(mesh)}`);
+    });
+    for (const [script, message] of [
+      ["extrude { square along path { point 0 0 point 1 1 } along circle }", /one `along`/],
+      ["loft { square along circle }", /only valid inside `extrude`/],
+      ["extrude { along circle }", /needs a planar section/],
+      ["extrude { square along }", /needs a path/],
+      ["extrude { square along cube }", /XY plane|exactly one path|closed perimeter/],
+    ] as const) {
+      assert.throws(() => objectsOf(script), message, script);
+    }
   });
 });

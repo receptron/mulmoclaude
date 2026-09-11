@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 /** Read an ordered perimeter from a triangulated planar profile. Interior
  * vertices (e.g. the centre of CircleGeometry) must never enter a loft ring. */
@@ -93,21 +94,24 @@ function alignWinding(rings: THREE.Vector3[][]): void {
   }
 }
 
-/** Straight interpolation between successive rings, with triangulated end caps. */
-export function loftGeometry(profiles: THREE.Vector3[][]): THREE.BufferGeometry {
+/** Straight interpolation between successive rings, with triangulated end
+ *  caps — or, for a `closed` chain (a section swept around a loop), the last
+ *  ring joined back to the first and no caps at all. */
+export function loftGeometry(profiles: THREE.Vector3[][], closed = false): THREE.BufferGeometry {
   if (profiles.length < 2) throw new Error("Loft requires at least two cross-sections");
   const count = Math.max(...profiles.map((ring) => ring.length));
   const rings = profiles.map((ring) => resample(ring, count));
   alignWinding(rings);
   const indices: number[] = [];
-  for (let r = 0; r < rings.length - 1; r++) {
+  const total = rings.length * count;
+  for (let r = 0; r < (closed ? rings.length : rings.length - 1); r++) {
     for (let i = 0; i < count; i++) {
       const a = r * count + i,
         b = r * count + ((i + 1) % count);
-      indices.push(a, b, b + count, a, b + count, a + count);
+      indices.push(a, b, (b + count) % total, a, (b + count) % total, (a + count) % total);
     }
   }
-  for (const end of [0, rings.length - 1]) {
+  for (const end of closed ? [] : [0, rings.length - 1]) {
     const ring = rings[end]!;
     const origin = ring[0]!;
     const u = ring[1]!.clone().sub(origin).normalize();
@@ -162,4 +166,68 @@ export function loftGeometry(profiles: THREE.Vector3[][]): THREE.BufferGeometry 
   }
   geometry.computeVertexNormals();
   return geometry;
+}
+
+/** A section ring (in the XY plane, its normal +Z) placed at every point of a
+ *  path, the way `extrude … along` sweeps it: +Z turns to the path tangent
+ *  (mitred at corners, and the ring widened there so the walls meet), +Y to
+ *  the path's plane normal. A `closed` path wraps the first corner too. */
+export function sweepRings(section: THREE.Vector3[], path: THREE.Vector3[], closed: boolean): THREE.Vector3[][] {
+  const up = pathUp(path);
+  return path.map((origin, i) => {
+    const before = closed || i > 0 ? path[(i - 1 + path.length) % path.length]! : undefined;
+    const after = closed || i < path.length - 1 ? path[(i + 1) % path.length]! : undefined;
+    const incoming = before ? origin.clone().sub(before).normalize() : after!.clone().sub(origin).normalize();
+    const outgoing = after ? after.clone().sub(origin).normalize() : incoming;
+    const tangent = incoming.clone().add(outgoing);
+    if (tangent.lengthSq() < 1e-12) tangent.copy(incoming);
+    tangent.normalize();
+    // The section is widened across the mitre so the walls on either side of
+    // the corner meet: by 1 / cos(θ / 2), capped like a miter limit.
+    const widen = Math.min(SWEEP_MITER_LIMIT, 1 / Math.max(1e-6, Math.sqrt(Math.max(0, (1 + incoming.dot(outgoing)) / 2))));
+    const binormal = up.clone().cross(tangent);
+    if (binormal.lengthSq() < 1e-12) binormal.copy(perpendicularTo(tangent));
+    binormal.normalize();
+    const normal = tangent.clone().cross(binormal).normalize();
+    return section.map((point) => origin.clone().addScaledVector(binormal, point.x * widen).addScaledVector(normal, point.y));
+  });
+}
+
+const SWEEP_MITER_LIMIT = 4;
+
+/** The plane normal of the path, or for a straight path any direction across it. */
+function pathUp(path: THREE.Vector3[]): THREE.Vector3 {
+  const normal = ringNormal(path);
+  if (normal.lengthSq() > 1e-12) return normal.normalize();
+  return perpendicularTo(path[path.length - 1]!.clone().sub(path[0]!).normalize());
+}
+
+function perpendicularTo(direction: THREE.Vector3): THREE.Vector3 {
+  const axis = Math.abs(direction.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
+  return axis.cross(direction).normalize();
+}
+
+/** An OPEN path extruded: a wall of `depth` along the path with no caps, faced
+ *  both ways as upstream draws an open surface. */
+export function ribbonGeometry(points: THREE.Vector3[], depth: number): THREE.BufferGeometry {
+  if (points.length < 2) throw new Error("Extruding a path needs at least two points");
+  const positions = points.flatMap((point) => [point.x, point.y, point.z - depth / 2, point.x, point.y, point.z + depth / 2]);
+  const indices: number[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = i * 2;
+    indices.push(a, a + 2, a + 3, a, a + 3, a + 1);
+  }
+  const front = new THREE.BufferGeometry();
+  front.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  front.setAttribute("uv", new THREE.Float32BufferAttribute(points.flatMap((_, i) => [i / (points.length - 1), 0, i / (points.length - 1), 1]), 2));
+  front.setIndex(indices);
+  front.computeVertexNormals();
+  const back = front.clone();
+  back.setIndex(indices.map((_, i) => indices[i - (i % 3) + ((3 - (i % 3)) % 3)]!));
+  back.computeVertexNormals();
+  const both = mergeGeometries([front, back]);
+  front.dispose();
+  back.dispose();
+  if (!both) throw new Error("Could not build the extruded path");
+  return both;
 }

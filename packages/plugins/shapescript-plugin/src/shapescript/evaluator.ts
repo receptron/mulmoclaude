@@ -12,6 +12,7 @@ import {
   trianglesOf,
   triangulatePolygon,
 } from "./meshValues";
+import { insetGeometry } from "./minkowski";
 
 export type { MeshValue, PolygonValue, BoundsValue, PointValue } from "./meshValues";
 
@@ -381,6 +382,13 @@ const builtInFunctions: Record<string, (...args: Value[]) => Value> = {
   split: (s: Value, separator: Value) => String(s).split(String(separator ?? "")),
 
   // Colours: `rgb(r g b [a])` passes through, `hsb(h s b [a])` converts.
+  inset: (mesh: Value, distance: Value) => {
+    if (!isObjectValue(mesh) || mesh.kind !== "mesh") throw new Error("`inset` takes a mesh and a distance");
+    const by = toNumber(distance);
+    if (!Number.isFinite(by)) throw new Error("`inset` distance must be a finite number");
+    // The faces move, so the polygons kept from a `mesh { }` block no longer apply.
+    return { kind: "mesh", geometry: insetGeometry(mesh.geometry, by), ...(mesh.name === undefined ? {} : { name: mesh.name }) } as Value;
+  },
   rgb: (...args: Value[]) => args.flat(),
   hsb: (...args: Value[]) => {
     const [h = 0, s = 0, b = 0, a] = args.flat().map(toNumber);

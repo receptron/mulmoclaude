@@ -30,6 +30,7 @@ import {
   LatheNode,
   FillNode,
   HullNode,
+  MinkowskiNode,
   ShapeProperties,
   ShapePrimitive,
 } from "./types";
@@ -46,11 +47,8 @@ const UNSUPPORTED_COMMANDS: Record<string, string> = {
   text: "`text` (3D text) is not supported by this renderer",
   font: "`font` is not supported by this renderer",
   import: "`import` is not supported by this renderer — inline the shapes instead",
-  minkowski: "`minkowski` is not supported by this renderer",
-  inset: "`inset` is not supported by this renderer",
   svgpath: "`svgpath` is not supported by this renderer — write the outline as a `path`",
   object: "`object` values are not supported by this renderer — use tuples",
-  along: "`extrude … along` is not supported by this renderer",
   normals: "`normals` (normal maps) are not supported by this renderer",
   focus: "`focus` is not supported by this renderer",
   debug: "`debug` is not supported by this renderer",
@@ -169,6 +167,7 @@ class Lexer {
       lathe: TokenType.LATHE,
       fill: TokenType.FILL,
       hull: TokenType.HULL,
+      minkowski: TokenType.MINKOWSKI,
       group: TokenType.GROUP,
       mesh: TokenType.MESH,
       path: TokenType.PATH,
@@ -581,6 +580,7 @@ const SHAPE_VALUE_TOKENS = new Set([
   TokenType.LATHE,
   TokenType.FILL,
   TokenType.HULL,
+  TokenType.MINKOWSKI,
   TokenType.GROUP,
   TokenType.MESH,
   TokenType.PATH,
@@ -956,6 +956,12 @@ export class Parser {
     if (token.type === TokenType.HEXCOLOR) {
       this.advance();
       return hexColorExpression(String(token.value));
+    }
+
+    // `detail` read as a value: the detail level in force.
+    if (token.type === TokenType.DETAIL) {
+      this.advance();
+      return { type: "identifier", name: "detail" };
     }
 
     // A keyword a binding in scope has claimed is that symbol.
@@ -1683,7 +1689,7 @@ export class Parser {
     };
   }
 
-  private parseBuilder(builderType: "extrude" | "loft" | "lathe" | "fill" | "hull"): ExtrudeNode | LoftNode | LatheNode | FillNode | HullNode {
+  private parseBuilder(builderType: "extrude" | "loft" | "lathe" | "fill" | "hull" | "minkowski"): ExtrudeNode | LoftNode | LatheNode | FillNode | HullNode | MinkowskiNode {
     this.advance(); // consume builder keyword
 
     // Use the same path parser for `lathe path { ... }` and nested paths,
@@ -1703,11 +1709,14 @@ export class Parser {
     this.skipNewlines();
     const properties: ShapeProperties = {};
     const children: SceneNode[] = [];
+    let along: SceneNode | undefined;
     this.scoped(() => {
       while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
         const token = this.current();
         if ([TokenType.SIZE, TokenType.COLOR, TokenType.POSITION, TokenType.ROTATION, TokenType.ORIENTATION].includes(token.type)) {
           Object.assign(properties, this.parseProperties());
+        } else if (this.isAlongOption(token)) {
+          along = this.parseAlong(builderType, along);
         } else {
           const node = this.parseNode();
           if (node) children.push(node);
@@ -1716,10 +1725,26 @@ export class Parser {
       }
     });
     this.expect(TokenType.RBRACE);
+    if (builderType === "extrude" && along !== undefined) return { type: "extrude", children, properties, along };
     if (builderType === "extrude" && children.length === 1 && children[0]?.type === "path") {
       return { type: "extrude", path: children[0], properties };
     }
     return { type: builderType, children, properties };
+  }
+
+  private isAlongOption(token: Token): boolean {
+    return token.type === TokenType.IDENTIFIER && token.value === "along" && !this.values.has("along") && !this.blocks.has("along");
+  }
+
+  /** `along <path or shape>` inside `extrude { … }`: the path the sections are swept along. */
+  private parseAlong(builderType: string, previous: SceneNode | undefined): SceneNode {
+    const token = this.current();
+    if (builderType !== "extrude") throw new ParseError("`along` is only valid inside `extrude`", token.line, token.column);
+    if (previous !== undefined) throw new ParseError("`extrude` takes one `along` path", token.line, token.column);
+    this.advance();
+    const path = this.parseNode();
+    if (!path) throw new ParseError("`along` needs a path or shape", token.line, token.column);
+    return path;
   }
 
   /** Run `parse` with the tuple-value break of `isStartOfNewValue` enabled or
@@ -1916,7 +1941,7 @@ export class Parser {
     const token = this.current();
 
     type CSGOperation = "union" | "difference" | "intersection" | "xor" | "stencil";
-    type BuilderType = "extrude" | "loft" | "lathe" | "fill" | "hull";
+    type BuilderType = "extrude" | "loft" | "lathe" | "fill" | "hull" | "minkowski";
     type TransformType = "color" | "rotate" | "translate" | "scale" | "orientation";
 
     // Map token types to shape names
@@ -1949,6 +1974,7 @@ export class Parser {
       [TokenType.LATHE]: "lathe",
       [TokenType.FILL]: "fill",
       [TokenType.HULL]: "hull",
+      [TokenType.MINKOWSKI]: "minkowski",
     };
 
     // Map token types to transform types

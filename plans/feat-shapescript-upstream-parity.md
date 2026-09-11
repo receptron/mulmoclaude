@@ -65,8 +65,7 @@ Found while running the upstream examples (fixed in 2.1.0, also phase-1 class):
 ## Phase 3 — missing language features (by likely impact on generated scripts)
 
 Test fixtures: the upstream `Examples/` directory (`test/fixtures/upstream-examples/`, MIT).
-Ball, Chessboard, Cog, Dodecahedron, Earth, Spring and Train render; Fillet and Spirals are
-refused by name (see "open" below).
+All nine (Ball, Chessboard, Cog, Dodecahedron, Earth, Fillet, Spirals, Spring, Train) render.
 
 Done in 2.1.0:
 
@@ -90,10 +89,17 @@ Done in 2.2.0 (Dodecahedron):
   shapes, called bare as statements; `polygon { point … }` faces with colours; `mesh { … }`;
   the icosphere in Euclid's face order; line breaks inside parentheses.
 
+Done in 2.3.0 (Fillet, Spirals):
+
+- **Builders**: `minkowski` (hull of vertex sums for convex operands; merged per-face hulls for a
+  non-convex one — overlapping shells rather than a boolean union), `inset(mesh d)` (offset-plane
+  corners), `extrude … along` (mitred sweep, caps on open paths), open paths extruded to walls,
+  `detail` as a value and `detail 0` in a path, shape values keep their colour.
+
 Open:
 
-- **Builders**: `minkowski`; `extrude` options `along`, `twist`, `axisAligned`, `miterLimit`;
-  `inset` (Fillet, Spirals).
+- **Builders**: `extrude` options `twist`, `axisAligned`, `miterLimit`; a boolean union of
+  `minkowski` pieces for non-convex operands (they are merged shells today).
 - **Values**: paths as values (`define p path { … }`, `path.points`), per-vertex colours between
   a polygon's points (a polygon takes one colour), `object` values.
 - **Paths**: `svgpath`, nested / compound paths with holes, `path.color` gradients, 3D path

@@ -165,9 +165,24 @@ A bare path draws as a LINE (stroke), as upstream; use fill / extrude / lathe / 
       cube { position 1 0 0 }
   }
 - stencil preserves the first shape and paints its surface with later shapes' materials.
+- minkowski (the Minkowski sum; with inset it rounds edges, as upstream's Fillet example does):
+  define fillet(source radius) {
+      minkowski {
+          inset(source radius)
+          sphere { size radius * 2 }
+      }
+  }
+  fillet(cone { color red } 0.1)
+- extrude … along (a section swept along a path, capped at the ends of an open path):
+  extrude {
+      circle { size 0.1 }
+      along path { for i in 0 to 20 { curve 0 1 - i / 20 rotate 0.2 } }
+  }
 Loft sections must each have one perimeter and enclose an area; extrude/fill primitive profiles must lie in XY.
+An extrude path is a solid only when it is closed (its last point repeats its first); an open path extrudes
+to a wall, as upstream. inset(mesh distance) moves a mesh value's faces inward (outward when negative).
 A material command inside a builder block (extrude { color red … }) colours the result; size on a builder or
-group scales it. Not supported: extrude along/twist, minkowski, inset, svgpath, text.
+group scales it. Not supported: extrude twist, svgpath, text.
 - mesh { polygon { point x y z … } … }: a mesh from explicit faces; polygon { color red point a point b point c }
   takes 3D points (a tuple works: point v) and a colour per face. Faces may come from a function: mesh { for f in faces { face f } }.
 
@@ -196,9 +211,8 @@ post { height 3 }
 ### Compatibility:
 This plugin implements the documented modeling subset, not all upstream ShapeScript syntax; units, scoping,
 materials and path semantics follow upstream, so a script written against the upstream docs renders the
-same here. Not supported (each is refused by name): import, text/font, minkowski, inset, svgpath,
-extrude along/twist, object values and paths as values. Textures, cameras and lights are accepted but
-not drawn.
+same here. Not supported (each is refused by name): import, text/font, svgpath, extrude twist,
+object values and paths as values. Textures, cameras and lights are accepted but not drawn.
 
 ### Comments:
 // Single-line comment
