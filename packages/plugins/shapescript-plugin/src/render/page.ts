@@ -63,12 +63,13 @@ const bounds = new Box3().setFromObject(model);
 const sphere = bounds.getBoundingSphere(new Sphere());
 const radius = sphere.radius > 0 && isFinite(sphere.radius) ? sphere.radius : 1;
 
-const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+// An alpha buffer, so a translucent \`background r g b a\` blends over the sheet's white paper.
+const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true });
 renderer.setPixelRatio(1);
 renderer.setSize(config.width, config.height, false);
-// The script's own \`background r g b\` when it set one, else white paper.
+// The script's own \`background r g b [a]\` when it set one, else white paper.
 const background = Array.isArray(model.userData?.background) ? model.userData.background : null;
-if (background) renderer.setClearColor(new Color(background[0], background[1], background[2]), 1);
+if (background) renderer.setClearColor(new Color(background[0], background[1], background[2]), background[3] ?? 1);
 else renderer.setClearColor(0xffffff, 1);
 
 const scene = new Scene();
