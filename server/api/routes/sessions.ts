@@ -298,9 +298,10 @@ function isPresentMulmoScriptToolResult(entry: unknown): entry is PresentMulmoSc
   const { result } = entry;
   if (!isRecord(result) || result.toolName !== "presentMulmoScript") return false;
   const { data } = result;
-  // `root` is optional and stays untyped here — it is read through a `typeof` check at the
-  // one place that uses it, so a malformed value degrades to the default root rather than
-  // rejecting an entry that is otherwise fine to replay.
+  // `root` is optional and stays UNTYPED here on purpose: this predicate decides whether an
+  // entry is a mulmoScript result at all, and a corrupt root does not stop it being one. The
+  // root is judged where it is used — `enrichWithMulmoScript` parses it and, when it is corrupt,
+  // replays the entry as stored rather than filling it from the default root's deck.
   return isRecord(data) && typeof data.filePath === "string";
 }
 

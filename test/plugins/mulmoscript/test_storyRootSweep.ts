@@ -193,12 +193,18 @@ describe("a story is addressed by the pair, not the path", () => {
         // A plain `const root = …` carries its initialiser in group 1; a destructure carries the
         // brace body there and the initialiser in group 2.
         const initialiser = binding[2] ?? binding[1] ?? "";
-        // `const { filePath, root } = entry.result.data` is a raw read, and legal: what matters
-        // is that the value handed to an op is parsed, so a destructure is permitted only when
-        // the file also parses it before use. Anything else must name the parser inline.
+        // `const { filePath, root } = entry.result.data` is a raw read, and legal — but only if
+        // the RAW value never reaches an op. The first version of this exemption trusted the
+        // file to contain `parseSuppliedRoot(root)` somewhere, which proves nothing about what
+        // was passed (Codex, round 4). It now proves the safe property instead: no op call in
+        // this file may receive the bare identifier `root`.
         const parsed = /\b(parseSuppliedRoot|suppliedRoot)\(/.test(initialiser);
-        const rawDestructure = binding[0].includes("{") && source.includes("parseSuppliedRoot(root)");
-        if (!parsed && !rawDestructure) offenders.push(`${relative(REPO_ROOT, file)}: ${binding[0].trim()}`);
+        // `root` as an argument, with whatever decoration follows it up to the next separator —
+        // a cast, a `!`, a comment — so `movieStatusOp(p, root as string | undefined)` counts as
+        // passing the raw value and not as something else.
+        const passesBareRoot = new RegExp(`\\b(?:${ROOT_TAKING_OPS.join("|")})\\([^;]*?[(,]\\s*root\\b[^,)]*[),]`).test(source);
+        const safeDestructure = binding[0].includes("{") && !passesBareRoot;
+        if (!parsed && !safeDestructure) offenders.push(`${relative(REPO_ROOT, file)}: ${binding[0].trim()}`);
       });
     });
     assert.deepEqual(offenders, [], `these bind a root without parsing it: ${offenders.join(" | ")}`);
