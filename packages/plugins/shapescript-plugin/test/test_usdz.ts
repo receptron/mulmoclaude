@@ -107,6 +107,13 @@ describe("shapeScriptToUsdz", () => {
     const [cube] = zipEntries(await shapeScriptToUsdz("cube {\n color 0 1 0\n}"));
     assert.equal((cube?.text.match(/def Material /g) ?? []).length, 1);
     assert.match(cube?.text ?? "", /diffuseColor = \(0, 1, 0\)/);
+    // The split keeps the mesh's placement: a coloured polygon mesh and a
+    // cube given the same transform export with the same matrix.
+    const placed = "group {\n size 2 1 1\n translate 0 0 3\n cube {\n  color 0 1 0\n }\n mesh {\n  polygon {\n   color 1 0 0\n   point 0 0 0\n   point 1 0 0\n   point 0 1 0\n  }\n }\n}";
+    const [placedStage] = zipEntries(await shapeScriptToUsdz(placed));
+    const transforms = (placedStage?.text.match(/xformOp:transform = \([^\n]*/g) ?? []).filter((line) => line.includes("(0, 0, 3, 1)"));
+    assert.equal(transforms.length, 2, placedStage?.text.match(/xformOp:transform = \([^\n]*/g)?.join("\n") ?? "");
+    assert.equal(transforms[0], transforms[1]);
     // A face whose vertices differ in colour (a geometry from elsewhere; a
     // polygon block gives all its points one colour) gets their mean.
     const geometry = new THREE.BufferGeometry();

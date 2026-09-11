@@ -60,6 +60,8 @@ function withPlainColours(object: THREE.Object3D): { root: THREE.Object3D; dispo
     replacement.position.copy(mesh.position);
     replacement.quaternion.copy(mesh.quaternion);
     replacement.scale.copy(mesh.scale);
+    // The exporter reads each node's local matrix as it stands, so build it now.
+    replacement.updateMatrix();
     for (const part of splitByColour(mesh)) {
       created.push(part.geometry, part.material as THREE.Material);
       replacement.add(part);
