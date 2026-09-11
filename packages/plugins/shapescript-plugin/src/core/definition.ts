@@ -79,8 +79,8 @@ arguments with spaces; commas also work here (max(0, j - 1)) but NOT in the upst
 Inside a larger expression parenthesise a bare call: (sqrt 9) + (sqrt 16).
 Custom functions: define hyp(a b) { sqrt(a * a + b * b) } — parameters, optional defines, then the result
 expression. A function may also build shapes: define face(data) { polygon { … } } returns what it built.
-Write ONE statement per line. This parser accepts "define a 1 define b 2" on one line; the upstream app
-rejects it, and "size 2 1 radius 0.5" on one line reads radius as a fourth size component in both.
+Write ONE statement per line: "define a 1 define b 2" on one line is a parse error here, as in the upstream
+app, where "size 2 1 radius 0.5" reads radius as a fourth size component.
 
 Examples:
 for i in 1 to 8 {

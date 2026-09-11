@@ -79,9 +79,8 @@ USDZ units are metres, so `size 1` is one metre in AR.
 A call is either C-like, with **no space** before its parenthesis (`sin(x)`; `sin (x)` is not a
 call), or bare, as upstream: `max 0 (j - 1)`, `sqrt 9`, `sin pi / 2` — the function takes every
 value after it, so parenthesise it inside a larger expression: `(sqrt 9) + (sqrt 16)`. Arguments are
-a value list; commas (`max(0, j - 1)`) also work here but not in the upstream app. This parser also
-accepts several statements on one line (`define a 1 define b 2`); upstream requires one per line, so
-portable scripts keep to that.
+a value list; commas (`max(0, j - 1)`) also work here but not in the upstream app. One statement per
+line, as upstream: `define a 1 define b 2` on one line is a parse error naming the rule.
 
 ## Storage
 
