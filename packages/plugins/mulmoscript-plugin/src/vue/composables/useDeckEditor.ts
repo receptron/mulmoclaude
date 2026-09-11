@@ -35,20 +35,22 @@ const EDITOR_ORIGIN = `deck-editor-${Math.random().toString(36).slice(2)}`;
 export type DeckEditorTransport = Pick<MulmoScriptTransport, "onScriptChanged"> & {
   call(
     kind: "updateScript",
-    args: { filePath: string; script: MulmoScript; origin: string },
+    args: { filePath: string; root?: string | undefined; script: MulmoScript; origin: string },
   ): Promise<TransportResult<MulmoScriptDispatchResult["updateScript"]>>;
 };
 
 export interface UseDeckEditorOptions {
   api: DeckEditorTransport;
   filePath: ComputedRef<string>;
+  /** Which registered root `filePath` is relative to; `undefined` = the host's default (#3014). */
+  root: ComputedRef<string | undefined>;
   effectiveScript: ComputedRef<MulmoScript>;
   /** Persist the saved script back into the parent's toolResult so the
    *  in-memory script and reactive beats[] stay in sync without a remount. */
   commitScript: (next: MulmoScript) => void;
 }
 
-export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: UseDeckEditorOptions) {
+export function useDeckEditor({ api, filePath, root, effectiveScript, commitScript }: UseDeckEditorOptions) {
   const canEditBeats = computed(() => hasEditableBeats(effectiveScript.value));
   const deckScriptInput = computed<DeckScriptShape>(() => effectiveScript.value as unknown as DeckScriptShape);
 
@@ -95,7 +97,7 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
     pendingDeckScript = null;
     if (!next || !filePath.value) return;
     const revision = editRevision;
-    const response = await api.call("updateScript", { filePath: filePath.value, script: next, origin: EDITOR_ORIGIN });
+    const response = await api.call("updateScript", { filePath: filePath.value, root: root.value, script: next, origin: EDITOR_ORIGIN });
     if (revision !== editRevision) return;
     if (!response.ok) {
       // The deck editor still holds the latest edit in its props until the next refresh, so
@@ -133,8 +135,10 @@ export function useDeckEditor({ api, filePath, effectiveScript, commitScript }: 
   function watchForeignWrites(reload: () => void): () => void {
     return api.onScriptChanged({
       filePath: () => filePath.value,
-      // Default root until step 2 — see the note in View.vue.
-      root: () => undefined,
+      // The PAIR is the identity: `stories/deck.json` exists in every root, so filtering on the
+      // path alone reloads this editor when ANOTHER repository's same-named deck is written
+      // (#3014).
+      root: () => root.value,
       ownOrigin: EDITOR_ORIGIN,
       handler: () => {
         flushPendingDeckSave();

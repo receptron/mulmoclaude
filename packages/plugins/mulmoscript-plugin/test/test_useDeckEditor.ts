@@ -18,6 +18,8 @@ import type { MulmoScript } from "../src/vue/viewTypes";
  */
 
 type SaveOutcome = TransportResult<Record<string, never>>;
+/** The registered root the harness's deck lives in — the pair `(root, filePath)` is its identity. */
+const STORY_ROOT = "acme-docs";
 const OK: SaveOutcome = { ok: true, data: {} };
 const failedWith = (error: string): SaveOutcome => ({ ok: false, error });
 
@@ -40,6 +42,7 @@ function harness(outcomes: SaveOutcome[]) {
   const editor = useDeckEditor({
     api,
     filePath: computed(() => "stories/deck/launch.json"),
+    root: computed(() => STORY_ROOT),
     effectiveScript: computed(() => script),
     commitScript: (next) => committed.push(next),
   });
@@ -78,6 +81,7 @@ function overlappingHarness() {
   const editor = useDeckEditor({
     api,
     filePath: computed(() => "stories/deck/launch.json"),
+    root: computed(() => STORY_ROOT),
     effectiveScript: computed(() => script),
     commitScript: (next) => committed.push(next),
   });
@@ -204,6 +208,53 @@ describe("a deck save that succeeds", () => {
     assert.equal(deckSaveError.value, null);
     assert.deepEqual(sentTitles, ["one", "two"]);
     assert.equal(committed.length, 2);
+  });
+});
+
+describe("the root the card names", () => {
+  it("rides on every save — the same path in another root is a different file", async () => {
+    const sent: (string | undefined)[] = [];
+    const api: DeckEditorTransport = {
+      call: async (_kind, args) => {
+        sent.push(args.root);
+        return OK;
+      },
+      onScriptChanged: () => () => {},
+    };
+    const editor = useDeckEditor({
+      api,
+      filePath: computed(() => "stories/deck/launch.json"),
+      root: computed(() => STORY_ROOT),
+      effectiveScript: computed(() => ({ title: "deck", beats: [{ text: "one" }] })),
+      commitScript: () => {},
+    });
+    editor.onDeckUpdate({ title: "renamed", beats: [{ text: "one" }] });
+    editor.flushPendingDeckSave();
+    await new Promise((settled) => setImmediate(settled));
+    assert.deepEqual(sent, [STORY_ROOT]);
+  });
+
+  it("filters foreign writes by the pair, not by the path", () => {
+    let subscription: { filePath: () => string; root: () => string | undefined } | null = null;
+    const api: DeckEditorTransport = {
+      call: async () => OK,
+      onScriptChanged: (first) => {
+        subscription = first as { filePath: () => string; root: () => string | undefined };
+        return () => {};
+      },
+    };
+    const editor = useDeckEditor({
+      api,
+      filePath: computed(() => "stories/deck/launch.json"),
+      root: computed(() => STORY_ROOT),
+      effectiveScript: computed(() => ({})),
+      commitScript: () => {},
+    });
+    editor.watchForeignWrites(() => {});
+    assert.ok(subscription, "the composable subscribed");
+    const subscribed: { filePath: () => string; root: () => string | undefined } = subscription;
+    assert.equal(subscribed.root(), STORY_ROOT);
+    assert.equal(subscribed.filePath(), "stories/deck/launch.json");
   });
 });
 

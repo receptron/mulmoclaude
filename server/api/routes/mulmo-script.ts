@@ -131,6 +131,11 @@ bindRoute(router, API_ROUTES.mulmoScript.save, async (req: Request<object, objec
   if (req.body?.autoGenerateMovie === true) {
     // The in-flight dedup + background pipeline key on the realpath, so
     // re-resolve the package's wire path host-side.
+    //
+    // No root, deliberately: this is the AGENT's tool path, and `root` is not in the tool
+    // schema so a model cannot name one (#3015). Every save that reaches here is in the
+    // default root by construction. Named as an exception in
+    // `test/plugins/mulmoscript/test_storyRootSweep.ts`.
     const resolved = mulmoScriptOps.resolveStory(outcome.filePath);
     if (resolved.ok) {
       mulmoScriptOps.triggerAutoBackgroundMovie(resolved.absolutePath, outcome.filePath, getSessionQuery(req) || undefined);
@@ -234,6 +239,9 @@ bindRoute(
 
 interface GenerationRequestBody {
   filePath: string;
+  /** Which registered stories root `filePath` is relative to; absent = the default (#3014).
+   *  This host registers no extra roots, so every request it makes today omits it. */
+  root?: string | undefined;
   chatSessionId?: string | undefined;
 }
 
@@ -254,7 +262,8 @@ function resolveStoryRequest(
     sendOpFailure(res, ffmpeg);
     return null;
   }
-  const resolved = mulmoScriptOps.resolveStory(filePath);
+  // The PAIR, not the path: the same `stories/…` spelling exists in every root (#3014).
+  const resolved = mulmoScriptOps.resolveStory(filePath, typeof req.body.root === "string" ? req.body.root : undefined);
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return null;
@@ -400,7 +409,10 @@ bindRoute(router, API_ROUTES.mulmoScript.downloadMovie, (req: Request, res: Resp
     badRequest(res, "moviePath is required");
     return;
   }
-  const resolved = mulmoScriptOps.resolveStory(moviePath);
+  // An artifact ref is relative to ITS stories root (#3014). Absent = the default root, which
+  // is every request this host makes today — it registers no extra roots — so this is
+  // unchanged for it and correct for a host that does.
+  const resolved = mulmoScriptOps.resolveStory(moviePath, getOptionalStringQuery(req, "root"));
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return;
@@ -477,7 +489,8 @@ bindRoute(router, API_ROUTES.mulmoScript.downloadPdf, (req: Request, res: Respon
     badRequest(res, "pdfPath is required");
     return;
   }
-  const resolved = mulmoScriptOps.resolveStory(pdfPath);
+  // Same as downloadMovie above: the ref is relative to its root (#3014).
+  const resolved = mulmoScriptOps.resolveStory(pdfPath, getOptionalStringQuery(req, "root"));
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return;

@@ -385,6 +385,7 @@ import {
   isBeatImageReference,
   isValidBeat as isValidBeatOf,
   staleSince as staleSinceOf,
+  type StoryRef,
   scriptSourceText as toScriptSourceText,
   resolveSilentAdvanceSeconds,
   clearReactiveRecords,
@@ -430,6 +431,19 @@ const emit = defineEmits<{ updateResult: [result: ToolResultComplete] }>();
 const data = computed(() => props.selectedResult.data);
 const script = computed<MulmoScript>(() => data.value?.script ?? {});
 const filePath = computed(() => data.value?.filePath ?? "");
+/**
+ * Which registered root `filePath` is relative to; `undefined` = the host's default (#3014).
+ *
+ * The host puts it on the card when it opens a deck the user can see; the agent's tool schema
+ * deliberately has no root, so a model cannot name one (#3015). Every dispatch below hands it
+ * back, because `stories/deck.json` exists in EVERY root: without it the call addresses the
+ * default root's file of that name, which is how a deck inside a repository opened fine and
+ * then answered `File not found` to every save and every beat image
+ * (receptron/mulmoterminal#1970).
+ */
+const root = computed(() => data.value?.root);
+/** The story as the wire addresses it — the pair that is its identity. */
+const storyRef = (): StoryRef => ({ filePath: filePath.value, root: root.value });
 const beats = computed<Beat[]>(() => script.value.beats ?? []);
 
 // Per-beat render state
@@ -494,7 +508,7 @@ const {
   downloadPdf,
   refreshPdfPath,
   resetMedia,
-} = useMediaExport({ api, adapter, filePath, chatSessionId });
+} = useMediaExport({ api, adapter, filePath, root, chatSessionId });
 
 const {
   beatMovies,
@@ -506,7 +520,7 @@ const {
   closeBeatMovie,
   invalidateBeatMovie,
   resetBeatMovies,
-} = useBeatMovie({ api, adapter, filePath });
+} = useBeatMovie({ api, adapter, filePath, root });
 
 const {
   charRenderState,
@@ -522,7 +536,7 @@ const {
   renderCharacter,
   generateAllCharacters,
   resetCharacters,
-} = useCharacterImages({ api, filePath, chatSessionId, getImages: () => script.value.imageParams?.images });
+} = useCharacterImages({ api, filePath, root, chatSessionId, getImages: () => script.value.imageParams?.images });
 
 function stopPlayingAudio() {
   // Single helper that clears both the audio path and the silent
@@ -732,6 +746,7 @@ function commitScript(next: MulmoScript): void {
 const { canEditBeats, deckScriptInput, deckSaveError, resetForScriptChange, onDeckUpdate, flushPendingDeckSave, watchForeignWrites } = useDeckEditor({
   api,
   filePath,
+  root,
   effectiveScript,
   commitScript,
 });
@@ -815,7 +830,11 @@ async function onSourceToggle(open: boolean) {
     // `stories/<rel>` and only the mulmoScript save/reopen op knows
     // how to map it to the on-disk path under `artifacts/stories/...`.
     if (filePath.value) {
-      const response = await api.call("save", { filePath: filePath.value });
+      const requested = storyRef();
+      const response = await api.call("save", requested);
+      // The disk read describes the script it was asked for. Navigating away during it would
+      // otherwise seed the source editor with ANOTHER deck's text (#3014).
+      if (staleSince(requested)) return;
       const diskScript = response.ok ? (response.data.script as MulmoScript | undefined) : undefined;
       if (diskScript) text = toScriptSourceText(diskScript);
       // fall through to in-memory script on failure
@@ -837,10 +856,15 @@ async function applySource() {
     alert(errorMessage(err));
     return;
   }
+  const requested = storyRef();
   const response = await api.call("updateScript", {
-    filePath: filePath.value,
+    ...requested,
     script: parsed,
   });
+  // The write landed in the script it was asked for. Committing it after the user moved on
+  // would put that script into the card now on screen, and re-initialize against it (#3014) —
+  // the same shape the deck editor's `resetForScriptChange` closes on its own path.
+  if (staleSince(requested)) return;
   if (!response.ok) {
     alert(response.error || "Update failed");
     return;
@@ -888,15 +912,15 @@ async function updateBeat(index: number) {
   const prevImage = JSON.stringify(effectiveBeat(index).image);
   const prevText = effectiveBeat(index).text;
 
-  const requestedFilePath = filePath.value;
+  const requested = storyRef();
   Reflect.deleteProperty(beatSaveErrors, index);
   beatSaving[index] = true;
   const response = await api.call("updateBeat", {
-    filePath: requestedFilePath,
+    ...requested,
     beatIndex: index,
     beat,
   });
-  if (staleSince(requestedFilePath)) return;
+  if (staleSince(requested)) return;
   Reflect.deleteProperty(beatSaving, index);
   if (!response.ok) {
     beatSaveErrors[index] = { kind: "saveFailed", error: response.error };
@@ -931,14 +955,14 @@ async function updateBeat(index: number) {
 }
 
 async function renderBeat(index: number) {
-  const requestedFilePath = filePath.value;
+  const requested = storyRef();
   renderState[index] = "rendering";
   const response = await api.call("renderBeat", {
-    filePath: requestedFilePath,
+    ...requested,
     beatIndex: index,
     chatSessionId: chatSessionId.value,
   });
-  if (staleSince(requestedFilePath)) return;
+  if (staleSince(requested)) return;
   if (!response.ok) {
     renderErrors[index] = response.error || "Render failed";
     renderState[index] = "error";
@@ -951,17 +975,17 @@ async function renderBeat(index: number) {
 }
 
 async function regenerateBeat(index: number) {
-  const requestedFilePath = filePath.value;
+  const requested = storyRef();
   Reflect.deleteProperty(renderedImages, index);
   invalidateBeatMovie(index);
   renderState[index] = "rendering";
   const response = await api.call("renderBeat", {
-    filePath: requestedFilePath,
+    ...requested,
     beatIndex: index,
     force: true,
     chatSessionId: chatSessionId.value,
   });
-  if (staleSince(requestedFilePath)) return;
+  if (staleSince(requested)) return;
   if (!response.ok) {
     renderErrors[index] = response.error || "Render failed";
     renderState[index] = "error";
@@ -973,18 +997,19 @@ async function regenerateBeat(index: number) {
 }
 
 // Stale-response guard shared by every per-beat/character loader and
-// mutator below: capture the wire path at call time and discard the
+// mutator below: capture the wire ref at call time and discard the
 // response when the user has navigated to a different result meanwhile —
 // otherwise late responses from script A's bulk mount-time probes would
-// write into the per-beat maps that now belong to script B.
-function staleSince(requestedFilePath: string): boolean {
-  return staleSinceOf(filePath.value, requestedFilePath);
+// write into the per-beat maps that now belong to script B. The ref is the
+// PAIR `(root, filePath)`: the same path exists in every root (#3014).
+function staleSince(requested: StoryRef): boolean {
+  return staleSinceOf(storyRef(), requested);
 }
 
 async function loadExistingBeatImage(index: number) {
-  const requestedFilePath = filePath.value;
-  const response = await api.call("beatImage", { filePath: requestedFilePath, beatIndex: index });
-  if (staleSince(requestedFilePath)) return;
+  const requested = storyRef();
+  const response = await api.call("beatImage", { ...requested, beatIndex: index });
+  if (staleSince(requested)) return;
   // silently ignore errors — image simply hasn't been generated yet
   if (response.ok && response.data.image) {
     renderedImages[index] = response.data.image;
@@ -993,9 +1018,9 @@ async function loadExistingBeatImage(index: number) {
 }
 
 async function loadExistingBeatAudio(index: number) {
-  const requestedFilePath = filePath.value;
-  const response = await api.call("beatAudio", { filePath: requestedFilePath, beatIndex: index });
-  if (staleSince(requestedFilePath)) return;
+  const requested = storyRef();
+  const response = await api.call("beatAudio", { ...requested, beatIndex: index });
+  if (staleSince(requested)) return;
   // silently ignore errors
   if (response.ok && response.data.audio) {
     beatAudios[index] = response.data.audio;
@@ -1004,15 +1029,15 @@ async function loadExistingBeatAudio(index: number) {
 }
 
 async function generateAudio(index: number) {
-  const requestedFilePath = filePath.value;
+  const requested = storyRef();
   audioState[index] = "generating";
   Reflect.deleteProperty(audioErrors, index);
   const response = await api.call("generateBeatAudio", {
-    filePath: requestedFilePath,
+    ...requested,
     beatIndex: index,
     chatSessionId: chatSessionId.value,
   });
-  if (staleSince(requestedFilePath)) return;
+  if (staleSince(requested)) return;
   if (!response.ok) {
     audioErrors[index] = response.error || "Audio generation failed";
     audioState[index] = "error";
@@ -1073,13 +1098,13 @@ async function onBeatDrop(event: DragEvent, index: number) {
     renderState[index] = "error";
     return;
   }
-  const requestedFilePath = filePath.value;
+  const requested = storyRef();
   const response = await api.call("uploadBeatImage", {
-    filePath: requestedFilePath,
+    ...requested,
     beatIndex: index,
     imageData,
   });
-  if (staleSince(requestedFilePath)) return;
+  if (staleSince(requested)) return;
   if (!response.ok) {
     renderErrors[index] = response.error || "Upload failed";
     renderState[index] = "error";
@@ -1141,11 +1166,11 @@ async function hydrateBeatImage(beat: Beat, index: number, hasCharacters: boolea
  * issue its own refresh against the correct file.
  */
 async function refreshScriptFromDisk(): Promise<void> {
-  const requestedFilePath = filePath.value;
-  if (!requestedFilePath) return;
+  const requested = storyRef();
+  if (!requested.filePath) return;
   const requestedUuid = props.selectedResult.uuid;
-  const response = await api.call("save", { filePath: requestedFilePath });
-  if (props.selectedResult.uuid !== requestedUuid || filePath.value !== requestedFilePath) return;
+  const response = await api.call("save", requested);
+  if (props.selectedResult.uuid !== requestedUuid || staleSince(requested)) return;
   if (!response.ok) return;
   const diskScript = response.data.script as MulmoScript | undefined;
   // The server-side reopen op already validated against
@@ -1231,10 +1256,10 @@ async function initializeScript() {
     // Stale-response guard: if the user navigates to a different result
     // while these calls are in flight, their answers describe the OLD
     // script — drop them instead of stamping them onto the new one.
-    const requestedFilePath = filePath.value;
-    const isStale = () => filePath.value !== requestedFilePath;
+    const requested = storyRef();
+    const isStale = () => staleSince(requested);
 
-    const response = await api.call("movieStatus", { filePath: requestedFilePath });
+    const response = await api.call("movieStatus", requested);
     if (isStale()) return;
     if (response.ok && response.data.moviePath) {
       moviePath.value = response.data.moviePath;
@@ -1243,7 +1268,7 @@ async function initializeScript() {
     // Also check whether a PDF was previously generated and is still
     // newer than the source; status returns null otherwise so the UI
     // re-offers the Generate button.
-    const pdfResponse = await api.call("pdfStatus", { filePath: requestedFilePath });
+    const pdfResponse = await api.call("pdfStatus", requested);
     if (isStale()) return;
     if (pdfResponse.ok && pdfResponse.data.pdfPath) {
       pdfPath.value = pdfResponse.data.pdfPath;
@@ -1253,7 +1278,7 @@ async function initializeScript() {
     // mounted (user switched away mid-generation and came back).
     // Snapshot via dispatch; live updates arrive on the pubsub
     // subscription below.
-    const pending = await api.call("pendingGenerations", { filePath: requestedFilePath });
+    const pending = await api.call("pendingGenerations", requested);
     if (isStale()) return;
     if (pending.ok) {
       for (const entry of pending.data.pending) {
@@ -1274,10 +1299,9 @@ watch(() => props.selectedResult, initializeScript);
 // after a remount, on finish we reload the relevant asset off disk.
 const unsubscribeGenerationEvents = api.onGenerationEvent({
   filePath: () => filePath.value,
-  // The View is opened from the host's default root today; step 2 gives it a
-  // root of its own. Written out rather than left to a default so the pair
-  // filter is visible at the call site (#3014).
-  root: () => undefined,
+  // The PAIR is the identity: `stories/deck.json` exists in every root, so filtering on the
+  // path alone puts ANOTHER repository's spinners on this card (#3014).
+  root: () => root.value,
   handler: (event) => {
     if (!event.done) {
       reflectGenerationStart(event);

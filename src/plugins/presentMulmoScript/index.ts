@@ -30,11 +30,15 @@ export type { MulmoScriptData };
 // the Authorization header, and the routes stay behind the standard
 // /api/* bearer guard by explicit review decision — so the package View
 // fetches bytes through this injected capability instead.
-async function fetchMediaBlob(query: { moviePath?: string; pdfPath?: string }): Promise<Blob> {
+async function fetchMediaBlob(query: { moviePath?: string; pdfPath?: string; root?: string | undefined }): Promise<Blob> {
   const endpoints = pluginEndpoints<MulmoScriptEndpoints>("mulmoScript");
+  // An artifact ref is relative to ITS stories root, and the same spelling exists in every
+  // other one — so the root travels with it or the route serves the default root's file of
+  // that name (#3014). Omitted when absent so a default-root request is unchanged.
+  const rootQuery = query.root === undefined ? {} : { root: query.root };
   const target = query.pdfPath
-    ? { url: endpoints.downloadPdf.url, query: { pdfPath: query.pdfPath } }
-    : { url: endpoints.downloadMovie.url, query: { moviePath: query.moviePath ?? "" } };
+    ? { url: endpoints.downloadPdf.url, query: { pdfPath: query.pdfPath, ...rootQuery } }
+    : { url: endpoints.downloadMovie.url, query: { moviePath: query.moviePath ?? "", ...rootQuery } };
   const res = await apiFetchRaw(target.url, { method: "GET", query: target.query });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
