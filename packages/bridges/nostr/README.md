@@ -47,7 +47,7 @@ Send a Nostr DM to the bot's `npub` from any Nostr client — you'll get a reply
 | `NOSTR_ALLOWED_PUBKEYS`  | no       | (all)   | CSV of hex pubkeys allowed to DM the bot (lower-case). Empty = everyone |
 | `NOSTR_CURSOR_FILE`      | no       | `~/.mulmoclaude/nostr-cursor.json` | Path for the persisted last-seen event timestamp. Set to an absolute path if you run multiple bots on the same machine |
 | `MULMOCLAUDE_AUTH_TOKEN` | no       | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`    | no       | `http://localhost:3001` | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`    | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

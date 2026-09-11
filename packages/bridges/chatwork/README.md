@@ -41,7 +41,7 @@ Send a message in any room the bot is in — you'll get a reply.
 | `CHATWORK_POLL_INTERVAL_SEC` | no       | `5`                     | Poll interval in seconds (min 2). Chatwork's rate limit is 300 req / 5 min shared across the token                                                     |
 | `CHATWORK_ROOMS_TTL_SEC`     | no       | `180`                   | TTL for the `GET /rooms` cache used in "allow all" mode (min 30). Room-list changes are rare, so refreshing every 3 minutes saves one request per poll |
 | `MULMOCLAUDE_AUTH_TOKEN`     | no       | auto                    | MulmoClaude bearer token override                                                                                                                      |
-| `MULMOCLAUDE_API_URL`        | no       | `http://localhost:3001` | MulmoClaude server URL                                                                                                                                 |
+| `MULMOCLAUDE_API_URL`        | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL                                                                                                                                 |
 
 ### Auth token persistence across server restarts
 

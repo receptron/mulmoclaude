@@ -91,7 +91,7 @@ Message your bot in Teams — DM or @mention in a channel — and you'll get a r
 | `TEAMS_BRIDGE_PORT`        | no          | `3006`        | HTTP port to listen on |
 | `TEAMS_ALLOWED_USERS`      | no          | (all)         | CSV of AAD user object IDs — empty = accept everyone in the tenant |
 | `MULMOCLAUDE_AUTH_TOKEN`   | no          | auto          | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`      | no          | `http://localhost:3001` | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`      | no          | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

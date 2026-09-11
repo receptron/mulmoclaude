@@ -54,7 +54,7 @@ npx @mulmobridge/matrix
 | `MATRIX_ACCESS_TOKEN` | Yes | Bot user's access token |
 | `MATRIX_USER_ID` | Yes | e.g. `@mulmo-bot:matrix.org` |
 | `MATRIX_ALLOWED_ROOMS` | No | CSV of room IDs (empty = all joined rooms) |
-| `MULMOCLAUDE_API_URL` | No | Default `http://localhost:3001` |
+| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`, else `http://localhost:3001`) |
 | `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
 | `MATRIX_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a matrix session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
 | `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `MATRIX_BRIDGE_DEFAULT_ROLE` wins when both are set. |

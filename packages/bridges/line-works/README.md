@@ -58,7 +58,7 @@ Send the bot a direct message in LINE Works — you'll get a reply.
 | `LINEWORKS_WEBHOOK_PORT`       | no       | `3013`  | HTTP port |
 | `LINEWORKS_ALLOWED_USERS`      | no       | (all)   | CSV of sender `userId`s allowed |
 | `MULMOCLAUDE_AUTH_TOKEN`       | no       | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`          | no       | `http://localhost:3001` | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`          | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

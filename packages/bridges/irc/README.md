@@ -39,7 +39,7 @@ npx @mulmobridge/irc
 | `IRC_PORT` | No | Default: 6697 (TLS) or 6667 (plain) |
 | `IRC_TLS` | No | `true` (default) or `false` |
 | `IRC_PASSWORD` | No | NickServ or server password |
-| `MULMOCLAUDE_API_URL` | No | Default `http://localhost:3001` |
+| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`, else `http://localhost:3001`) |
 | `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
 | `IRC_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a irc session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
 | `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `IRC_BRIDGE_DEFAULT_ROLE` wins when both are set. |

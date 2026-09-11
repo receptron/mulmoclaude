@@ -10,7 +10,8 @@
 //
 // Optional:
 //   LINE_BRIDGE_PORT          — Webhook listener port (default: 3002)
-//   MULMOCLAUDE_API_URL       — default http://localhost:3001
+//   MULMOCLAUDE_API_URL       — default: the port in <workspace>/.server-port,
+//                               else http://localhost:3001
 //   MULMOCLAUDE_AUTH_TOKEN    — bearer token
 
 import "dotenv/config";

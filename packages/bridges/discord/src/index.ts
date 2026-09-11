@@ -6,7 +6,8 @@
 //
 // Optional:
 //   DISCORD_ALLOWED_CHANNELS — CSV of channel IDs (empty = allow all)
-//   MULMOCLAUDE_API_URL      — default http://localhost:3001
+//   MULMOCLAUDE_API_URL      — default: the port in <workspace>/.server-port,
+//                              else http://localhost:3001
 //   MULMOCLAUDE_AUTH_TOKEN   — bearer token (or read from workspace)
 
 import "dotenv/config";

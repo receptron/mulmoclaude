@@ -50,7 +50,7 @@ Send a message to your Public Account from the Viber app — you'll get a reply.
 | `VIBER_WEBHOOK_PORT`   | no       | `3012`          | HTTP port |
 | `VIBER_ALLOWED_USERS`  | no       | (all)           | CSV of Viber user IDs allowed (empty = everyone who messages the bot) |
 | `MULMOCLAUDE_AUTH_TOKEN` | no     | auto            | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`  | no       | `http://localhost:3001` | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`  | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

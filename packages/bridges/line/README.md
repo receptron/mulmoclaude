@@ -57,7 +57,7 @@ Scan the QR code in the LINE Developers Console → Messaging API tab. Send a me
 | `LINE_CHANNEL_SECRET` | Yes | Channel secret for signature verification |
 | `LINE_CHANNEL_ACCESS_TOKEN` | Yes | Long-lived channel access token |
 | `LINE_BRIDGE_PORT` | No | Webhook port (default: 3002) |
-| `MULMOCLAUDE_API_URL` | No | Default `http://localhost:3001` |
+| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`, else `http://localhost:3001`) |
 | `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
 | `LINE_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a line session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
 | `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `LINE_BRIDGE_DEFAULT_ROLE` wins when both are set. |

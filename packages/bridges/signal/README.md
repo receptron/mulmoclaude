@@ -70,7 +70,7 @@ Send a Signal message to the bot number from another Signal account — you'll g
 | `SIGNAL_NUMBER`          | yes      | —       | Bot's registered Signal number in E.164 form (e.g. `+81901234567`) |
 | `SIGNAL_ALLOWED_NUMBERS` | no       | (all)   | CSV of sender numbers allowed, e.g. `+81901111111,+81902222222`. Empty = accept everyone |
 | `MULMOCLAUDE_AUTH_TOKEN` | no       | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`    | no       | `http://localhost:3001` | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`    | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

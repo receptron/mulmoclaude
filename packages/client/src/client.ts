@@ -16,12 +16,11 @@ import { io, type Socket } from "socket.io-client";
 import { CHAT_SOCKET_EVENTS, CHAT_SOCKET_PATH, type Attachment, type BridgeOptions } from "@mulmobridge/protocol";
 import { readBridgeToken, TOKEN_FILE_PATH } from "./token.js";
 import { readBridgeEnvOptions } from "./options.js";
+import { resolveApiUrl } from "./apiUrl.js";
 
 // 6 min > the server's REPLY_TIMEOUT_MS (5 min) so the server's
 // timeout surfaces as a reply, not a client-side cancellation.
 const REPLY_TIMEOUT_MS = 6 * 60 * 1000;
-
-const DEFAULT_API_URL = "http://localhost:3001";
 
 export interface MessageAck {
   ok: boolean;
@@ -39,7 +38,9 @@ export interface BridgeClientOptions {
   /** Required. Identifier for this bridge in the handshake.
    *  Matches `handshake.auth.transportId` server-side. */
   transportId: string;
-  /** Defaults to `$MULMOCLAUDE_API_URL` or `http://localhost:3001`. */
+  /** Defaults to `$MULMOCLAUDE_API_URL`, then the port the server
+   *  published to `<workspace>/.server-port`, then
+   *  `http://localhost:3001` (#3078). */
   apiUrl?: string;
   /** Flat primitive bag forwarded to the host app's startChat
    *  callback via the handshake (`BridgeOptions` from the
@@ -91,7 +92,7 @@ export function requireBearerToken(): string {
 }
 
 export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
-  const apiUrl = opts.apiUrl ?? process.env.MULMOCLAUDE_API_URL ?? DEFAULT_API_URL;
+  const apiUrl = resolveApiUrl(opts.apiUrl);
   const token = requireBearerToken();
   // `opts.options === undefined` → scrape env automatically.
   // `opts.options === {}` → opt out of the scrape explicitly.
