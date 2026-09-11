@@ -179,7 +179,7 @@ SLACK_ACK_REACTION=my_bot_ack           # ワークスペースのカスタム�
 | `SLACK_ACK_REACTION` | いいえ | デフォルト OFF。`1` で 👀 を付ける、他の絵文字ショートコードを指定するとその絵文字。有効化時は `reactions:write` スコープが必要。上記参照 |
 | `SLACK_BRIDGE_DEFAULT_ROLE` | いいえ | 新規 bridge セッション作成時に初期適用するロール ID（例: `slack`、`coder`）。Slack セッションが **最初に現れたときだけ** 適用され、その後ユーザーが `/role <id>` でロールを切り替えた場合はそちらが優先されます。未知のロール ID は warn ログ付きでサーバーのデフォルトにフォールバックします。 |
 | `BRIDGE_DEFAULT_ROLE` | いいえ | 上と同じですが、すべての bridge で共通です。両方セットされている場合は、transport 固有の `SLACK_BRIDGE_DEFAULT_ROLE` が優先されます。 |
-| `MULMOCLAUDE_API_URL` | いいえ | デフォルト `http://localhost:3001` |
+| `MULMOCLAUDE_API_URL` | いいえ | 既定: 自動（`.server-port`、無ければ `http://localhost:3001`） |
 | `MULMOCLAUDE_AUTH_TOKEN` | いいえ | Bearer token（未指定ならワークスペースから自動取得） |
 
 ### ブリッジオプションのパススルー
