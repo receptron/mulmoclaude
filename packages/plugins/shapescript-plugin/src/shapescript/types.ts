@@ -132,6 +132,7 @@ export type SceneNode =
   | LatheNode
   | FillNode
   | HullNode
+  | MinkowskiNode
   | GroupNode
   | DetailNode
   | SeedNode
@@ -344,6 +345,8 @@ export interface ExtrudeNode {
   path?: PathNode;
   properties: ShapeProperties;
   children?: SceneNode[];
+  /** `along <path>`: sweep the children (as sections) along this path. */
+  along?: SceneNode;
 }
 
 export interface LoftNode {
@@ -366,6 +369,13 @@ export interface FillNode {
 
 export interface HullNode {
   type: "hull";
+  properties: ShapeProperties;
+  children: SceneNode[];
+}
+
+/** `minkowski { a b … }`: the Minkowski sum of its children, left to right. */
+export interface MinkowskiNode {
+  type: "minkowski";
   properties: ShapeProperties;
   children: SceneNode[];
 }
@@ -483,6 +493,7 @@ export enum TokenType {
   LATHE = "LATHE",
   FILL = "FILL",
   HULL = "HULL",
+  MINKOWSKI = "MINKOWSKI",
   GROUP = "GROUP",
   MESH = "MESH",
   PATH = "PATH",
