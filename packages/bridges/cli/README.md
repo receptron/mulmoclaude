@@ -19,20 +19,20 @@ mulmobridge-cli
 yarn cli
 ```
 
-The bridge reads the bearer token from `~/mulmoclaude/.session-token` (written by the server at startup) or from the `MULMOCLAUDE_AUTH_TOKEN` environment variable.
+The bridge reads the bearer token from `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset) (written by the server at startup) or from the `MULMOCLAUDE_AUTH_TOKEN` environment variable.
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |---|---|---|
-| `MULMOCLAUDE_API_URL` | Server URL | `http://localhost:3001` |
+| `MULMOCLAUDE_API_URL` | Server URL | auto (`.server-port`, else `http://localhost:3001`) |
 | `MULMOCLAUDE_AUTH_TOKEN` | Bearer token override | reads from file |
 | `CLI_BRIDGE_DEFAULT_ROLE` | Role id for new bridge sessions (see below). | — |
 | `BRIDGE_DEFAULT_ROLE` | Shared fallback across every bridge. | — |
 
 ### Auth token persistence across server restarts
 
-The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `~/mulmoclaude/.session-token`. The bridge reads that file once at launch and keeps the token in memory — so if the server restarts while the bridge is running, the bridge keeps using the **old** token and every API call returns **401**, silently.
+The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset). The bridge reads that file once at launch and keeps the token in memory — so if the server restarts while the bridge is running, the bridge keeps using the **old** token and every API call returns **401**, silently.
 
 **Fix**: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on **both** the server and the bridge. The server uses it verbatim instead of regenerating, so the token survives restarts and the bridge stays authenticated.
 

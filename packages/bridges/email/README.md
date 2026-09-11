@@ -49,11 +49,11 @@ Send an email to the bot address — you'll get a reply threaded under your orig
 | `EMAIL_ALLOWED_SENDERS`    | no       | (all)   | CSV of allowed sender addresses (case-insensitive) |
 | `EMAIL_POLL_INTERVAL_SEC`  | no       | `30`    | Poll interval in seconds (min 10) |
 | `MULMOCLAUDE_AUTH_TOKEN`   | no       | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`      | no       | `http://localhost:3001` | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`      | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 
-The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `~/mulmoclaude/.session-token`. The bridge reads that file once at launch and keeps the token in memory — so if the server restarts while the bridge is running, the bridge keeps using the **old** token and every API call returns **401**, silently.
+The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset). The bridge reads that file once at launch and keeps the token in memory — so if the server restarts while the bridge is running, the bridge keeps using the **old** token and every API call returns **401**, silently.
 
 **Fix**: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on **both** the server and the bridge. The server uses it verbatim instead of regenerating, so the token survives restarts and the bridge stays authenticated.
 

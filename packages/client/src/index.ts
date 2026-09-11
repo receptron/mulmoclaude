@@ -2,7 +2,9 @@
 
 export { createBridgeClient, requireBearerToken, type MessageAck, type PushEvent, type BridgeClientOptions, type BridgeClient } from "./client.js";
 
-export { readBridgeToken, TOKEN_FILE_PATH } from "./token.js";
+export { readBridgeToken, tokenFilePath, TOKEN_FILE_PATH } from "./token.js";
+
+export { resolveApiUrl } from "./apiUrl.js";
 
 export { readBridgeEnvOptions } from "./options.js";
 

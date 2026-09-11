@@ -121,7 +121,7 @@ Full bridge list and platform-specific setup: <https://github.com/receptron/mulm
 
 ### Auth token persistence across server restarts
 
-The server regenerates a fresh bearer token on every startup and writes it to `~/mulmoclaude/.session-token`. A bridge that started before the restart keeps the OLD token in memory, so every subsequent API call returns 401 silently.
+The server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset). A bridge that started before the restart keeps the OLD token in memory, so every subsequent API call returns 401 silently.
 
 Fix: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on both the server and the bridge. The server uses it verbatim instead of regenerating, so the token survives restarts.
 

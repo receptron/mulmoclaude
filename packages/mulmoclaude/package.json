@@ -28,7 +28,7 @@
     "@gui-chat-plugin/mindmap": "^2.0.0",
     "@marp-team/marp-core": "^4.4.0",
     "@mulmobridge/chat-service": "^1.1.0",
-    "@mulmobridge/client": "^1.0.2",
+    "@mulmobridge/client": "^1.1.0",
     "@mulmobridge/protocol": "^1.0.1",
     "@mulmobridge/web-push": "^1.1.0",
     "@mulmocast/types": "^2.11.0",
