@@ -19,6 +19,7 @@ import path from "path";
 
 interface TokenModule {
   readBridgeToken: () => string | null;
+  tokenFilePath: () => string;
   TOKEN_FILE_PATH: string;
 }
 
@@ -145,5 +146,30 @@ describe("readBridgeToken — MULMOCLAUDE_WORKSPACE_PATH", () => {
     process.env.MULMOCLAUDE_WORKSPACE_PATH = "";
     const { readBridgeToken } = await loadFresh();
     assert.equal(readBridgeToken(), "homedir-token");
+  });
+});
+
+// The boundary the constant-vs-function split lives on: a consumer that
+// imports the package BEFORE its `.env` is applied. `readBridgeToken()` and
+// `tokenFilePath()` re-resolve, `TOKEN_FILE_PATH` does not — which is exactly
+// why anything doing I/O should call the function (Codex, #3081).
+describe("workspace set AFTER import", () => {
+  it("tokenFilePath() re-resolves where TOKEN_FILE_PATH cannot", async () => {
+    const { TOKEN_FILE_PATH, tokenFilePath } = await loadFresh();
+    const moved = path.join(tmpDir, "late");
+    fs.mkdirSync(moved, { recursive: true });
+    process.env.MULMOCLAUDE_WORKSPACE_PATH = moved;
+    assert.equal(TOKEN_FILE_PATH, path.join(tmpDir, "mulmoclaude", ".session-token"), "the constant keeps its import-time value");
+    assert.equal(tokenFilePath(), path.join(moved, ".session-token"), "the function follows the new workspace");
+  });
+
+  it("readBridgeToken() reads the workspace configured after import", async () => {
+    const { readBridgeToken } = await loadFresh();
+    const moved = path.join(tmpDir, "late");
+    fs.mkdirSync(moved, { recursive: true });
+    fs.writeFileSync(path.join(moved, ".session-token"), "late-token\n", "utf-8");
+    writeTokenFile(tmpDir, "homedir-token");
+    process.env.MULMOCLAUDE_WORKSPACE_PATH = moved;
+    assert.equal(readBridgeToken(), "late-token");
   });
 });

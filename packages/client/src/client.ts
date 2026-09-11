@@ -14,10 +14,9 @@
 
 import { io, type Socket } from "socket.io-client";
 import { CHAT_SOCKET_EVENTS, CHAT_SOCKET_PATH, type Attachment, type BridgeOptions } from "@mulmobridge/protocol";
-import { readBridgeToken } from "./token.js";
+import { readBridgeToken, tokenFilePath } from "./token.js";
 import { readBridgeEnvOptions } from "./options.js";
 import { resolveApiUrl } from "./apiUrl.js";
-import { sidecarPath, SIDECAR_FILES } from "./workspace.js";
 
 // 6 min > the server's REPLY_TIMEOUT_MS (5 min) so the server's
 // timeout surfaces as a reply, not a client-side cancellation.
@@ -82,12 +81,12 @@ export interface BridgeClient {
 export function requireBearerToken(): string {
   const token = readBridgeToken();
   if (token !== null) return token;
-  // Resolved here rather than taken from `TOKEN_FILE_PATH`, which is fixed at
-  // module load: a bridge that imports this before `dotenv/config` would
-  // otherwise be told to look somewhere the token was never going to be.
+  // `tokenFilePath()` rather than `TOKEN_FILE_PATH`, which is fixed at module
+  // load: a bridge that imports this before `dotenv/config` would otherwise be
+  // told to look somewhere the token was never going to be.
   process.stderr.write(
     `No bearer token found. The MulmoClaude server writes one to\n` +
-      `  ${sidecarPath(SIDECAR_FILES.token)}\n` +
+      `  ${tokenFilePath()}\n` +
       `at startup (mode 0600). Start the server with \`yarn dev\` (or\n` +
       `\`npm run dev\`) first, or set MULMOCLAUDE_AUTH_TOKEN to the\n` +
       `same value the server is using.\n`,
@@ -96,8 +95,13 @@ export function requireBearerToken(): string {
 }
 
 export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
-  const apiUrl = resolveApiUrl(opts.apiUrl);
+  // Token BEFORE port, because the server writes them in that order too: a
+  // restart landing between these two reads can only hand us an OLD token with
+  // a NEW port, never the reverse. That pairing fails loudly — the right server
+  // answers `invalid token`, which the connect handler explains — where the
+  // reverse would send a fresh token to the port the server just left (Codex).
   const token = requireBearerToken();
+  const apiUrl = resolveApiUrl(opts.apiUrl);
   // `opts.options === undefined` → scrape env automatically.
   // `opts.options === {}` → opt out of the scrape explicitly.
   const options = opts.options ?? readBridgeEnvOptions(opts.transportId, process.env);

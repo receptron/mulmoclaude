@@ -15,11 +15,22 @@
 
 import { readSidecarFile, SIDECAR_FILES, sidecarPath } from "./workspace.js";
 
-/** Public since #272, kept as a module-load constant for callers that print it.
- *  It now honours `MULMOCLAUDE_WORKSPACE_PATH` (#3078) instead of hardcoding
- *  `<homedir>/mulmoclaude` — but a constant freezes the root at import time, so
- *  code that needs the answer AFTER `dotenv/config` has run should call
- *  `sidecarPath(SIDECAR_FILES.token)` instead, as `requireBearerToken` does. */
+/**
+ * Where the token file is, resolved NOW.
+ *
+ * Prefer this over `TOKEN_FILE_PATH` for anything that reads, writes, or
+ * reports the path: the constant freezes the workspace root at import time, so
+ * it disagrees with `readBridgeToken()` for any process that sets
+ * `MULMOCLAUDE_WORKSPACE_PATH` after importing this package (Codex).
+ */
+export function tokenFilePath(): string {
+  return sidecarPath(SIDECAR_FILES.token);
+}
+
+/** Public since #272, so it stays. It now honours `MULMOCLAUDE_WORKSPACE_PATH`
+ *  (#3078) instead of hardcoding `<homedir>/mulmoclaude`, but it is a snapshot
+ *  taken at import time — use `tokenFilePath()` unless you specifically want
+ *  the value as it stood when the module loaded. */
 export const TOKEN_FILE_PATH = sidecarPath(SIDECAR_FILES.token);
 
 export function readBridgeToken(): string | null {

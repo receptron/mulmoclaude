@@ -66,6 +66,18 @@ The workspace itself is `$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when
 that is unset — the same rule the server applies, and the same root the bearer
 token is read from.
 
+Only `process.env` is consulted. A `.env` file reaches this library through the
+bridge's own `import "dotenv/config"`, which resolves `.env` against the
+process's **current working directory** — so a bridge launched from somewhere
+else does not see a `MULMOCLAUDE_WORKSPACE_PATH` that lives only in the repo's
+`.env`, exactly as it would not see `MULMOCLAUDE_AUTH_TOKEN` there. Export the
+variable, or run the bridge from the directory holding the `.env`.
+
+| Export | Resolves |
+|---|---|
+| `readBridgeToken()` / `tokenFilePath()` | at call time |
+| `TOKEN_FILE_PATH` | at import time — a snapshot, kept for compatibility |
+
 The port is read once, when the client is created. A server that restarts onto a
 *different* port after that still needs the bridge restarted.
 
