@@ -1,4 +1,18 @@
-import { Expression, Vector3, Color, DefineNode, MaterialExpr } from "./types";
+import { Expression, Vector3, Color, DefineNode, MaterialExpr, SceneNode } from "./types";
+import {
+  type MeshValue,
+  type PolygonValue,
+  type BoundsValue,
+  type PointValue,
+  type Point3,
+  boundsOf,
+  centerOf,
+  meshPolygons,
+  meshVolume,
+  trianglesOf,
+} from "./meshValues";
+
+export type { MeshValue, PolygonValue, BoundsValue, PointValue } from "./meshValues";
 
 /** `1 to 5 step 2` as a value: walked by `for`, tested by `in`. */
 export interface RangeValue {
@@ -31,10 +45,18 @@ export interface MaterialValue {
 
 export type RGBA = [number, number, number, number];
 
-export type Value = number | boolean | string | Value[] | RangeValue | FunctionValue | MaterialValue;
+export type ObjectValue = RangeValue | FunctionValue | MaterialValue | MeshValue | PolygonValue | BoundsValue | PointValue;
 
-const isObjectValue = (value: Value | undefined): value is RangeValue | FunctionValue | MaterialValue =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+export type Value = number | boolean | string | Value[] | ObjectValue;
+
+export const isObjectValue = (value: Value | undefined): value is ObjectValue => typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** What the evaluator needs from the converter: shapes as values are built
+ *  there, and a function whose body builds shapes runs there. */
+export interface EvaluatorHooks {
+  shape(node: SceneNode): Value;
+  call(fn: FunctionValue, args: Value[]): Value;
+}
 
 /** Upstream's predefined colour constants (materials.md), as RGB tuples. A
  *  script may `define red …` over them. */
@@ -206,6 +228,65 @@ function hsbToRgb(h: number, s: number, b: number): [number, number, number] {
 /** Upstream's ordinal members, `vector.first` … `vector.tenth`. `last`,
  *  `allButFirst` and `allButLast` depend on the length and are handled inline. */
 const ordinalIndices: Record<string, number> = { first: 0, second: 1, third: 2, fourth: 3, fifth: 4, sixth: 5, seventh: 6, eighth: 7, ninth: 8, tenth: 9 };
+
+/** Members of the geometry-carrying values. */
+function objectMember(value: ObjectValue, member: string): Value | undefined {
+  switch (value.kind) {
+    case "mesh":
+      switch (member) {
+        case "polygons":
+          return meshPolygons(value);
+        case "triangles":
+          return trianglesOf(value.geometry);
+        case "bounds":
+          return boundsOf(meshPolygons(value).flatMap((polygon) => polygon.points));
+        case "volume":
+          return meshVolume(value);
+        case "name":
+          return value.name ?? "";
+        default:
+          return undefined;
+      }
+    case "polygon":
+      switch (member) {
+        case "points":
+          return value.points.map((position, i): PointValue => ({ kind: "point", position, ...(value.colors?.[i] ? { color: value.colors[i] } : {}) }));
+        case "center":
+          return centerOf(value.points);
+        case "bounds":
+          return boundsOf(value.points);
+        case "triangles":
+          return [value];
+        default:
+          return undefined;
+      }
+    case "bounds": {
+      const size: Point3 = [value.max[0] - value.min[0], value.max[1] - value.min[1], value.max[2] - value.min[2]];
+      switch (member) {
+        case "min":
+          return value.min;
+        case "max":
+          return value.max;
+        case "center":
+          return [(value.min[0] + value.max[0]) / 2, (value.min[1] + value.max[1]) / 2, (value.min[2] + value.max[2]) / 2];
+        case "size":
+          return size;
+        case "width":
+          return size[0];
+        case "height":
+          return size[1];
+        case "depth":
+          return size[2];
+        default:
+          return undefined;
+      }
+    }
+    case "point":
+      return member === "position" ? value.position : member === "color" ? (value.color ?? [1, 1, 1, 1]) : undefined;
+    default:
+      return undefined;
+  }
+}
 
 function sequenceMember(value: Value[] | string, member: string): Value | undefined {
   if (member === "count") return value.length;
@@ -399,9 +480,15 @@ export const DEFAULT_RANDOM_SEED = 0;
  *  JavaScript stack, which surfaces as a RangeError with no script context. */
 const MAX_CALL_DEPTH = 256;
 
+/** Same ceiling as a `for` statement; the converter's option is not reachable
+ *  from here, so the default stands. */
+const MAX_FOR_EXPRESSION_ITERATIONS = 100_000;
+
 export class Evaluator {
   private symbols: SymbolTable;
   private callDepth = 0;
+  /** Set by the converter, which owns geometry. */
+  hooks: EvaluatorHooks | undefined;
 
   constructor(symbols?: SymbolTable, seed?: number) {
     this.symbols = symbols || new SymbolTable(seed);
@@ -618,9 +705,41 @@ export class Evaluator {
       case "material":
         return this.evaluateMaterial(expr);
 
+      case "shape":
+        if (!this.hooks) throw new Error("A shape cannot be used as a value here");
+        return this.hooks.shape(expr.node);
+
+      case "for": {
+        const values = iterationValues(
+          this.evaluate(expr.iterable),
+          MAX_FOR_EXPRESSION_ITERATIONS,
+          () => new Error(`\`for\` expression exceeds ${MAX_FOR_EXPRESSION_ITERATIONS} iterations`),
+        );
+        this.symbols.pushScope();
+        try {
+          return values.map((value) => {
+            this.symbols.set(expr.variable, value);
+            return this.evaluate(expr.body);
+          });
+        } finally {
+          this.symbols.popScope();
+        }
+      }
+
+      case "if": {
+        if (this.evaluateToBoolean(expr.condition)) return this.evaluate(expr.then);
+        if (expr.else === undefined) throw new Error("`if` used as a value needs an `else`");
+        return this.evaluate(expr.else);
+      }
+
       case "member": {
         const value = this.evaluate(expr.object);
-        const result = Array.isArray(value) || typeof value === "string" ? sequenceMember(value, expr.member) : undefined;
+        const result =
+          Array.isArray(value) || typeof value === "string"
+            ? sequenceMember(value, expr.member)
+            : isObjectValue(value)
+              ? objectMember(value, expr.member)
+              : undefined;
         if (result === undefined) throw new Error(`Unknown member: ${expr.member}`);
         return result;
       }
@@ -676,19 +795,33 @@ export class Evaluator {
     const { params = [], body = [], value, name } = fn.definition;
     const args = argExprs.map((arg) => this.evaluate(arg));
     if (args.length !== params.length) throw new Error(`Function \`${name}\` takes ${params.length} argument(s), got ${args.length}`);
-    if (value === undefined) throw new Error(`Function \`${name}\` returns nothing`);
     if (++this.callDepth > MAX_CALL_DEPTH) throw new Error(`Function \`${name}\` recursed more than ${MAX_CALL_DEPTH} levels deep`);
+    try {
+      // A body that builds shapes runs in the converter, which collects what
+      // it produced; a body of plain defines and a result is evaluated here.
+      if (body.some((node) => node.type !== "define")) {
+        if (!this.hooks) throw new Error(`Function \`${name}\` builds shapes, which cannot be evaluated here`);
+        return this.hooks.call(fn, args);
+      }
+      if (value === undefined) throw new Error(`Function \`${name}\` returns nothing`);
+      return this.withArguments(params, args, () => {
+        for (const define of body) if (define.type === "define") this.define(define);
+        return this.evaluate(value);
+      });
+    } finally {
+      this.callDepth--;
+    }
+  }
+
+  /** Bind parameters in a fresh scope around `run`. Public so the converter
+   *  can run a shape-building function body under the same binding. */
+  withArguments<T>(params: readonly string[], args: readonly Value[], run: () => T): T {
     this.symbols.pushScope();
     try {
       params.forEach((param, i) => this.symbols.set(param, args[i]!));
-      for (const define of body) {
-        if (define.type !== "define") throw new Error(`Function \`${name}\` may only contain \`define\`s before its result`);
-        this.define(define);
-      }
-      return this.evaluate(value);
+      return run();
     } finally {
       this.symbols.popScope();
-      this.callDepth--;
     }
   }
 

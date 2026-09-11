@@ -567,7 +567,8 @@ describe("upstream shapes and paths", () => {
   });
   it("builds an icosphere of the requested diameter", () => {
     withMesh("icosphere { size 2 detail 16 }", (mesh) => {
-      assert.equal(mesh.geometry.type, "IcosahedronGeometry");
+      // Twenty faces at detail 0 → 20 · 4² triangles at detail 16 (two subdivisions).
+      assert.equal(mesh.geometry.getAttribute("position").count, 20 * 16 * 3);
       const size = extent(mesh);
       assert.ok(size.x > 1.9 && size.x <= 2.001 && size.y > 1.9 && size.z > 1.9, size.toArray().join(","));
     });
@@ -722,7 +723,7 @@ describe("control flow, ranges and functions", () => {
     withMesh("define vec(a) { a 0 a }\ncube { position vec(2) }", (mesh) => near(mesh.position.toArray(), [2, 0, 2]));
     assert.throws(() => objectsOf("define sq(a) { a * a }\ncube { size sq(1 2) }"), /takes 1 argument/);
     assert.throws(() => objectsOf("define f(a) { f(a) }\ncube { size f(1) }"), /recursed/);
-    assert.throws(() => objectsOf("define f(a) { cube }\nf(1)"), /builds a shape/);
+    withMesh("define f(a) { cube { size a } }\nf(2)", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
     assert.throws(() => objectsOf("define f(a) { minkowski { cube } }\nf(1)"), /minkowski/);
   });
   it("collects `print` output and stops on a failed `assert`", () => {
@@ -743,11 +744,114 @@ describe("control flow, ranges and functions", () => {
     for (const [script, message] of [
       ['text "hi"', /text/],
       ['import "other.shape"', /import/],
-      ["define s sphere { size 2 }", /shape as a value/],
+      ["define p path { point 0 0 point 1 1 }", /path.*value/],
       ["extrude { square along path { point 0 0 point 1 1 } }", /along/],
       ['fill svgpath "M 0 0 L 1 0 L 0 1 z"', /svgpath/],
     ] as const) {
       assert.throws(() => objectsOf(script), message, script);
     }
+  });
+});
+
+describe("shapes as values", () => {
+  it("defines a shape as a value, reads its members and places it", () => {
+    withMesh("define s sphere { size 2 }\ns", (mesh) => near(extent(mesh).toArray(), [2, 2, 2], 0.01));
+    withMesh("define s cube { size 1 2 3 }\ncube { size s.bounds.size }", (mesh) => near(extent(mesh).toArray(), [1, 2, 3]));
+    withMesh("define s cube { size 1 2 3 }\ncube { position s.bounds.center size s.bounds.width s.bounds.height s.bounds.depth }", (mesh) =>
+      near(extent(mesh).toArray(), [1, 2, 3]),
+    );
+    withMesh("define s cube\ncube { size s.volume s.triangles.count s.polygons.count }", (mesh) => near(extent(mesh).toArray(), [1, 12, 12]));
+    withMesh("define s cube { position 1 0 0 }\ns { position 0 2 0 }", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.x, box.min.y], [0.5, 1.5]);
+    });
+    assert.throws(() => objectsOf("define f(a) { a }\nf 1"), /Unused value/);
+    // A keyword the script has given a value keeps reading as that value.
+    materialOf("define hull (0 0 1)\nsphere { color hull }", (m) => near(m.color.toArray(), [0, 0, 1]));
+  });
+  it("builds an icosphere in Euclid's face order, so face indices match upstream", () => {
+    // Euclid's first face is v0, v11, v5 of its icosahedron; its centre lies
+    // in the +Y half, tilted by the pitch Euclid applies.
+    const t = 1 + Math.SQRT2 / 2;
+    const scale = 1 / Math.sqrt(t * t + 1);
+    const rotate = (p: [number, number, number]) => new THREE.Vector3(...p).multiplyScalar(scale).applyAxisAngle(new THREE.Vector3(1, 0, 0), -Math.atan(t));
+    const expected = [rotate([-1, t, 0]), rotate([-t, 0, 1]), rotate([0, 1, t])].reduce((sum, v) => sum.add(v), new THREE.Vector3()).multiplyScalar(0.5 / 3);
+    withMesh("define ico icosphere { detail 0 }\ndefine c ico.polygons.first.center\ncube { position c size ico.polygons.count 1 1 }", (mesh) => {
+      near(mesh.position.toArray(), expected.toArray(), 1e-6);
+      near(extent(mesh).toArray(), [20, 1, 1]);
+    });
+  });
+  it("evaluates `for` and `if` as expressions", () => {
+    withMesh("define scales for i in 1 to 3 { i / 3 }\ncube { size scales }", (mesh) => near(extent(mesh).toArray(), [1 / 3, 2 / 3, 1]));
+    withMesh("define pts for p in ((1 2) (3 4)) { p.x + p.y }\ncube { size pts.first pts.last 1 }", (mesh) => near(extent(mesh).toArray(), [3, 7, 1]));
+    withMesh("define big true\ndefine s if big { 3 } else { 1 }\ncube { size s }", (mesh) => near(extent(mesh).toArray(), [3, 3, 3]));
+    withMesh("define n 2\ndefine s if n = 1 { 1 } else if n = 2 { 2 } else { 3 }\ncube { size s }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    assert.throws(() => objectsOf("define s if false { 1 }\ncube { size s }"), /needs an `else`/);
+  });
+  it("makes a face from `polygon { point … }` and a mesh from `mesh { … }`", () => {
+    withMesh("polygon {\n point 0 0 0\n point 1 0 0\n point 1 1 0\n point 0 1 0\n}", (mesh) => {
+      near(extent(mesh).toArray(), [1, 1, 0]);
+      assert.equal(mesh.geometry.getAttribute("position").count, 6);
+    });
+    // A tetrahedron from four coloured faces, one vertex-coloured mesh.
+    const tetra = `mesh {
+  define a (0 0 0)
+  define b (1 0 0)
+  define c (0 1 0)
+  define d (0 0 1)
+  polygon {
+    color red
+    point a
+    point c
+    point b
+  }
+  polygon {
+    color green
+    point a
+    point b
+    point d
+  }
+  polygon {
+    color blue
+    point a
+    point d
+    point c
+  }
+  polygon {
+    point b
+    point c
+    point d
+  }
+}`;
+    materialOf(tetra, (m, mesh) => {
+      assert.equal(mesh.geometry.getAttribute("position").count, 12);
+      assert.ok(mesh.geometry.hasAttribute("color"));
+      assert.equal(m.vertexColors, true);
+      near([Math.abs(volume(mesh))], [1 / 6], 1e-6);
+    });
+    withMesh(
+      "define s mesh {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}\ncube { size s.polygons.count s.polygons.first.center.x 1 }",
+      (mesh) => near(extent(mesh).toArray(), [1, 1 / 3, 1]),
+    );
+    assert.throws(() => objectsOf("polygon { point 0 0 point 1 0 }"), /three points/);
+    assert.throws(() => objectsOf("mesh { }"), /at least one polygon/);
+  });
+  it("lets a function build shapes, and a bare call place or contribute them", () => {
+    withMesh("define box(s) { cube { size s } }\nbox 2", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
+    withMesh("define tri(z) {\n polygon {\n  point 0 0 z\n  point 1 0 z\n  point 0 1 z\n }\n}\nmesh {\n for z in 0 to 1 {\n  tri z\n }\n}", (mesh) => {
+      near(extent(mesh).toArray(), [1, 1, 1]);
+      assert.equal(mesh.geometry.getAttribute("position").count, 6);
+    });
+    withMesh("define pair { cube { position -1 } cube { position 1 } }\ndefine both(s) { pair }\ncube { size both(1).count 1 1 }", (mesh) =>
+      near(extent(mesh).toArray(), [2, 1, 1]),
+    );
+    assert.throws(() => objectsOf("define nothing(a) { define b a }\nnothing 1"), /returns nothing|produced no value/);
+  });
+  it("accepts line breaks inside parentheses", () => {
+    withMesh("define rows (\n (1 2 3)\n (4 5 6)\n)\ncube { position rows.first size rows.last }", (mesh) => {
+      near(mesh.position.toArray(), [1, 2, 3]);
+      near(extent(mesh).toArray(), [4, 5, 6]);
+    });
+    withMesh("cube { size max(\n 1\n 2\n) }", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
   });
 });

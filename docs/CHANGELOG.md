@@ -10,6 +10,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Added
 
+#### `@mulmoclaude/shapescript-plugin@2.2.0` — shapes as values, meshes from polygons, Dodecahedron
+
+The last upstream example that needed language work. A shape is now a value
+(`define ico icosphere { detail 0 }`): it can be placed by name, and read through `polygons` /
+`triangles` (with `.center`, `.points`, `.bounds`), `bounds` and `volume`. The icosphere is built
+with Euclid's vertex and face order so face indices match upstream. `for` and `if` are expressions
+(`define scales for i in 1 to 3 { i / 3 }`), functions may build shapes and be called bare as
+statements (`face data`), `polygon { point x y z … }` makes a face with a colour, and
+`mesh { … }` assembles polygons into one vertex-coloured mesh. Line breaks are allowed inside
+parentheses and call arguments. A keyword a script `define`s as a value (`define hull (…)`) keeps
+reading as that value. Dodecahedron now renders; Fillet and Spirals remain refused by name.
+
 #### `@mulmoclaude/shapescript-plugin@2.1.0` — materials, ranges, functions and the upstream examples
 
 Phase 2 and the first phase-3 batch of `plans/feat-shapescript-upstream-parity.md`, driven by the
@@ -200,7 +212,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@2.1.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.6.0`, `@mulmoclaude/shapescript-plugin@2.2.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 

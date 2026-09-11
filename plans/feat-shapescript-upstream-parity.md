@@ -1,6 +1,6 @@
 # ShapeScript plugin: upstream parity tracker
 
-**Status**: phase 1 shipped in 2.0.0 (#3069); phase 2 and the first phase-3 batch in 2.1.0
+**Status**: phase 1 shipped in 2.0.0 (#3069); phase 2 and the first phase-3 batch in 2.1.0 (#3072); mesh values in 2.2.0
 **Upstream**: [nicklockwood/ShapeScript](https://github.com/nicklockwood/ShapeScript) 1.11.4 (2026-09-04)
 **Ours**: `packages/plugins/shapescript-plugin` (ported from `@gui-chat-plugin/present3d`)
 **Last updated**: 2026-09-11
@@ -65,7 +65,7 @@ Found while running the upstream examples (fixed in 2.1.0, also phase-1 class):
 ## Phase 3 — missing language features (by likely impact on generated scripts)
 
 Test fixtures: the upstream `Examples/` directory (`test/fixtures/upstream-examples/`, MIT).
-Ball, Chessboard, Cog, Earth, Spring and Train render; Dodecahedron, Fillet and Spirals are
+Ball, Chessboard, Cog, Dodecahedron, Earth, Spring and Train render; Fillet and Spirals are
 refused by name (see "open" below).
 
 Done in 2.1.0:
@@ -83,13 +83,19 @@ Done in 2.1.0:
   `camera` / `light` skipped with a warning; `import`, `text`, `font`, `mesh`, `minkowski`,
   `inset`, `svgpath`, `along`, `object`, `normals`, `focus`, `debug` refused by name.
 
+Done in 2.2.0 (Dodecahedron):
+
+- **Values**: shapes as values with `polygons` / `triangles` / `bounds` / `volume` members and
+  polygon `center` / `points` / `bounds`; `for` and `if` as expressions; functions that build
+  shapes, called bare as statements; `polygon { point … }` faces with colours; `mesh { … }`;
+  the icosphere in Euclid's face order; line breaks inside parentheses.
+
 Open:
 
 - **Builders**: `minkowski`; `extrude` options `along`, `twist`, `axisAligned`, `miterLimit`;
   `inset` (Fillet, Spirals).
-- **Values**: shapes as values (`define s sphere { … }`, functions returning meshes, mesh
-  members `polygons` / `triangles` / `bounds` / `volume`, `for` as an expression) — Dodecahedron.
-  Would need a mesh value type in the evaluator; the largest remaining item.
+- **Values**: paths as values (`define p path { … }`, `path.points`), per-vertex colours between
+  a polygon's points (a polygon takes one colour), `object` values.
 - **Paths**: `svgpath`, nested / compound paths with holes, `path.color` gradients, 3D path
   points with z ≠ 0, `arc` outside a path.
 - **Materials**: texture images (`texture`, `opacity` / `metallicity` / `roughness` textures,

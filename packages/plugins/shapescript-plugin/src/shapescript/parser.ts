@@ -46,8 +46,6 @@ const UNSUPPORTED_COMMANDS: Record<string, string> = {
   text: "`text` (3D text) is not supported by this renderer",
   font: "`font` is not supported by this renderer",
   import: "`import` is not supported by this renderer — inline the shapes instead",
-  mesh: "raw `mesh { polygon … }` is not supported by this renderer — build the shape from primitives, paths and builders",
-  polygon: "`polygon { point … }` with explicit points is not supported — use `polygon { sides N }` or a `path`",
   minkowski: "`minkowski` is not supported by this renderer",
   inset: "`inset` is not supported by this renderer",
   svgpath: "`svgpath` is not supported by this renderer — write the outline as a `path`",
@@ -172,6 +170,7 @@ class Lexer {
       fill: TokenType.FILL,
       hull: TokenType.HULL,
       group: TokenType.GROUP,
+      mesh: TokenType.MESH,
       path: TokenType.PATH,
       point: TokenType.POINT,
       curve: TokenType.CURVE,
@@ -583,12 +582,43 @@ const SHAPE_VALUE_TOKENS = new Set([
   TokenType.FILL,
   TokenType.HULL,
   TokenType.GROUP,
+  TokenType.MESH,
   TokenType.PATH,
   TokenType.UNION,
   TokenType.DIFFERENCE,
   TokenType.INTERSECTION,
   TokenType.XOR,
   TokenType.STENCIL,
+]);
+
+/** Tokens that open a statement. Everything a `parseNode` switch or map
+ *  handles, so a function body can tell a shape it builds from the value it
+ *  returns. */
+const STATEMENT_TOKENS = new Set([
+  ...SHAPE_VALUE_TOKENS,
+  TokenType.FOR,
+  TokenType.IF,
+  TokenType.SWITCH,
+  TokenType.DEFINE,
+  TokenType.DETAIL,
+  TokenType.SEED,
+  TokenType.BACKGROUND,
+  TokenType.TEXTURE,
+  TokenType.MATERIAL,
+  TokenType.OPACITY,
+  TokenType.METALLICITY,
+  TokenType.ROUGHNESS,
+  TokenType.GLOW,
+  TokenType.SMOOTHING,
+  TokenType.PRINT,
+  TokenType.ASSERT,
+  TokenType.COLOR,
+  TokenType.ROTATE,
+  TokenType.TRANSLATE,
+  TokenType.SCALE,
+  TokenType.POSITION,
+  TokenType.ORIENTATION,
+  TokenType.SIZE,
 ]);
 
 /** Tokens that open a standard shape property inside a custom block call. */
@@ -642,6 +672,10 @@ export class Parser {
   /** Custom block names, so a user-defined `light` is still invoked rather
    *  than skipped as the upstream light source. */
   private blocks = new Set<string>();
+  /** Names a plain `define` gave a value, so a keyword reused as a symbol
+   *  (`define hull (0.2 0.2 0.2)` then `color hull`) reads as that symbol
+   *  rather than as the shape or builder it spells. */
+  private values = new Set<string>();
 
   private tokens: Token[];
   private pos = 0;
@@ -778,6 +812,13 @@ export class Parser {
    *  so its elements are read as a VALUE LIST: `(1 +2 +3)` is three components,
    *  the same as `1 +2 +3` written without the parens. */
   private parseParenthesized(): Expression {
+    // Line breaks inside parentheses carry no meaning (literals.md), so a
+    // tuple of tuples may be laid out one row per line.
+    this.skipNewlines();
+    if (this.current().type === TokenType.RPAREN) {
+      this.advance();
+      return { type: "tuple", elements: [] };
+    }
     const elements: Expression[] = [this.parseExpression()];
 
     if (this.current().type === TokenType.COMMA) {
@@ -786,6 +827,7 @@ export class Parser {
       this.parseSpaceSeparated(elements);
     }
 
+    this.skipNewlines();
     this.expect(TokenType.RPAREN);
 
     if (elements.length === 1 && elements[0] !== undefined) {
@@ -798,15 +840,19 @@ export class Parser {
   private parseCommaSeparated(elements: Expression[]): void {
     while (this.current().type === TokenType.COMMA) {
       this.advance();
+      this.skipNewlines();
       if (this.current().type === TokenType.RPAREN) break;
       elements.push(this.parseExpression());
+      this.skipNewlines();
     }
   }
 
-  /** `(1 2 3)` — components held apart by nothing but whitespace. */
+  /** `(1 2 3)` — components held apart by whitespace, line breaks included. */
   private parseSpaceSeparated(elements: Expression[]): void {
+    this.skipNewlines();
     while (this.startsValue()) {
       elements.push(this.parseExpression());
+      this.skipNewlines();
     }
   }
 
@@ -852,6 +898,20 @@ export class Parser {
       return hexColorExpression(String(token.value));
     }
 
+    // `for v in … { expr }` and `if c { a } else { b }` as values
+    if (token.type === TokenType.FOR) return this.parseForExpression();
+    if (token.type === TokenType.IF) return this.parseIfExpression();
+
+    // A shape as a value: `define ico icosphere { detail 0 }` — unless the
+    // script gave that keyword a value or a block of its own.
+    const spelled = typeof token.value === "string" ? token.value : "";
+    if (SHAPE_VALUE_TOKENS.has(token.type) && !this.blocks.has(spelled) && !this.values.has(spelled)) {
+      if (token.type === TokenType.PATH) throw new ParseError("A `path` cannot be used as a value here — use it inside a builder", token.line, token.column);
+      const node = this.parseNode();
+      if (!node) throw new ParseError("Expected a shape", token.line, token.column);
+      return { type: "shape", node };
+    }
+
     // `material { … }` — a bundle of material properties as a value
     if (token.type === TokenType.MATERIAL && this.peek().type === TokenType.LBRACE) {
       this.advance();
@@ -877,6 +937,7 @@ export class Parser {
         // the one this plugin always took. Reading both through the tuple
         // rules means a script can be written once for either parser.
         this.withValueList(true, () => {
+          this.skipNewlines();
           if (this.current().type === TokenType.RPAREN) return;
           args.push(this.parseExpression());
           if (this.current().type === TokenType.COMMA) {
@@ -925,6 +986,39 @@ export class Parser {
     }
 
     throw new ParseError(`Unexpected token in expression: ${token.type}`, token.line, token.column);
+  }
+
+  /** `for [name in] iterable { expression }` — the tuple of every result. */
+  private parseForExpression(): Expression {
+    this.advance();
+    const { variable, iterable } = this.parseLoopHeader();
+    const body = this.scoped(() => {
+      this.callable.delete(variable);
+      return this.parseBracedExpression();
+    });
+    return { type: "for", variable, iterable, body };
+  }
+
+  /** `if condition { expression } else { expression }`. */
+  private parseIfExpression(): Expression {
+    this.advance();
+    const condition = this.withValueList(false, () => this.parseExpression());
+    const then = this.parseBracedExpression();
+    this.skipNewlines();
+    if (this.current().type !== TokenType.ELSE) return { type: "if", condition, then };
+    this.advance();
+    this.skipNewlines();
+    const otherwise = this.current().type === TokenType.IF ? this.parseIfExpression() : this.parseBracedExpression();
+    return { type: "if", condition, then, else: otherwise };
+  }
+
+  private parseBracedExpression(): Expression {
+    this.expect(TokenType.LBRACE);
+    this.skipNewlines();
+    const value = this.parseVectorOrExpression();
+    this.skipNewlines();
+    this.expect(TokenType.RBRACE);
+    return value;
   }
 
   private getPrecedence(type: TokenType): number {
@@ -1113,13 +1207,16 @@ export class Parser {
   private scoped<T>(parse: () => T): T {
     const callable = this.callable;
     const blocks = this.blocks;
+    const values = this.values;
     this.callable = new Set(callable);
     this.blocks = new Set(blocks);
+    this.values = new Set(values);
     try {
       return parse();
     } finally {
       this.callable = callable;
       this.blocks = blocks;
+      this.values = values;
     }
   }
 
@@ -1134,10 +1231,22 @@ export class Parser {
     this.advance(); // consume primitive token
 
     let properties: ShapeProperties = {};
+    let points: PathCommand[] | undefined;
 
     if (this.current().type === TokenType.LBRACE) {
       this.expect(TokenType.LBRACE);
-      properties = this.parseProperties();
+      this.scoped(() => {
+        // A polygon block may list its vertices — `point`, `color`, loops and
+        // defines — beside the usual properties.
+        while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+          Object.assign(properties, this.parseProperties());
+          const token = this.current();
+          if (token.type === TokenType.RBRACE || token.type === TokenType.EOF) break;
+          if (primitive !== "polygon") throw new ParseError(`Unexpected token in ${primitive}: ${token.type}`, token.line, token.column);
+          (points ??= []).push(this.parsePathCommand("polygon"));
+          this.skipNewlines();
+        }
+      });
       this.expect(TokenType.RBRACE);
     }
 
@@ -1145,6 +1254,7 @@ export class Parser {
       type: "shape",
       primitive,
       properties,
+      ...(points === undefined ? {} : { points }),
     };
   }
 
@@ -1357,12 +1467,11 @@ export class Parser {
       };
     }
 
-    // Parse the value - could be a single expression or space-separated tuple
-    this.refuseShapeValue(
-      `\`define ${name} <shape>\` (a shape as a value) is not supported by this renderer — write \`define ${name} { … }\` for a reusable block`,
-    );
+    // Parse the value - a single expression, a space-separated tuple, or a shape.
+    this.refuseUnsupported();
     const value = this.parseVectorOrExpression();
     this.callable.delete(name);
+    this.values.add(name);
 
     return {
       type: "define",
@@ -1371,20 +1480,26 @@ export class Parser {
     };
   }
 
-  /** Upstream lets a shape be a value (`define s sphere { … }`, a function
-   *  returning a mesh); this renderer has no mesh values, so say so by name
-   *  instead of failing on the brace that follows. */
-  private refuseShapeValue(message: string): void {
+  /** An upstream command this renderer lacks, named instead of failing on
+   *  the brace that follows it. */
+  private refuseUnsupported(): void {
     const token = this.current();
-    const name = typeof token.value === "string" ? token.value : "";
-    const unsupported = token.type === TokenType.IDENTIFIER ? unsupportedMessage(name) : undefined;
+    const unsupported = token.type === TokenType.IDENTIFIER ? unsupportedMessage(String(token.value)) : undefined;
     if (unsupported !== undefined) throw new ParseError(unsupported, token.line, token.column);
-    if (SHAPE_VALUE_TOKENS.has(token.type)) throw new ParseError(message, token.line, token.column);
   }
 
-  /** The body may hold `define`s and must end in the expression it returns.
-   *  Upstream also allows shapes there (a function returning a mesh); this
-   *  renderer has no mesh values, so that form is refused by name. */
+  /** Whether `token` opens a statement rather than an expression — used where
+   *  either may appear, such as a function body. */
+  private startsStatement(token: Token): boolean {
+    if (STATEMENT_TOKENS.has(token.type)) return !(token.type === TokenType.MATERIAL && this.peek().type === TokenType.LBRACE);
+    if (token.type !== TokenType.IDENTIFIER) return false;
+    const name = String(token.value);
+    return this.blocks.has(name) || IGNORED_BLOCKS.has(name) || unsupportedMessage(name) !== undefined;
+  }
+
+  /** The body holds statements — `define`s, and shapes the function builds —
+   *  and may end in the expression it returns. A function with no result
+   *  expression returns what its statements built. */
   private parseFunctionDefine(name: string): DefineNode {
     this.expect(TokenType.LPAREN);
     const params: string[] = [];
@@ -1403,22 +1518,29 @@ export class Parser {
     const { body, value } = this.scoped(() => {
       for (const param of params) this.callable.delete(param);
       this.skipNewlines();
-      const defines: DefineNode[] = [];
-      while (this.current().type === TokenType.DEFINE) {
-        defines.push(this.parseDefine());
+      const statements: SceneNode[] = [];
+      let result: Expression | undefined;
+      while (this.current().type !== TokenType.RBRACE && this.current().type !== TokenType.EOF) {
+        const token = this.current();
+        if (this.startsStatement(token)) {
+          const node = this.parseNode();
+          if (node) statements.push(node);
+        } else {
+          result = this.parseVectorOrExpression();
+          this.skipNewlines();
+          if (this.current().type !== TokenType.RBRACE) {
+            throw new ParseError(`Function \`${name}\`: the expression it returns must be its last line`, this.current().line, this.current().column);
+          }
+        }
         this.skipNewlines();
       }
-      const token = this.current();
-      if (token.type === TokenType.RBRACE) throw new ParseError(`Function \`${name}\` must end with the expression it returns`, token.line, token.column);
-      this.refuseShapeValue(
-        `Function \`${name}\` builds a shape — functions here may only compute values (numbers, tuples, strings); use \`define ${name} { … }\` with options for a reusable shape`,
-      );
-      const result = this.parseVectorOrExpression();
-      this.skipNewlines();
-      return { body: defines, value: result };
+      if (statements.length === 0 && result === undefined) {
+        throw new ParseError(`Function \`${name}\` must build a shape or end with the expression it returns`, this.current().line, this.current().column);
+      }
+      return { body: statements, value: result };
     });
     this.expect(TokenType.RBRACE);
-    return { type: "define", name, params, body, value };
+    return { type: "define", name, params, body, ...(value === undefined ? {} : { value }) };
   }
 
   private parseDetail(): DetailNode {
@@ -1622,6 +1744,10 @@ export class Parser {
         return this.parsePathPoint(token.type === TokenType.POINT ? "point" : "curve");
       case TokenType.ARC:
         return this.parseArc();
+      case TokenType.COLOR: {
+        this.advance();
+        return { type: "color", value: this.parseVectorOrExpression() };
+      }
       case TokenType.ROTATE: {
         this.advance();
         return { type: "rotate", angle: this.parseExpression() };
@@ -1827,6 +1953,10 @@ export class Parser {
       case TokenType.PATH:
         return this.parsePath();
 
+      case TokenType.MESH:
+        this.advance();
+        return { type: "mesh", children: this.parseBlock() };
+
       case TokenType.RBRACE:
       case TokenType.EOF:
         return null;
@@ -1838,6 +1968,9 @@ export class Parser {
           if (IGNORED_BLOCKS.has(name)) return this.skipIgnoredBlock(name);
           const unsupported = unsupportedMessage(name);
           if (unsupported !== undefined) throw new ParseError(unsupported, token.line, token.column);
+          // A function called as a statement (`face data`), whose result is a
+          // shape to place — or, inside `mesh`, a polygon to add.
+          if (this.callable.has(name)) return { type: "expression", value: this.parseVectorOrExpression() };
         }
         this.advance();
         return this.parseCustomShapeCall(name);

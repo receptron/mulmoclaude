@@ -31,12 +31,15 @@ import {
   ScaleNode,
   MaterialNode,
   MaterialProperties,
+  MeshNode,
+  ExpressionStatementNode,
   Expression,
   Vector3,
   Color,
   ShapeProperties,
 } from "./types";
-import { Evaluator, SymbolTable, Value, RGBA, MaterialValue, iterationValues, rgbaOf, valuesEqual } from "./evaluator";
+import { Evaluator, SymbolTable, Value, RGBA, MaterialValue, FunctionValue, isObjectValue, iterationValues, rgbaOf, valuesEqual } from "./evaluator";
+import { type MeshValue, type PolygonValue, type Point3, geometryFromPolygons, icosphereGeometry } from "./meshValues";
 import { disposeObject3D, disposeScratch } from "./dispose";
 
 /** What a conversion reports besides geometry. Stored on the root group's
@@ -268,6 +271,10 @@ export class Converter {
   private readonly logs: string[] = [];
   private background: RGBA | undefined;
   private sceneDepth = 0;
+  /** While set, polygons and shape values produced by statements are
+   *  collected here instead of entering the scene: the body of `mesh { }`,
+   *  and a function body whose result is what it built. */
+  private valueSink: Value[] | null = null;
 
   constructor(options: ConversionOptions = {}) {
     this.options = options;
@@ -275,6 +282,8 @@ export class Converter {
     this.evaluator = new Evaluator(this.symbols, options.randomSeed);
     // `detail` is readable as a symbol before any `detail` command runs.
     this.symbols.set("detail", this.detailLevel);
+    // Shapes as values and shape-building functions are built here.
+    this.evaluator.hooks = { shape: (node) => this.shapeValue(node), call: (fn, args) => this.callShapeFunction(fn, args) };
     // Initialize with identity transform
     this.pushTransform();
   }
@@ -418,6 +427,10 @@ export class Converter {
       case "ignored":
         this.warn(`\`${node.command}\` is not rendered by this viewer and was skipped`);
         return null;
+      case "expression":
+        return this.convertExpressionStatement(node);
+      case "mesh":
+        return this.convertMesh(node);
       case "rotate":
         this.handleRotateCommand(node);
         return null;
@@ -596,8 +609,223 @@ export class Converter {
     }
   }
 
-  private convertShape(node: ShapeNode): THREE.Mesh {
+  private convertShape(node: ShapeNode): THREE.Mesh | null {
+    if (node.points !== undefined) return this.placeValue(this.polygonValue(node));
     return this.withShapeOptions(node.properties, () => this.finishMesh(this.createGeometry(node), node, false));
+  }
+
+  /** Run `build` with produced values going to `sink` rather than the scene. */
+  private captureValues<T>(sink: Value[], build: () => T): T {
+    const previous = this.valueSink;
+    this.valueSink = sink;
+    try {
+      return build();
+    } finally {
+      this.valueSink = previous;
+    }
+  }
+
+  /** A value a statement produced: collected when a sink is open, otherwise
+   *  a shape is placed in the scene and anything else is an error, as
+   *  upstream's "unused value" is. */
+  private placeValue(value: Value): THREE.Mesh | null {
+    if (this.valueSink) {
+      this.valueSink.push(value);
+      return null;
+    }
+    if (isObjectValue(value) && value.kind === "mesh") return this.placeMesh(value);
+    if (isObjectValue(value) && value.kind === "polygon") return this.placePolygons([value]);
+    if (Array.isArray(value) && value.length > 0 && value.every((item) => isObjectValue(item) && (item.kind === "mesh" || item.kind === "polygon"))) {
+      const meshes = value.filter((item): item is MeshValue => isObjectValue(item) && item.kind === "mesh");
+      const polygons = value.filter((item): item is PolygonValue => isObjectValue(item) && item.kind === "polygon");
+      return this.placeMesh({
+        kind: "mesh",
+        geometry: mergeMeshGeometries([
+          ...meshes.map((mesh) => mesh.geometry),
+          ...(polygons.length
+            ? [
+                geometryFromPolygons(
+                  polygons,
+                  polygons.some((p) => p.colors),
+                ),
+              ]
+            : []),
+        ]),
+      });
+    }
+    throw new Error("Unused value — a statement that is not a shape does nothing here; use `define` or `print`");
+  }
+
+  private convertExpressionStatement(node: ExpressionStatementNode): THREE.Mesh | null {
+    return this.placeValue(this.evaluator.evaluate(node.value));
+  }
+
+  /** Place a mesh value in the scene with the current material and frame.
+   *  Its own vertex colours win over the material colour, as upstream. */
+  private placeMesh(value: MeshValue): THREE.Mesh {
+    const geometry = value.geometry.clone();
+    const mesh = this.makeMesh(geometry, this.createMaterial({ properties: {} }, undefined, geometry.hasAttribute("color")));
+    if (value.name !== undefined) mesh.name = value.name;
+    this.applyCurrentTransform(mesh);
+    return mesh;
+  }
+
+  private placePolygons(polygons: readonly PolygonValue[]): THREE.Mesh {
+    const colored = polygons.some((polygon) => polygon.colors !== undefined);
+    const geometry = geometryFromPolygons(polygons, colored);
+    this.chargeEstimate(geometry.getAttribute("position").count);
+    const mesh = this.makeMesh(geometry, this.createMaterial({ properties: {} }, undefined, colored));
+    this.applyCurrentTransform(mesh);
+    return mesh;
+  }
+
+  /** `mesh { … }`: every polygon its body produces, and every mesh it builds,
+   *  merged into one mesh in the current frame. */
+  private convertMesh(node: MeshNode): THREE.Mesh {
+    const temporary = new THREE.Group();
+    const captured: Value[] = [];
+    const charged = this.vertexCount;
+    let geometry: THREE.BufferGeometry;
+    try {
+      this.captureValues(captured, () =>
+        this.inScope(temporary, () => {
+          this.currentTransform().matrix.identity();
+          this.addChildren(temporary, node.children);
+        }),
+      );
+      const polygons = flattenShapeValues(captured).filter((value): value is PolygonValue => value.kind === "polygon");
+      const meshes = flattenShapeValues(captured).filter((value): value is MeshValue => value.kind === "mesh");
+      const built = this.meshesIn(temporary).map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+      const colored = polygons.some((polygon) => polygon.colors !== undefined);
+      const parts = [...(polygons.length ? [geometryFromPolygons(polygons, colored)] : []), ...meshes.map((mesh) => mesh.geometry), ...built];
+      if (parts.length === 0) throw new Error("`mesh` needs at least one polygon");
+      geometry = mergeMeshGeometries(parts);
+    } finally {
+      disposeObject3D(temporary);
+      this.vertexCount = charged;
+    }
+    const mesh = this.makeMesh(geometry, this.createMaterial({ properties: {} }, undefined, geometry.hasAttribute("color")));
+    this.applyCurrentTransform(mesh);
+    return mesh;
+  }
+
+  /** `polygon { point … }`: one face from explicit 3D vertices, with `color`
+   *  per vertex, loops and defines, as in a path block. */
+  private polygonValue(node: ShapeNode): PolygonValue {
+    const points: Point3[] = [];
+    const colors: RGBA[] = [];
+    let color: RGBA | undefined = node.properties.color === undefined ? undefined : this.evaluateRGBA(node.properties.color);
+    let colored = color !== undefined;
+    const run = (command: PathCommand) => {
+      if (++this.pathCommandCount > this.maxLoopIterations) throw new ShapeScriptLimitError(`ShapeScript polygon exceeds ${this.maxLoopIterations} commands`);
+      switch (command.type) {
+        case "define":
+          this.handleDefine(command);
+          break;
+        case "color":
+          color = this.evaluateRGBA(command.value);
+          colored = true;
+          break;
+        case "point":
+        case "curve": {
+          points.push(this.pointCoordinates(command));
+          colors.push(color ?? [0.8, 0.8, 0.8, 1]);
+          break;
+        }
+        case "for":
+          this.runPathLoop(command, run);
+          break;
+        case "detail":
+          break;
+        default:
+          throw new Error(`\`${command.type}\` is not supported inside a polygon — list its points`);
+      }
+    };
+    this.symbols.pushScope();
+    try {
+      for (const command of node.points ?? []) run(command);
+    } finally {
+      this.symbols.popScope();
+    }
+    if (points.length < 3) throw new Error("`polygon` needs at least three points");
+    return { kind: "polygon", points, ...(colored ? { colors } : {}) };
+  }
+
+  /** `point 1 2 3`, or `point v` where `v` is a tuple. */
+  private pointCoordinates(command: PointCommand | CurveCommand): Point3 {
+    const first = this.evaluator.evaluate(command.x as Expression);
+    const numbers = Array.isArray(first)
+      ? first.map((component) => (typeof component === "number" ? component : Number.NaN))
+      : [this.evaluateNumber(command.x), this.evaluateNumber(command.y), command.z === undefined ? 0 : this.evaluateNumber(command.z)];
+    const [x = 0, y = 0, z = 0] = numbers;
+    if (![x, y, z].every(Number.isFinite)) throw new Error("Expected finite point coordinates");
+    return [x, y, z];
+  }
+
+  private meshesIn(root: THREE.Object3D): THREE.Mesh[] {
+    root.updateMatrixWorld(true);
+    const meshes: THREE.Mesh[] = [];
+    root.traverse((object) => {
+      if ((object as THREE.Mesh).isMesh) meshes.push(object as THREE.Mesh);
+    });
+    return meshes;
+  }
+
+  /** A shape as a value: built at the origin in a scratch group, its meshes
+   *  merged into one geometry the script can read members of and place. A
+   *  polygon block or a function that returned one is that value itself. */
+  private shapeValue(node: SceneNode): Value {
+    const temporary = new THREE.Group();
+    const captured: Value[] = [];
+    const charged = this.vertexCount;
+    try {
+      this.captureValues(captured, () =>
+        this.inScope(temporary, () => {
+          this.currentTransform().matrix.identity();
+          this.addChildren(temporary, [node]);
+        }),
+      );
+      const meshes = this.meshesIn(temporary);
+      if (meshes.length === 0) {
+        if (captured.length === 1) return captured[0]!;
+        if (captured.length > 1) return captured;
+        throw new Error("The shape used as a value produced nothing");
+      }
+      const geometry = mergeMeshGeometries(meshes.map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld)));
+      this.chargeEstimate(geometry.getAttribute("position").count);
+      return { kind: "mesh", geometry, ...(meshes.length === 1 && meshes[0]!.name ? { name: meshes[0]!.name } : {}) };
+    } finally {
+      disposeObject3D(temporary);
+      this.vertexCount = charged;
+    }
+  }
+
+  /** A function whose body builds shapes: run it at the origin with its
+   *  parameters bound, and return what it built — one value, or a tuple. */
+  private callShapeFunction(fn: FunctionValue, args: Value[]): Value {
+    const { params = [], body = [], value, name } = fn.definition;
+    return this.evaluator.withArguments(params, args, () => {
+      const temporary = new THREE.Group();
+      const captured: Value[] = [];
+      const charged = this.vertexCount;
+      try {
+        this.captureValues(captured, () =>
+          this.inScope(temporary, () => {
+            this.currentTransform().matrix.identity();
+            this.addChildren(temporary, body);
+            if (value !== undefined) captured.push(this.evaluator.evaluate(value));
+          }),
+        );
+        for (const mesh of this.meshesIn(temporary)) {
+          captured.push({ kind: "mesh", geometry: mesh.geometry.clone().applyMatrix4(mesh.matrixWorld) });
+        }
+      } finally {
+        disposeObject3D(temporary);
+        this.vertexCount = charged;
+      }
+      if (captured.length === 0) throw new Error(`Function \`${name}\` produced no value`);
+      return captured.length === 1 ? captured[0]! : captured;
+    });
   }
 
   /** A solid whose extent is zero in any dimension draws nothing.
@@ -629,7 +857,8 @@ export class Converter {
 
       case "icosphere":
         this.requireExtent("icosphere", size);
-        return new THREE.IcosahedronGeometry(0.5, icosphereSubdivisions(this.detailLevel)).scale(...size);
+        // Euclid's construction, face for face, so `.polygons` indexes as upstream.
+        return icosphereGeometry(0.5, icosphereSubdivisions(this.detailLevel)).geometry.scale(...size);
 
       case "cylinder": {
         const radiusTop = node.properties.radiusTop ? this.evaluateNumber(node.properties.radiusTop) : size[0] / 2;
@@ -758,13 +987,15 @@ export class Converter {
     if (material.texture !== undefined) this.warnTexture(material.texture);
   }
 
-  private createMaterial(node: { properties: ShapeProperties }, base?: MaterialState): THREE.Material {
+  private createMaterial(node: { properties: ShapeProperties }, base?: MaterialState, vertexColors = false): THREE.Material {
     // A per-shape property wins; otherwise the enclosing scope's commands
     // apply. Opacity is the colour's alpha times every `opacity` in scope.
     const state = this.materialFor(node.properties, base ?? this.currentTransform().material);
     const opacity = Math.max(0, state.alpha * state.opacity);
     return new THREE.MeshStandardMaterial({
-      color: state.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8),
+      // Vertex colours multiply the material colour, so a coloured mesh keeps its own.
+      color: vertexColors ? new THREE.Color(1, 1, 1) : (state.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8)),
+      vertexColors,
       opacity: Math.min(1, opacity),
       transparent: opacity < 1,
       ...(state.metallicity === undefined ? {} : { metalness: Math.min(1, Math.max(0, state.metallicity)) }),
@@ -1022,6 +1253,17 @@ export class Converter {
   private convertCustomShape(node: CustomShapeNode): THREE.Object3D | null {
     // Look up the custom shape definition
     const definition = this.symbols.get(node.name);
+
+    // A symbol holding a shape value (`define ico icosphere { … }` then `ico`)
+    // is placed, with the call's options as its placement.
+    if (definition !== undefined && isShapeValue(definition)) {
+      const group = new THREE.Group();
+      return this.inScope(group, () => {
+        this.applyPlacement(this.currentTransform().matrix, node.properties as ShapeProperties);
+        const placed = this.placeValue(definition);
+        if (placed) group.add(placed);
+      });
+    }
 
     if (!definition || typeof definition !== "object" || !("type" in definition)) {
       throw new Error(`Unknown shape: ${node.name}`);
@@ -1345,6 +1587,11 @@ export class Converter {
         }
         case "for":
           this.runPathLoop(command, processCommand);
+          break;
+        case "color":
+          // Path point colours are not drawn here; the value is checked so a
+          // bad one is still an error.
+          this.evaluateRGBA(command.value);
           break;
       }
     };
@@ -1708,6 +1955,43 @@ const STANDARD_KEYS: Record<string, true> = {
   detail: true,
   smoothing: true,
 };
+
+/** Mesh and polygon values, at any depth of tuple. */
+function flattenShapeValues(values: readonly Value[]): (MeshValue | PolygonValue)[] {
+  const shapes: (MeshValue | PolygonValue)[] = [];
+  for (const value of values) {
+    if (Array.isArray(value)) shapes.push(...flattenShapeValues(value));
+    else if (isShapeValue(value)) shapes.push(value);
+  }
+  return shapes;
+}
+
+function isShapeValue(value: Value): value is MeshValue | PolygonValue {
+  return isObjectValue(value) && (value.kind === "mesh" || value.kind === "polygon");
+}
+
+/** Merge geometries into one non-indexed geometry carrying position, normal,
+ *  uv and — when any part has it — colour, so parts from different sources
+ *  (a lathe, a polygon list, a CSG result) combine. */
+function mergeMeshGeometries(parts: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const colored = parts.some((part) => part.hasAttribute("color"));
+  const prepared = parts.map((part) => {
+    const flat = part.index ? part.toNonIndexed() : part.clone();
+    if (!flat.hasAttribute("normal")) flat.computeVertexNormals();
+    const count = flat.getAttribute("position").count;
+    if (!flat.hasAttribute("uv")) flat.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(count * 2), 2));
+    if (colored && !flat.hasAttribute("color")) flat.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(count * 3).fill(0.8), 3));
+    for (const name of Object.keys(flat.attributes)) {
+      if (!["position", "normal", "uv", "color"].includes(name)) flat.deleteAttribute(name);
+    }
+    flat.clearGroups();
+    return flat;
+  });
+  const merged = prepared.length === 1 ? prepared[0]! : mergeGeometries(prepared);
+  if (!merged) throw new Error("Could not combine the shapes into one mesh");
+  if (prepared.length > 1) prepared.forEach((part) => part.dispose());
+  return merged;
+}
 
 /** `print` output, one value per space, tuples in parentheses. */
 function printable(value: Value): string {

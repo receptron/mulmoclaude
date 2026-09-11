@@ -5,7 +5,43 @@ export type Color = [number, number, number];
 
 // Expression types
 export type Expression =
-  NumberLiteral | StringLiteral | IdentifierExpr | BinaryExpr | UnaryExpr | FunctionCall | MemberAccess | SubscriptExpr | TupleExpr | RangeExpr | MaterialExpr;
+  | NumberLiteral
+  | StringLiteral
+  | IdentifierExpr
+  | BinaryExpr
+  | UnaryExpr
+  | FunctionCall
+  | MemberAccess
+  | SubscriptExpr
+  | TupleExpr
+  | RangeExpr
+  | MaterialExpr
+  | ShapeExpr
+  | ForExpr
+  | IfExpr;
+
+/** A shape used as a value: `define ico icosphere { detail 0 }`. Built by the
+ *  converter into a mesh value the script can read members of and place. */
+export interface ShapeExpr {
+  type: "shape";
+  node: SceneNode;
+}
+
+/** `for v in iterable { expr }` as a value: the tuple of every iteration's result. */
+export interface ForExpr {
+  type: "for";
+  variable: string;
+  iterable: Expression;
+  body: Expression;
+}
+
+/** `if cond { a } else { b }` as a value. */
+export interface IfExpr {
+  type: "if";
+  condition: Expression;
+  then: Expression;
+  else?: Expression;
+}
 
 export interface NumberLiteral {
   type: "number";
@@ -106,6 +142,8 @@ export type SceneNode =
   | PrintNode
   | AssertNode
   | IgnoredNode
+  | MeshNode
+  | ExpressionStatementNode
   | ColorNode
   | RotateNode
   | OrientationNode
@@ -118,6 +156,22 @@ export interface ShapeNode {
   primitive: ShapePrimitive;
   properties: ShapeProperties;
   children?: SceneNode[];
+  /** `polygon { point … }`: explicit vertices (3D), with `color` and loops,
+   *  making a single face rather than a regular polygon. */
+  points?: PathCommand[];
+}
+
+/** `mesh { polygon { … } … }` — a mesh assembled from polygon values. */
+export interface MeshNode {
+  type: "mesh";
+  children: SceneNode[];
+}
+
+/** A bare expression as a statement: a call that returns a shape (`face data`
+ *  inside `mesh`), or the value a function body ends with. */
+export interface ExpressionStatementNode {
+  type: "expression";
+  value: Expression;
 }
 
 export type ShapePrimitive = "cube" | "sphere" | "icosphere" | "cylinder" | "cone" | "torus" | "circle" | "square" | "roundrect" | "polygon";
@@ -193,8 +247,9 @@ export interface DefineNode {
   value?: Expression; // For variable definitions, or a function's result expression
   options?: OptionNode[]; // For custom shape definitions
   body?: SceneNode[]; // For custom shape definitions, or a function's leading `define`s
-  /** `define name(a b) { … }` — a function. `body` holds its `define`s and
-   *  `value` the expression it returns. */
+  /** `define name(a b) { … }` — a function. `body` holds its statements
+   *  (defines, or shapes it builds) and `value` the expression it ends with,
+   *  if any; a function with no final expression returns what it built. */
   params?: string[];
 }
 
@@ -330,7 +385,22 @@ export interface PathNode {
 }
 
 export type PathCommand =
-  DefineNode | PointCommand | CurveCommand | ArcCommand | RotateCommand | TranslateCommand | ScaleCommand | DetailPathCommand | ForLoopPathCommand;
+  | DefineNode
+  | PointCommand
+  | CurveCommand
+  | ArcCommand
+  | RotateCommand
+  | TranslateCommand
+  | ScaleCommand
+  | DetailPathCommand
+  | ColorPathCommand
+  | ForLoopPathCommand;
+
+/** `color …` inside a path or polygon block: the colour of the points that follow. */
+export interface ColorPathCommand {
+  type: "color";
+  value: Expression;
+}
 
 export interface PointCommand {
   type: "point";
@@ -414,6 +484,7 @@ export enum TokenType {
   FILL = "FILL",
   HULL = "HULL",
   GROUP = "GROUP",
+  MESH = "MESH",
   PATH = "PATH",
   POINT = "POINT",
   CURVE = "CURVE",

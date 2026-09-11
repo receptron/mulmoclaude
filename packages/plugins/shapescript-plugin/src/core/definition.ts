@@ -167,7 +167,9 @@ A bare path draws as a LINE (stroke), as upstream; use fill / extrude / lathe / 
 - stencil preserves the first shape and paints its surface with later shapes' materials.
 Loft sections must each have one perimeter and enclose an area; extrude/fill primitive profiles must lie in XY.
 A material command inside a builder block (extrude { color red … }) colours the result; size on a builder or
-group scales it. Not supported: extrude along/twist, minkowski, inset, svgpath, text, mesh { polygon … }.
+group scales it. Not supported: extrude along/twist, minkowski, inset, svgpath, text.
+- mesh { polygon { point x y z … } … }: a mesh from explicit faces; polygon { color red point a point b point c }
+  takes 3D points (a tuple works: point v) and a colour per face. Faces may come from a function: mesh { for f in faces { face f } }.
 
 ### Additional Expressions:
 - Constants: pi, true, false (tau exists here but NOT in the upstream app; write 2 * pi)
@@ -186,14 +188,17 @@ define post {
 }
 post { height 3 }
 - Random numbers: rnd (0–1) and seed N (scoped to the enclosing block, same generator as upstream)
+- Shapes as values: define ico icosphere { detail 0 } then ico (places it), ico.polygons (faces, each with
+  .center .points .bounds), ico.triangles, ico.bounds (.min .max .center .size .width .height .depth), ico.volume.
+- for / if as expressions: define scales for i in 1 to 3 { i / 3 }; define c if big { red } else { white }
+- Functions may build shapes: define face(data) { polygon { … } } and are called bare as statements: face data
 
 ### Compatibility:
 This plugin implements the documented modeling subset, not all upstream ShapeScript syntax; units, scoping,
 materials and path semantics follow upstream, so a script written against the upstream docs renders the
-same here. Not supported (each is refused by name): import, text/font, mesh { polygon … }, minkowski, inset,
-svgpath, extrude along/twist, object values, shapes as values (define s sphere { … } — write a block
-define s { sphere { … } } instead) and functions that build shapes. Textures, cameras and lights are
-accepted but not drawn.
+same here. Not supported (each is refused by name): import, text/font, minkowski, inset, svgpath,
+extrude along/twist, object values and paths as values. Textures, cameras and lights are accepted but
+not drawn.
 
 ### Comments:
 // Single-line comment

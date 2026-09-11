@@ -268,18 +268,31 @@ Loft accepts ordered, closed planar sections with one perimeter each, resamples 
 vertex counts, interpolates linearly, and triangulates the end caps. Sections must enclose
 a volume. Hull accepts geometry from child meshes and filled paths. Primitive profiles
 for fill/extrude must lie in XY; holes, swept/twisted extrusion (`along`, `twist`), and
-arbitrary 3D path commands are not implemented. `import`, `text` / `font`, raw `mesh`,
-`minkowski`, `inset`, `svgpath`, `object` values, shapes as values (`define s sphere { … }`)
-and functions that build shapes are refused with a message naming the feature. Textures,
+arbitrary 3D path commands are not implemented. `import`, `text` / `font`, `minkowski`, `inset`,
+`svgpath`, `object` values and paths as values are refused with a message naming the feature. Textures,
 normal maps, `camera` and `light` blocks are accepted and skipped with a warning that the
 tool result and the View both report. Unsupported commands and failed CSG operations return
 errors instead of silently substituting different geometry. As with other polygonal CSG
 engines, degenerate or self-intersecting inputs may fail.
 
 The upstream project's own example scripts are test fixtures
-(`test/fixtures/upstream-examples/`, MIT): Ball, Chessboard, Cog, Earth, Spring and Train render;
-Dodecahedron (mesh values), Fillet (`minkowski` / `inset`) and Spirals (`along`) are refused by
-name.
+(`test/fixtures/upstream-examples/`, MIT): Ball, Chessboard, Cog, Dodecahedron, Earth, Spring and
+Train render; Fillet (`minkowski` / `inset`) and Spirals (`along`) are refused by name.
+
+## Shapes as values, meshes and polygons
+
+Since 2.2.0 a shape is a value, as upstream: `define ico icosphere { detail 0 }` keeps its mesh, `ico`
+places it (with `position` / `orientation` / `size` on the call), and its members are readable —
+`polygons` and `triangles` (each with `.center`, `.points`, `.bounds`), `bounds` (`.min` `.max`
+`.center` `.size` `.width` `.height` `.depth`) and `volume`. The icosphere follows Euclid's
+construction face for face, so scripts that index its faces (upstream's Dodecahedron) get the same
+faces. `for v in … { expr }` and `if c { a } else { b }` are expressions, a function may build
+shapes (`define face(data) { polygon { … } }`) and be called bare as a statement (`face data`), and
+`mesh { … }` assembles the polygons its body produces — `polygon { color red point a point b point c }`
+with 3D points, a tuple per point allowed — into one flat-shaded, vertex-coloured mesh. A value a
+statement produces that is not a shape is an "unused value" error, as upstream. Paths as values and
+`object` values remain unsupported.
+
 
 `rnd` and `rand()` draw from a seeded generator (`randomSeed`, default
 `DEFAULT_RANDOM_SEED` = 0, overridable in-script with `seed`) rather than `Math.random()`:

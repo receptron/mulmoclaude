@@ -117,7 +117,9 @@ Constants: pi, true, false (avoid tau, upstream lacks it; write 2 * pi). Tuple/s
 Ranges are values (define r 1 to 5 step 2; for i in r; if 3 in r). A bare path draws as a line; fill/extrude it for a surface.
 Polygon supports sides (3–256). String literals and join/split/trim are supported. print records output for you.
 Use the tool schema for exact syntax and builder limits. This is a modeling subset of upstream ShapeScript;
-imports, text/fonts, raw meshes, minkowski/inset/svgpath/along and shapes as values are refused by name;
+imports, text/fonts, minkowski/inset/svgpath/along and object values are refused by name;
+shapes are values (define ico icosphere { detail 0 }; ico.polygons, .bounds, .volume), for/if work as expressions,
+functions may build shapes, and mesh { polygon { point … } } builds a mesh from explicit faces;
 textures, cameras and lights are accepted but not drawn (the result reports them).
 If presentShapeScript returns an error diagnostic, correct the script and retry; no visualization was created.
 

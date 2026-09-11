@@ -32,10 +32,13 @@ const RENDERS: Record<string, Rendered> = {
   "Earth.shape": { objects: 1, bounds: { min: [-0.5, -0.5, -0.5], max: [0.5, 0.5, 0.5] }, warnings: [/background image "Stars.jpg"/, /texture "Earth.png"/] },
   "Spring.shape": { objects: 1, bounds: { min: [-0.55, -0.65, -0.55], max: [0.55, 0.65, 0.55] }, warnings: [] },
   "Train.shape": { objects: 14, bounds: { min: [-0.6, -0.42, -1.12], max: [0.6, 1.53, 1.15] }, warnings: [/camera/] },
+  // Twelve pentagons built from the icosphere's face centres — which only
+  // works when `icosphere.polygons` comes out in Euclid's face order — as one
+  // vertex-coloured mesh, flat-shaded by `smoothing 0`.
+  "Dodecahedron.shape": { objects: 1, bounds: { min: [-0.7, -0.604, -0.74], max: [0.7, 0.604, 0.74] }, warnings: [] },
 };
 
 const REFUSED: Record<string, RegExp> = {
-  "Dodecahedron.shape": /a shape as a value.*not supported/,
   "Fillet.shape": /minkowski.*not supported/,
   "Spirals.shape": /along.*not supported/,
 };
