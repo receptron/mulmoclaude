@@ -95,13 +95,16 @@ export function requireBearerToken(): string {
 }
 
 export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
-  // Token BEFORE port. The server writes the token first and publishes the port
-  // last, so a restart landing between these two reads can tear the pair either
-  // way — but not equally often. Reading the port first tears whenever the two
-  // reads STRADDLE that interval; reading the token first tears only when BOTH
-  // land inside it. It narrows the window, it does not close it: a consistent
-  // snapshot of two files needs a generation marker neither file carries, which
-  // is #3082's problem, not this call's (Codex).
+  // Token BEFORE port. A restart rewrites both files and nothing marks them as
+  // one generation, so a bridge starting mid-restart can read a torn pair in
+  // either order. What the order decides is WHICH tear it gets. Port first
+  // yields a NEW token with an OLD port — a fresh credential sent to the port
+  // the server has just left, retried in silence because the socket's URL is
+  // fixed at construction. Token first mostly yields the opposite, an OLD token
+  // with a NEW port, which the right server answers `invalid token` and the
+  // connect handler explains; the dangerous pairing survives only in the narrow
+  // window where BOTH reads fall between the token write and the port publish.
+  // Closing it needs a shared generation marker on the sidecars — #3082 (Codex).
   const token = requireBearerToken();
   const apiUrl = resolveApiUrl(opts.apiUrl);
   // `opts.options === undefined` → scrape env automatically.
