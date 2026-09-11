@@ -56,7 +56,7 @@ Switch statements for multiple cases
 
 Calls: C-like max(0 (j - 1)) with NO space before the parenthesis, or bare max 0 (j - 1) / sqrt 9 as upstream.
 Separate arguments with spaces. Commas work here but not in the upstream app.
-Custom functions compute values: define hyp(a b) { sqrt(a * a + b * b) }
+Custom functions return a value (define hyp(a b) { sqrt(a * a + b * b) }) or the shapes they build (define face(d) { polygon { … } }).
 One statement per line; the upstream app rejects two statements on one line.
 
 ### Best Practices:

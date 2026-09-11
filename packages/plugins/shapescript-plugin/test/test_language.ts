@@ -849,9 +849,14 @@ describe("shapes as values", () => {
   });
   it("keeps a mesh block's faces as its polygons, places a point polygon, and bounds `for` expressions", () => {
     withMesh(
-      "define s mesh {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 1 1 0\n  point 0 1 0\n }\n}\ncube { size s.polygons.count s.triangles.count 1 }",
-      (mesh) => near(extent(mesh).toArray(), [1, 2, 1]),
+      "define s mesh {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 1 1 0\n  point 0 1 0\n }\n}\ncube { size s.polygons.count s.triangles.count s.polygons.first.triangles.count }",
+      (mesh) => near(extent(mesh).toArray(), [1, 2, 2]),
     );
+    // A point's first coordinate is evaluated once, so `rnd` advances once per point.
+    withMesh("seed 1\npolygon {\n point rnd 0 0\n point 1 0 0\n point 0 1 0\n}", (mesh) => {
+      const box = new THREE.Box3().setFromObject(mesh);
+      near([box.min.x], [0]);
+    });
     withMesh("polygon {\n position 5 0 0\n size 2\n point 0 0\n point 1 0\n point 0 1\n}", (mesh) => {
       const box = new THREE.Box3().setFromObject(mesh);
       near([box.min.x, box.max.x, box.max.y], [5, 7, 2]);

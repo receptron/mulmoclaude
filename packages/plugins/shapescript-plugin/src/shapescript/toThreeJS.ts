@@ -639,20 +639,18 @@ export class Converter {
     if (Array.isArray(value) && value.length > 0 && value.every((item) => isObjectValue(item) && (item.kind === "mesh" || item.kind === "polygon"))) {
       const meshes = value.filter((item): item is MeshValue => isObjectValue(item) && item.kind === "mesh");
       const polygons = value.filter((item): item is PolygonValue => isObjectValue(item) && item.kind === "polygon");
-      return this.placeMesh({
-        kind: "mesh",
-        geometry: mergeMeshGeometries([
-          ...meshes.map((mesh) => mesh.geometry),
-          ...(polygons.length
-            ? [
-                geometryFromPolygons(
-                  polygons,
-                  polygons.some((p) => p.colors),
-                ),
-              ]
-            : []),
-        ]),
-      });
+      const faces = polygons.length
+        ? geometryFromPolygons(
+            polygons,
+            polygons.some((p) => p.colors),
+          )
+        : undefined;
+      const geometry = mergeMeshGeometries([...meshes.map((mesh) => mesh.geometry), ...(faces ? [faces] : [])]);
+      faces?.dispose();
+      // `placeMesh` clones, so the merged geometry is an intermediate too.
+      const placed = this.placeMesh({ kind: "mesh", geometry });
+      geometry.dispose();
+      return placed;
     }
     throw new Error("Unused value — a statement that is not a shape does nothing here; use `define` or `print`");
   }
@@ -724,9 +722,13 @@ export class Converter {
     const polygons = flattenShapeValues(captured).filter((value): value is PolygonValue => value.kind === "polygon");
     const meshes = flattenShapeValues(captured).filter((value): value is MeshValue => value.kind === "mesh");
     const colored = polygons.some((polygon) => polygon.colors !== undefined);
-    const parts = [...(polygons.length ? [geometryFromPolygons(polygons, colored)] : []), ...meshes.map((mesh) => mesh.geometry), ...geometries];
+    // Owned here: the face geometry and the scratch clones. Not owned: a mesh
+    // value's geometry, which its symbol keeps.
+    const owned = [...(polygons.length ? [geometryFromPolygons(polygons, colored)] : []), ...geometries];
+    const parts = [...owned, ...meshes.map((mesh) => mesh.geometry)];
     if (parts.length === 0) throw new Error("`mesh` needs at least one polygon");
     const geometry = mergeMeshGeometries(parts);
+    owned.forEach((part) => part.dispose());
     // The faces as written, so `.polygons` on this mesh as a value returns
     // them rather than their triangles.
     if (meshes.length === 0 && geometries.length === 0) geometry.userData = { polygons };
@@ -786,10 +788,11 @@ export class Converter {
 
   /** `point 1 2 3`, or `point v` where `v` is a tuple. */
   private pointCoordinates(command: PointCommand | CurveCommand): Point3 {
-    const first = this.evaluator.evaluate(command.x as Expression);
+    // Evaluated once: `point rnd 0 0` must draw a single random number.
+    const first = typeof command.x === "number" ? command.x : this.evaluator.evaluate(command.x);
     const numbers = Array.isArray(first)
       ? first.map((component) => (typeof component === "number" ? component : Number.NaN))
-      : [this.evaluateNumber(command.x), this.evaluateNumber(command.y), command.z === undefined ? 0 : this.evaluateNumber(command.z)];
+      : [typeof first === "number" ? first : Number.NaN, this.evaluateNumber(command.y), command.z === undefined ? 0 : this.evaluateNumber(command.z)];
     const [x = 0, y = 0, z = 0] = numbers;
     if (![x, y, z].every(Number.isFinite)) throw new Error("Expected finite point coordinates");
     return [x, y, z];
@@ -815,6 +818,7 @@ export class Converter {
       throw new Error("The shape used as a value produced nothing");
     }
     const geometry = mergeMeshGeometries(geometries);
+    geometries.forEach((part) => part.dispose());
     this.chargeEstimate(geometry.getAttribute("position").count);
     return { kind: "mesh", geometry, ...(name === undefined ? {} : { name }), ...(polygons === undefined ? {} : { polygons }) };
   }
@@ -1978,7 +1982,9 @@ function isShapeValue(value: Value): value is MeshValue | PolygonValue {
 
 /** Merge geometries into one non-indexed geometry carrying position, normal,
  *  uv and — when any part has it — colour, so parts from different sources
- *  (a lathe, a polygon list, a CSG result) combine. */
+ *  (a lathe, a polygon list, a CSG result) combine. The inputs are not
+ *  touched (each is cloned first), so the caller disposes the ones it owns;
+ *  the result is always a new geometry. */
 function mergeMeshGeometries(parts: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
   const colored = parts.some((part) => part.hasAttribute("color"));
   const prepared = parts.map((part) => {

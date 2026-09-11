@@ -78,7 +78,7 @@ bare form max 0 (j - 1) / sqrt 9 / sin pi / 2, where the function takes every va
 arguments with spaces; commas also work here (max(0, j - 1)) but NOT in the upstream ShapeScript app.
 Inside a larger expression parenthesise a bare call: (sqrt 9) + (sqrt 16).
 Custom functions: define hyp(a b) { sqrt(a * a + b * b) } — parameters, optional defines, then the result
-expression; they compute values, not shapes.
+expression. A function may also build shapes: define face(data) { polygon { … } } returns what it built.
 Write ONE statement per line. This parser accepts "define a 1 define b 2" on one line; the upstream app
 rejects it, and "size 2 1 radius 0.5" on one line reads radius as a fourth size component in both.
 

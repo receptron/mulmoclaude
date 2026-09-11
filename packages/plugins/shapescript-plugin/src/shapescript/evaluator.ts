@@ -10,6 +10,7 @@ import {
   meshPolygons,
   meshVolume,
   trianglesOf,
+  triangulatePolygon,
 } from "./meshValues";
 
 export type { MeshValue, PolygonValue, BoundsValue, PointValue } from "./meshValues";
@@ -256,7 +257,11 @@ function objectMember(value: ObjectValue, member: string): Value | undefined {
         case "bounds":
           return boundsOf(value.points);
         case "triangles":
-          return [value];
+          return triangulatePolygon(value.points).map((triangle): PolygonValue => ({
+            kind: "polygon",
+            points: triangle.map((i) => value.points[i]!),
+            ...(value.colors ? { colors: triangle.map((i) => value.colors![i] ?? value.colors![0]!) } : {}),
+          }));
         default:
           return undefined;
       }
