@@ -19,7 +19,7 @@ import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { bindRoute } from "../../utils/router.js";
 import { GENERATION_KINDS } from "../../../src/types/events.js";
 import { makeBeatOpHandler, sendOpFailure, validBeatIndex, type ErrorResponse } from "./mulmoScriptBeatOp.js";
-import { resolveStoryWriteTarget, type StoryWriteGuards } from "./mulmoScriptWriteRoot.js";
+import { parseSuppliedRoot, resolveStoryWriteTarget, type StoryWriteGuards } from "./mulmoScriptWriteRoot.js";
 
 // Express adapters over the shared ops instance from
 // `server/plugins/mulmoscript-server.ts`. Every op body lives in
@@ -80,13 +80,21 @@ function stringQuery(value: unknown): string | null {
  * Which registered stories root a request names, from a query param or a body field.
  *
  * `stories/deck.json` exists in EVERY registered root (#3014), so a route that resolves the path
- * alone reads the DEFAULT root's file of that name. Absent, empty, or the wrong TYPE all read as
- * the default — the same rule the package's dispatch applies (`str()` in `server/dispatch.ts`),
- * so one request means one thing whichever transport carries it. A root that is present but not
- * registered is refused by the ops themselves, not here.
+ * alone reads the DEFAULT root's file of that name. Absent and empty mean the default root; a
+ * root that is present but NOT A STRING is answered 400 here rather than folded into the default
+ * — the same rule the package's dispatch applies at its single entry (`guardSuppliedRoot` in
+ * `server/dispatch.ts`), for the reason its comment gives: folding it writes to the default
+ * root's identically-named script while the caller believes it named another. Repeating
+ * `?root=` in a query produces an array, which is that shape arriving by accident.
+ *
+ * Returns `null` after answering the response, so a caller stops with `if (root === null) return;`.
+ * A root that is a string but not REGISTERED is refused by the ops, not here.
  */
-function suppliedRoot(value: unknown): string | undefined {
-  return typeof value === "string" && value !== "" ? value : undefined;
+function suppliedRoot(value: unknown, res: Response): string | undefined | null {
+  const parsed = parseSuppliedRoot(value);
+  if (parsed.ok) return parsed.root;
+  badRequest(res, parsed.error);
+  return null;
 }
 
 function parseBeatQuery<TRes>(
@@ -102,7 +110,9 @@ function parseBeatQuery<TRes>(
     badRequest(res, "filePath and beatIndex are required");
     return null;
   }
-  return { filePath, beatIndex, root: suppliedRoot(req.query.root) };
+  const root = suppliedRoot(req.query.root, res);
+  if (root === null) return null;
+  return { filePath, beatIndex, root };
 }
 
 // The save / reopen / update slice lives in the shared
@@ -181,7 +191,8 @@ bindRoute(router, API_ROUTES.mulmoScript.save, async (req: Request<object, objec
 // failure onto the pre-extraction status, else 200. Share the shell.
 async function runGuardedUpdate(req: Request<object, object, unknown>, res: Response, execute: typeof executeUpdateBeat): Promise<void> {
   const body = requestBodyRecord(req.body);
-  const root = suppliedRoot(body.root);
+  const root = suppliedRoot(body.root, res);
+  if (root === null) return;
   const target = resolveStoryWriteTarget(WRITE_GUARDS, body.filePath, root);
   if (!target.ok) {
     if ("failure" in target) {
@@ -227,7 +238,9 @@ bindRoute(
       badRequest(res, "filePath is required");
       return;
     }
-    const result = await mulmoScriptOps.movieStatusOp(filePath, suppliedRoot(req.query.root));
+    const root = suppliedRoot(req.query.root, res);
+    if (root === null) return;
+    const result = await mulmoScriptOps.movieStatusOp(filePath, root);
     if (!result.ok) {
       sendOpFailure(res, result);
       return;
@@ -298,7 +311,9 @@ function resolveStoryRequest(
     return null;
   }
   // The PAIR, not the path: the same `stories/…` spelling exists in every root (#3014).
-  const resolved = mulmoScriptOps.resolveStory(filePath, typeof req.body.root === "string" ? req.body.root : undefined);
+  const root = suppliedRoot(req.body.root, res);
+  if (root === null) return null;
+  const resolved = mulmoScriptOps.resolveStory(filePath, root);
   if (!resolved.ok) {
     sendOpFailure(res, resolved);
     return null;
@@ -378,7 +393,9 @@ bindRoute(
       badRequest(res, "filePath and key are required");
       return;
     }
-    const result = await mulmoScriptOps.characterImageOp(filePath, key, suppliedRoot(req.query.root));
+    const root = suppliedRoot(req.query.root, res);
+    if (root === null) return;
+    const result = await mulmoScriptOps.characterImageOp(filePath, key, root);
     if (!result.ok) {
       sendOpFailure(res, result);
       return;
@@ -396,7 +413,9 @@ bindRoute(
       badRequest(res, "filePath, beatIndex, and imageData are required");
       return;
     }
-    const result = await mulmoScriptOps.uploadBeatImageOp(filePath, beatIndex, imageData, suppliedRoot(req.body.root));
+    const root = suppliedRoot(req.body.root, res);
+    if (root === null) return;
+    const result = await mulmoScriptOps.uploadBeatImageOp(filePath, beatIndex, imageData, root);
     if (!result.ok) {
       sendOpFailure(res, result);
       return;
@@ -414,7 +433,9 @@ bindRoute(
       badRequest(res, "filePath and key are required");
       return;
     }
-    const result = await mulmoScriptOps.renderCharacterOp({ filePath, key, force, chatSessionId, root: suppliedRoot(req.body.root) });
+    const root = suppliedRoot(req.body.root, res);
+    if (root === null) return;
+    const result = await mulmoScriptOps.renderCharacterOp({ filePath, key, force, chatSessionId, root });
     if (!result.ok) {
       sendOpFailure(res, result);
       return;
@@ -432,7 +453,9 @@ bindRoute(
       badRequest(res, "filePath, key, and imageData are required");
       return;
     }
-    const result = await mulmoScriptOps.uploadCharacterImageOp(filePath, key, imageData, suppliedRoot(req.body.root));
+    const root = suppliedRoot(req.body.root, res);
+    if (root === null) return;
+    const result = await mulmoScriptOps.uploadCharacterImageOp(filePath, key, imageData, root);
     if (!result.ok) {
       sendOpFailure(res, result);
       return;
@@ -467,7 +490,9 @@ bindRoute(
       badRequest(res, "filePath is required");
       return;
     }
-    const result = await mulmoScriptOps.pdfStatusOp(filePath, suppliedRoot(req.query.root));
+    const root = suppliedRoot(req.query.root, res);
+    if (root === null) return;
+    const result = await mulmoScriptOps.pdfStatusOp(filePath, root);
     if (!result.ok) {
       sendOpFailure(res, result);
       return;

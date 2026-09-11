@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { FileOps } from "gui-chat-protocol";
 import type { OpFailure } from "@mulmoclaude/mulmoscript-plugin/server";
-import { resolveStoryWriteTarget, type StoryWriteGuards } from "../../../server/api/routes/mulmoScriptWriteRoot.ts";
+import { parseSuppliedRoot, resolveStoryWriteTarget, type StoryWriteGuards } from "../../../server/api/routes/mulmoScriptWriteRoot.ts";
 
 /**
  * Where a mulmoScript WRITE lands.
@@ -121,3 +121,52 @@ describe("resolveStoryWriteTarget — what it refuses", () => {
 });
 
 type StoryWriteTarget = ReturnType<typeof resolveStoryWriteTarget>;
+
+/**
+ * Which root a request NAMED — and the one shape that must not be forgiven.
+ *
+ * Absent means the default root. A malformed one does NOT: folding it into the default writes to
+ * and reads from the default root's identically-named script while the caller believes it named
+ * another. That is the defect #3015 fixed at the dispatch entry (`guardSuppliedRoot`), and this
+ * PR reintroduced it on the REST transport until round 1 — found independently by Codex and by
+ * re-reading `dispatch.ts`, whose comment describes this exact failure.
+ *
+ * Both directions, because a parser that refuses everything passes the refusal half alone.
+ */
+describe("parseSuppliedRoot", () => {
+  it("reads an absent root as the default", () => {
+    assert.deepEqual(parseSuppliedRoot(undefined), { ok: true, root: undefined });
+  });
+
+  it("reads an empty string as the default — a query param or JSON field serialised from nothing", () => {
+    assert.deepEqual(parseSuppliedRoot(""), { ok: true, root: undefined });
+  });
+
+  it("passes a named root through unchanged, including odd but legal ids", () => {
+    for (const root of ["acme", "acme-docs", "a", "repo/with/slashes", " leading-space"]) {
+      assert.deepEqual(parseSuppliedRoot(root), { ok: true, root }, `${root} is a string and survives`);
+    }
+  });
+
+  it("REFUSES every present non-string rather than folding it into the default", () => {
+    for (const root of [123, 0, null, true, false, ["acme"], [], { id: "acme" }]) {
+      const parsed = parseSuppliedRoot(root);
+      assert.equal(parsed.ok, false, `a ${Array.isArray(root) ? "array" : typeof root} root must be refused, not defaulted`);
+    }
+  });
+
+  it("names the type it refused, because an array is what a repeated ?root= actually produces", () => {
+    const fromRepeatedQuery = parseSuppliedRoot(["acme", "widgets"]);
+    assert.equal(fromRepeatedQuery.ok, false);
+    assert.match(fromRepeatedQuery.ok ? "" : fromRepeatedQuery.error, /array/);
+    const fromNumber = parseSuppliedRoot(7);
+    assert.match(fromNumber.ok ? "" : fromNumber.error, /number/);
+  });
+
+  it("never answers ok with a non-string root — the property the callers rely on", () => {
+    for (const root of [undefined, "", "acme", 123, null, ["a"], { a: 1 }, true]) {
+      const parsed = parseSuppliedRoot(root);
+      if (parsed.ok) assert.ok(parsed.root === undefined || typeof parsed.root === "string");
+    }
+  });
+});

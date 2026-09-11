@@ -22,9 +22,16 @@ root 対応済み）。View は root 対応の **dispatch 経路**を通る。
 
 ### 読み取り・アップロード系（9 箇所）
 
-`suppliedRoot(value)` を1つ置き、query / body から root を読む。**absent / 空文字 / 型違いは
-すべて既定 root**として読む —— パッケージの dispatch が使う `str()` と同じ規則で、**1つの
-リクエストがどちらの transport でも同じ意味**になるようにする。
+`parseSuppliedRoot(value)`（純粋関数）を1つ置き、query / body から root を読む。
+**absent と空文字は既定 root**、**string でないものが present なら 400 で拒否**する ——
+折りたたんではいけない。折りたたむと「呼び出し側は別の root を名指したつもりなのに、既定 root の
+同名 script を読み書きする」という #3015 が dispatch 側で直した欠陥そのものになる
+（`guardSuppliedRoot`。`?root=` を2回書くと配列になるので、事故でこの形が届く）。
+
+> **この PR の最初の版はここを間違えていた。** dispatch の `str()` と揃えたつもりで、実際の
+> dispatch は単一エントリで `guardSuppliedRoot` により**型違いを 400 で拒否**している。
+> しかも「型違いは既定に落ちる」と assert するテストを書いて通していた。round 1 で自分と Codex が
+> 独立に発見。
 
 - GET: `beatImage` / `beatAudio` / `beatMovie`（`parseBeatQuery` が返す）、`movieStatus` /
   `pdfStatus` / `characterImage`（`req.query.root`）
@@ -57,11 +64,13 @@ sweep の例外にその1文ごと残す。
 
 ## テスト
 
-- `test/server/api/test_mulmoScriptWriteRoot.ts` —— 書き込み先の決定を**両方向**から
+- `test/server/api/test_mulmoScriptWriteRoot.ts` —— `parseSuppliedRoot` を**両方向**から
+  （通す形 / 拒む形、および「ok のとき root は必ず string か undefined」という呼び出し側が
+  依存している性質）。加えて書き込み先の決定を**両方向**から
   （許すもの / 拒むもの）。とくに「**どの拒否でも既定 root にフォールバックしない**」を明示。
   ミューテーション4種すべてで赤になることを確認
 - `test/server/api/test_mulmoScriptBeatOp.ts` に factory の root 転送を**挙動で**追加
-  （named / absent / 空 / 型違い）。これが sweep の「値渡し例外」を穴でなくしている
+  （named / absent / 空 → 既定、型違い → **400 かつ op を呼ばない**）。これが sweep の「値渡し例外」を穴でなくしている
 - `test_storyRootSweep.ts` の例外は**エージェント経路1件だけ**に戻る
 
 ## 関連

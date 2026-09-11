@@ -236,17 +236,23 @@ describe("makeBeatOpHandler — the root it hands the op", () => {
     assert.equal(args?.root, undefined);
   });
 
-  it('reads an empty root as the default too — `str()` in the package treats "" that way', async () => {
+  it("reads an empty root as the default too — a field serialised from nothing", async () => {
     const args = await argsFor({ filePath: "stories/a.json", beatIndex: 0, root: "" });
     assert.equal(args?.root, undefined);
   });
 
-  it("degrades a wrong-TYPE root to the default rather than passing it on", async () => {
-    // A non-string root must not reach the op as a non-string: the ops compare it against
-    // registered ids, and an object or array there is parameter tampering, not a root.
+  it("REFUSES a wrong-TYPE root with a 400 and never runs the op", async () => {
+    // An earlier draft of this suite asserted the OPPOSITE — that a malformed root degrades to
+    // the default — and passed, which is exactly how the defect stayed in. Folding it means the
+    // op reads and writes the DEFAULT root's identically-named script while the caller believes
+    // it named another: the failure `guardSuppliedRoot` was added to dispatch to stop (#3015).
     for (const root of [123, null, ["acme"], { id: "acme" }, true]) {
-      const args = await argsFor({ filePath: "stories/a.json", beatIndex: 0, root });
-      assert.equal(args?.root, undefined, `a ${typeof root} root must read as the default`);
+      const { op, calls } = fakeOp(audioSuccess);
+      const handler = makeBeatOpHandler(op, (result) => ({ audio: result.audio }));
+      const res = mockRes();
+      await handler(asExpressReq({ filePath: "stories/a.json", beatIndex: 0, root }), asExpressRes(res));
+      assert.equal(res.recorded.status, 400, `a ${Array.isArray(root) ? "array" : typeof root} root must be refused`);
+      assert.equal(calls.length, 0, "and the op must not run at all");
     }
   });
 });

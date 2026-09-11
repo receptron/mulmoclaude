@@ -1,4 +1,4 @@
-// Which stories root a mulmoScript WRITE lands in, and whether it is allowed to.
+// Which stories root a mulmoScript request NAMES, and — for a write — whether it may land there.
 //
 // Extracted as a pure decision because it is the one place a wrong answer is silent: the
 // executors take a WIRE path (`stories/…`) and resolve it against whatever `FileOps` they are
@@ -23,6 +23,24 @@ export interface StoryWriteGuards {
   guardStoryWirePath: (filePath: unknown, root?: string) => OpFailure | null;
   /** The artifacts `FileOps` bound to that root, or `null` when it is not registered. */
   artifactsForRoot: (root: string | undefined) => FileOps | null;
+}
+
+/**
+ * The root a request named: absent, or the string it gave, or a refusal.
+ *
+ * Absent stays the default root; `""` is absent (a query param or JSON field serialised from an
+ * empty value). **Present but not a string is REFUSED, not folded into the default** — that fold
+ * is the defect #3015 fixed on the dispatch transport, and its comment says why: a host that
+ * serialises a root wrongly would write to, and read from, the DEFAULT root's identically-named
+ * script while believing it named another. Reading `?root=` twice gives an array, which is
+ * exactly that shape arriving by accident.
+ */
+export type SuppliedRoot = { ok: true; root: string | undefined } | { ok: false; error: string };
+
+export function parseSuppliedRoot(value: unknown): SuppliedRoot {
+  if (value === undefined) return { ok: true, root: undefined };
+  if (typeof value !== "string") return { ok: false, error: `mulmoScript root must be a string, got ${Array.isArray(value) ? "array" : typeof value}` };
+  return { ok: true, root: value === "" ? undefined : value };
 }
 
 export type StoryWriteTarget =

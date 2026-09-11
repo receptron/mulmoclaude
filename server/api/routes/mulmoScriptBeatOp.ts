@@ -13,6 +13,7 @@
 import type { Request, Response } from "express";
 import type { OpFailure } from "@mulmoclaude/mulmoscript-plugin/server";
 import { badRequest, sendError } from "../../utils/httpError.js";
+import { parseSuppliedRoot } from "./mulmoScriptWriteRoot.js";
 
 export interface ErrorResponse {
   error: string;
@@ -79,10 +80,16 @@ export function makeBeatOpHandler<TResult extends { ok: true }, TBody extends ob
       badRequest(res, "filePath and beatIndex are required");
       return;
     }
-    // Absent, empty, or the wrong TYPE all read as the default root — the same rule the
-    // package's dispatch applies, so one request means one thing on either transport (#3014).
-    const suppliedRoot = typeof root === "string" && root !== "" ? root : undefined;
-    const result = await runOp({ filePath, beatIndex, force, chatSessionId, root: suppliedRoot });
+    // Absent and empty mean the default root; present-but-not-a-string is REFUSED rather than
+    // folded into it — the same rule the package's dispatch applies at its single entry, for the
+    // reason its comment gives: folding writes to the default root's identically-named script
+    // while the caller believes it named another (#3015 / #3014).
+    const parsedRoot = parseSuppliedRoot(root);
+    if (!parsedRoot.ok) {
+      badRequest(res, parsedRoot.error);
+      return;
+    }
+    const result = await runOp({ filePath, beatIndex, force, chatSessionId, root: parsedRoot.root });
     if (!result.ok) {
       sendOpFailure(res, result);
       return;
