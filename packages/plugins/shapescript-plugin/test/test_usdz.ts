@@ -118,7 +118,16 @@ describe("shapeScriptToUsdz", () => {
     (mixed.material as THREE.Material).dispose();
     assert.equal((blend?.text.match(/def Material /g) ?? []).length, 1);
     const [r, g, b] = (/diffuseColor = \(([^)]*)\)/.exec(blend?.text ?? "")?.[1] ?? "").split(", ").map(Number);
-    assert.ok([r, g, b].every((c) => Math.abs((c ?? 0) - 1 / 3) < 1e-6), `blend ${r} ${g} ${b}`);
+    assert.ok(
+      [r, g, b].every((c) => Math.abs((c ?? 0) - 1 / 3) < 1e-6),
+      `blend ${r} ${g} ${b}`,
+    );
+    // A child of a vertex-coloured mesh is kept.
+    const parent = new THREE.Mesh(geometry.clone(), new THREE.MeshStandardMaterial({ vertexColors: true }));
+    parent.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x00ff00 })));
+    const [withChild] = zipEntries(await sceneToUsdz(parent));
+    assert.equal((withChild?.text.match(/def Material /g) ?? []).length, 2);
+    disposeObject3D(parent);
     // A hidden mesh stays hidden.
     const group = astToThreeJS(parseShapeScript("mesh {\n polygon {\n  color 1 0 0\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}"));
     group.traverse((object) => void (object !== group && (object.visible = false)));

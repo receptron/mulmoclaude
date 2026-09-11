@@ -64,6 +64,8 @@ function withPlainColours(object: THREE.Object3D): { root: THREE.Object3D; dispo
       created.push(part.geometry, part.material as THREE.Material);
       replacement.add(part);
     }
+    // Anything parented to the mesh stays in the tree, under the group.
+    for (const child of [...mesh.children]) replacement.add(child);
     mesh.parent?.add(replacement);
     mesh.parent?.remove(mesh);
   }
