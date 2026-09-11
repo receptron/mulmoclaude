@@ -45,6 +45,10 @@ export interface BeatOpArgs {
   beatIndex: number;
   force?: boolean | undefined;
   chatSessionId?: string | undefined;
+  /** Which registered stories root `filePath` is relative to (#3014); absent = the default.
+   *  Without it every beat op here resolved the DEFAULT root's file of that name, because the
+   *  same `stories/…` spelling exists in each one (#3077). */
+  root?: string | undefined;
 }
 
 /** Untrusted request body: `filePath` / `beatIndex` are whatever JSON the
@@ -54,6 +58,7 @@ export interface BeatOpBody {
   beatIndex?: unknown | undefined;
   force?: boolean | undefined;
   chatSessionId?: string | undefined;
+  root?: unknown | undefined;
 }
 
 export type BeatOpHandler<TBody> = (req: Request<object, unknown, BeatOpBody>, res: Response<TBody | ErrorResponse>) => Promise<void>;
@@ -69,12 +74,15 @@ export function makeBeatOpHandler<TResult extends { ok: true }, TBody extends ob
   toResponse: (result: TResult) => TBody,
 ): BeatOpHandler<TBody> {
   return async (req, res) => {
-    const { filePath, beatIndex, force, chatSessionId } = req.body;
+    const { filePath, beatIndex, force, chatSessionId, root } = req.body;
     if (typeof filePath !== "string" || !filePath || !validBeatIndex(beatIndex)) {
       badRequest(res, "filePath and beatIndex are required");
       return;
     }
-    const result = await runOp({ filePath, beatIndex, force, chatSessionId });
+    // Absent, empty, or the wrong TYPE all read as the default root — the same rule the
+    // package's dispatch applies, so one request means one thing on either transport (#3014).
+    const suppliedRoot = typeof root === "string" && root !== "" ? root : undefined;
+    const result = await runOp({ filePath, beatIndex, force, chatSessionId, root: suppliedRoot });
     if (!result.ok) {
       sendOpFailure(res, result);
       return;

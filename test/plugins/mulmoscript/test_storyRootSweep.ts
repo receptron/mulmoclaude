@@ -10,7 +10,8 @@ import { dirname, join, relative } from "node:path";
  * `stories/deck.json` exists in EVERY registered stories root (#3014), so a host call that
  * resolves a path alone reads the DEFAULT root's file of that name. This rule was patched three
  * times before it was written down — the media-byte download, the session rehydration, and the
- * movie/PDF generation body — so it is stated here as a rule instead of a fourth fix.
+ * movie/PDF generation body — so it is stated here as a rule instead of a fourth fix. #3077 then
+ * used it to find and close the whole REST surface at once, which is what the rule is for.
  *
  * It is deliberately phrased as what is PERMITTED: a `resolveStory` call names a root, OR it is
  * in `ROOTLESS_BY_DESIGN` below with the reason it cannot have one. Everything else is reported.
@@ -66,34 +67,24 @@ const ROOT_TAKING_OPS = [
  * Keyed by `<path-from-repo-root>:<the call's own line text, trimmed>` so moving a file or
  * changing the call breaks the exemption rather than silently carrying it.
  */
-const SUPERSEDED_REST_SURFACE =
-  "REST surface, no caller in this repo. `pluginEndpoints<MulmoScriptEndpoints>` is used by exactly one file — the host adapter — and only for the two download routes (both rooted). The View reaches these ops through the ROOT-AWARE dispatch route instead. Threading `root` through every REST body/query parser and `makeBeatOpHandler` is a change to a surface nothing here calls, so it is #3077 rather than this PR. A host that DOES call these routes must fix them first.";
-
 const ROOTLESS_BY_DESIGN = new Map<string, string>([
   [
     "server/api/routes/mulmo-script.ts:const resolved = mulmoScriptOps.resolveStory(outcome.filePath);",
-    "The AGENT's tool path. `root` is not in the tool schema, so a model cannot name one (#3015) — every save reaching here is in the default root by construction.",
+    "The AGENT's tool path: this route's body IS `SaveMulmoScriptArgs`, and `root` is deliberately not in the tool schema, so a model cannot name one (#3015). Every save reaching here is in the default root by construction.",
   ],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.beatImageOp(query.filePath, query.beatIndex);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.movieStatusOp(filePath);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.beatAudioOp(query.filePath, query.beatIndex);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.beatMovieOp(query.filePath, query.beatIndex);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.characterImageOp(filePath, key);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.uploadBeatImageOp(filePath, beatIndex, imageData);", SUPERSEDED_REST_SURFACE],
-  [
-    "server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.renderCharacterOp({ filePath, key, force, chatSessionId });",
-    SUPERSEDED_REST_SURFACE,
-  ],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.uploadCharacterImageOp(filePath, key, imageData);", SUPERSEDED_REST_SURFACE],
-  ["server/api/routes/mulmo-script.ts:const result = await mulmoScriptOps.pdfStatusOp(filePath);", SUPERSEDED_REST_SURFACE],
 ]);
 
 /**
  * Ops handed to a factory as a VALUE rather than called directly.
  *
- * `makeBeatOpHandler(op, …)` invokes them with a `BeatOpArgs` that has no `root` field, so these
- * are the same superseded REST surface as above, reached by a different spelling. Listed
- * separately because the direct-call test cannot see an argument list that does not exist yet.
+ * `makeBeatOpHandler(op, …)` invokes them with a `BeatOpArgs` that carries `root` since #3077, so
+ * the root reaches these ops through the factory rather than through an argument list this
+ * textual rule can read.
+ *
+ * What makes that safe rather than a hole is a BEHAVIOURAL test, not this sentence:
+ * `test/server/api/test_mulmoScriptBeatOp.ts` → "makeBeatOpHandler — the root it hands the op"
+ * asserts the factory forwards a named root and degrades an absent, empty or wrong-typed one to
+ * the default. Delete that suite and these two entries become unchecked.
  */
 const OP_VALUES_BY_DESIGN = new Set<string>([
   "server/api/routes/mulmo-script.ts:makeBeatOpHandler(mulmoScriptOps.generateBeatAudioOp, (result) => ({ audio: result.audio })),",
