@@ -5,7 +5,7 @@
 
 import { computed, reactive, type ComputedRef } from "vue";
 import { errorMessage } from "@mulmoclaude/common";
-import { characterPrompt as characterPromptOf, clearReactiveRecords, getMissingCharacterKeys, staleSince as staleSinceOf } from "../helpers";
+import { characterPrompt as characterPromptOf, clearReactiveRecords, getMissingCharacterKeys, staleSince as staleSinceOf, type StoryRef } from "../helpers";
 import { readFileAsDataUrl } from "../support";
 import type { MulmoScriptTransport } from "../transport";
 
@@ -16,17 +16,21 @@ type ScriptImages = Record<string, { type?: string; prompt?: string }> | undefin
 export interface UseCharacterImagesOptions {
   api: MulmoScriptTransport;
   filePath: ComputedRef<string>;
+  /** Which registered root `filePath` is relative to; `undefined` = the host's default (#3014). */
+  root: ComputedRef<string | undefined>;
   chatSessionId: ComputedRef<string | undefined>;
   getImages: () => ScriptImages;
 }
 
-export function useCharacterImages({ api, filePath, chatSessionId, getImages }: UseCharacterImagesOptions) {
+export function useCharacterImages({ api, filePath, root, chatSessionId, getImages }: UseCharacterImagesOptions) {
   const charRenderState = reactive<Record<string, CharRenderState>>({});
   const charImages = reactive<Record<string, string>>({});
   const charErrors = reactive<Record<string, string>>({});
   const charDragOver = reactive<Record<string, boolean>>({});
 
-  const staleSince = (requestedFilePath: string): boolean => staleSinceOf(filePath.value, requestedFilePath);
+  // The PAIR, not the path: `stories/deck.json` exists in every root (#3014).
+  const storyRef = (): StoryRef => ({ filePath: filePath.value, root: root.value });
+  const staleSince = (requested: StoryRef): boolean => staleSinceOf(storyRef(), requested);
 
   const characterKeys = computed(() => {
     const imgs = getImages() ?? {};
@@ -63,9 +67,9 @@ export function useCharacterImages({ api, filePath, chatSessionId, getImages }: 
       charRenderState[key] = "error";
       return;
     }
-    const requestedFilePath = filePath.value;
-    const response = await api.call("uploadCharacterImage", { filePath: requestedFilePath, key, imageData });
-    if (staleSince(requestedFilePath)) return;
+    const requested = storyRef();
+    const response = await api.call("uploadCharacterImage", { ...requested, key, imageData });
+    if (staleSince(requested)) return;
     if (!response.ok) {
       charErrors[key] = response.error || "Upload failed";
       charRenderState[key] = "error";
@@ -76,9 +80,9 @@ export function useCharacterImages({ api, filePath, chatSessionId, getImages }: 
   }
 
   async function loadExistingCharacterImage(key: string): Promise<void> {
-    const requestedFilePath = filePath.value;
-    const response = await api.call("characterImage", { filePath: requestedFilePath, key });
-    if (staleSince(requestedFilePath)) return;
+    const requested = storyRef();
+    const response = await api.call("characterImage", { ...requested, key });
+    if (staleSince(requested)) return;
     // silently ignore errors
     if (response.ok && response.data.image) {
       charImages[key] = response.data.image;
@@ -91,11 +95,11 @@ export function useCharacterImages({ api, filePath, chatSessionId, getImages }: 
   }
 
   async function renderCharacter(key: string, force: boolean): Promise<void> {
-    const requestedFilePath = filePath.value;
+    const requested = storyRef();
     charRenderState[key] = "rendering";
     Reflect.deleteProperty(charErrors, key);
-    const response = await api.call("renderCharacter", { filePath: requestedFilePath, key, force, chatSessionId: chatSessionId.value });
-    if (staleSince(requestedFilePath)) return;
+    const response = await api.call("renderCharacter", { ...requested, key, force, chatSessionId: chatSessionId.value });
+    if (staleSince(requested)) return;
     if (!response.ok) {
       charErrors[key] = response.error || "Render failed";
       charRenderState[key] = "error";

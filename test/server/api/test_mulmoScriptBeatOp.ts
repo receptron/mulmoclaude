@@ -205,7 +205,55 @@ describe("makeBeatOpHandler — request validation", () => {
   it("accepts beatIndex 0 and forwards the validated pair to the op", async () => {
     const { res, calls } = await runWith(VALID_BODY);
     assert.equal(res.recorded.status, 200);
-    assert.deepEqual(calls, [{ filePath: "stories/a.json", beatIndex: 0, force: undefined, chatSessionId: undefined }]);
+    assert.deepEqual(calls, [{ filePath: "stories/a.json", beatIndex: 0, force: undefined, chatSessionId: undefined, root: undefined }]);
+  });
+});
+
+/**
+ * The root reaches the op — the factory is the ONLY place it can (#3077).
+ *
+ * These handlers take the op as a VALUE, so the `resolveStory`-style sweep in
+ * `test/plugins/mulmoscript/test_storyRootSweep.ts` cannot see an argument list at the call site
+ * and exempts them. This is what makes that exemption safe rather than a hole: the same
+ * `stories/…` spelling exists in every registered root, so a beat op that receives no root reads
+ * the DEFAULT root's file of that name.
+ */
+describe("makeBeatOpHandler — the root it hands the op", () => {
+  async function argsFor(body: unknown): Promise<BeatOpArgs | undefined> {
+    const { op, calls } = fakeOp(audioSuccess);
+    const handler = makeBeatOpHandler(op, (result) => ({ audio: result.audio }));
+    await handler(asExpressReq(body), asExpressRes(mockRes()));
+    return calls[0];
+  }
+
+  it("forwards the root the request named", async () => {
+    const args = await argsFor({ filePath: "stories/a.json", beatIndex: 0, root: "acme-docs" });
+    assert.equal(args?.root, "acme-docs");
+  });
+
+  it("reads an absent root as the default, exactly as the dispatch transport does", async () => {
+    const args = await argsFor({ filePath: "stories/a.json", beatIndex: 0 });
+    assert.equal(args?.root, undefined);
+  });
+
+  it("reads an empty root as the default too — a field serialised from nothing", async () => {
+    const args = await argsFor({ filePath: "stories/a.json", beatIndex: 0, root: "" });
+    assert.equal(args?.root, undefined);
+  });
+
+  it("REFUSES a wrong-TYPE root with a 400 and never runs the op", async () => {
+    // An earlier draft of this suite asserted the OPPOSITE — that a malformed root degrades to
+    // the default — and passed, which is exactly how the defect stayed in. Folding it means the
+    // op reads and writes the DEFAULT root's identically-named script while the caller believes
+    // it named another: the failure `guardSuppliedRoot` was added to dispatch to stop (#3015).
+    for (const root of [123, null, ["acme"], { id: "acme" }, true]) {
+      const { op, calls } = fakeOp(audioSuccess);
+      const handler = makeBeatOpHandler(op, (result) => ({ audio: result.audio }));
+      const res = mockRes();
+      await handler(asExpressReq({ filePath: "stories/a.json", beatIndex: 0, root }), asExpressRes(res));
+      assert.equal(res.recorded.status, 400, `a ${Array.isArray(root) ? "array" : typeof root} root must be refused`);
+      assert.equal(calls.length, 0, "and the op must not run at all");
+    }
   });
 });
 
@@ -256,6 +304,6 @@ describe("makeBeatOpHandler — success responses", () => {
     const { op, calls } = fakeOp(imageSuccess);
     const handler = makeBeatOpHandler(op, (result) => ({ image: result.image }));
     await handler(asExpressReq({ ...VALID_BODY, beatIndex: 3, force: true, chatSessionId: "sess-1" }), asExpressRes(mockRes()));
-    assert.deepEqual(calls, [{ filePath: "stories/a.json", beatIndex: 3, force: true, chatSessionId: "sess-1" }]);
+    assert.deepEqual(calls, [{ filePath: "stories/a.json", beatIndex: 3, force: true, chatSessionId: "sess-1", root: undefined }]);
   });
 });

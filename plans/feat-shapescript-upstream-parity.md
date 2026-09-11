@@ -27,8 +27,8 @@ These are the highest-value fixes: valid upstream scripts render, but incorrectl
 | 9 | call arguments `max(0 (j - 1))` | space-separated (C-like parens) or bare `max 0 (j - 1)` | comma-separated only, so no script with a 2-arg call could open in both | parenthesised form fixed in this PR; bare form still unsupported |
 | 10 | ordinal members `.first` … `.last`, `.allButFirst`, `.allButLast` | supported | only `[i]` and `.x/.y/.z` | fixed in this PR |
 | 13 | `path { position … orientation … size … }` | transform options on a path, used to place loft sections | not parsed inside a path block | fixed in this PR (lathe profiles excepted) |
-| 12 | `tau` constant | not defined (only `pi`) | defined | plugin extension, kept; docs steer the agent to `2 * pi` |
-| 11 | statement separators | one statement per line (line break, `}` or EOF) | also accepts several per line | documented only; ours is a superset, so scripts written for upstream parse here |
+| 12 | `tau` constant | not defined (only `pi`) | defined until 2.5.0 | removed in 2.5.0: a script using it failed upstream |
+| 11 | statement separators | one statement per line (line break, `}` or EOF) | accepted several per line until 2.5.0 | fixed in 2.5.0: a second statement on a line is a parse error, since scripts written here failed upstream |
 
 Conventions that already matched and stay: trig functions in radians, `size` on `cube` /
 `square` = edge length, single-value `size` = uniform, `translate` / `scale` as relative
@@ -65,8 +65,7 @@ Found while running the upstream examples (fixed in 2.1.0, also phase-1 class):
 ## Phase 3 — missing language features (by likely impact on generated scripts)
 
 Test fixtures: the upstream `Examples/` directory (`test/fixtures/upstream-examples/`, MIT).
-Ball, Chessboard, Cog, Dodecahedron, Earth, Spring and Train render; Fillet and Spirals are
-refused by name (see "open" below).
+All nine (Ball, Chessboard, Cog, Dodecahedron, Earth, Fillet, Spirals, Spring, Train) render.
 
 Done in 2.1.0:
 
@@ -90,10 +89,32 @@ Done in 2.2.0 (Dodecahedron):
   shapes, called bare as statements; `polygon { point … }` faces with colours; `mesh { … }`;
   the icosphere in Euclid's face order; line breaks inside parentheses.
 
+Done in 2.3.0 (Fillet, Spirals):
+
+- **Builders**: `minkowski` (hull of vertex sums for convex operands; merged per-face hulls for a
+  non-convex one — overlapping shells rather than a boolean union), `inset(mesh d)` (offset-plane
+  corners), `extrude … along` (mitred sweep, caps on open paths), open paths extruded to walls,
+  `detail` as a value and `detail 0` in a path, shape values keep their colour.
+
+Done in 2.4.0 (text):
+
+- **Text**: `text` with upstream's layout (Helvetica metrics, one unit per line, `size`,
+  `wrapwidth`, `linespacing`, interpolation) in a bundled Helvetiker face; `fill` / `extrude` of
+  profiles with holes; `font` accepted and skipped. `Platonic Solids.shape` still needs
+  `children` inside a custom block and `import`.
+
+Done in 2.5.0 (portability):
+
+- **One statement per line** is a hard error, as upstream reads a property's arguments to the end
+  of the line; `tau` removed. Scripts that rendered here but failed upstream (kame-jeep) no longer
+  parse here either, so the agent fixes them at authoring time.
+
 Open:
 
-- **Builders**: `minkowski`; `extrude` options `along`, `twist`, `axisAligned`, `miterLimit`;
-  `inset` (Fillet, Spirals).
+- **Blocks**: `children` in a custom block (`define solid { children … }` with shapes passed at
+  the call site), `import`.
+- **Builders**: `extrude` options `twist`, `axisAligned`, `miterLimit`; a boolean union of
+  `minkowski` pieces for non-convex operands (they are merged shells today).
 - **Values**: paths as values (`define p path { … }`, `path.points`), per-vertex colours between
   a polygon's points (a polygon takes one colour), `object` values.
 - **Paths**: `svgpath`, nested / compound paths with holes, `path.color` gradients, 3D path
@@ -104,8 +125,8 @@ Open:
   `{ axis … angle … }` block syntax (1.11.0 – 1.11.2).
 - **Object syntax** for `color`, `size`, `point`, `path`, `polygon`, `mesh` (1.11.0); `object`
   values; partial ranges (`from 5`); range subscripts (`v[0 to 2]`); `if` / `switch` inside
-  expressions; string `lines` / `words` / `characters`; `text` / `font`; `light` / `camera`
-  rendering.
+  expressions; string `lines` / `words` / `characters`; `font` (a chosen face; one face is
+  bundled), `fonts`; `light` / `camera` rendering.
 
 ## Things we have that upstream does not
 

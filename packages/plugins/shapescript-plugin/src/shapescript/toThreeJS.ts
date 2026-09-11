@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import { ConvexGeometry } from "three/examples/jsm/geometries/ConvexGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { loftGeometry, profileOf } from "./builders";
+import { boundaryLoops, loftGeometry, profileOf, ribbonGeometry, sweepRings } from "./builders";
+import { interpolate, layoutText, shapesFromRings, MAX_TEXT_LENGTH, type TextLayout } from "./text";
 import { Brush, Evaluator as CSGEvaluator, ADDITION, SUBTRACTION, INTERSECTION, HOLLOW_SUBTRACTION, HOLLOW_INTERSECTION } from "three-bvh-csg";
 import {
   SceneNode,
   ShapeNode,
+  TextNode,
   CSGNode,
   ForLoopNode,
   IfNode,
@@ -16,6 +18,7 @@ import {
   LoftNode,
   FillNode,
   HullNode,
+  MinkowskiNode,
   DetailNode,
   PathNode,
   PathCommand,
@@ -41,6 +44,7 @@ import {
 import { Evaluator, SymbolTable, Value, RGBA, MaterialValue, FunctionValue, isObjectValue, iterationValues, rgbaOf, valuesEqual } from "./evaluator";
 import { type MeshValue, type PolygonValue, type Point3, geometryFromPolygons, icosphereGeometry } from "./meshValues";
 import { disposeObject3D, disposeScratch } from "./dispose";
+import { minkowskiSum } from "./minkowski";
 
 /** What a conversion reports besides geometry. Stored on the root group's
  *  `userData` so both viewers and the tool result can read it. */
@@ -66,6 +70,8 @@ interface PathPoint {
 }
 
 const PATH_POINT_EPSILON = 1e-9;
+/** The largest magnitude a Float32 position attribute can hold. */
+const MAX_COORDINATE = 3.4e38;
 
 function samePathPoint(a: PathPoint, b: PathPoint): boolean {
   return Math.abs(a.x - b.x) < PATH_POINT_EPSILON && Math.abs(a.y - b.y) < PATH_POINT_EPSILON;
@@ -73,6 +79,26 @@ function samePathPoint(a: PathPoint, b: PathPoint): boolean {
 
 function midPathPoint(a: PathPoint, b: PathPoint): PathPoint {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, curved: false };
+}
+
+/** A path whose last point returns to its first encloses a face. */
+function isClosedPath(points: readonly PathPoint[]): boolean {
+  const first = points[0],
+    last = points[points.length - 1];
+  return points.length > 2 && first !== undefined && last !== undefined && samePathPoint(first, last);
+}
+
+/** A stroke's points in its parent's frame, consecutive duplicates dropped. */
+function linePoints(line: THREE.Line): THREE.Vector3[] {
+  line.updateWorldMatrix(true, false);
+  const position = line.geometry.getAttribute("position");
+  const points: THREE.Vector3[] = [];
+  for (let i = 0; i < position.count; i++) {
+    const point = new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(line.matrixWorld);
+    const previous = points[points.length - 1];
+    if (previous === undefined || previous.distanceToSquared(point) > PATH_POINT_EPSILON ** 2) points.push(point);
+  }
+  return points;
 }
 
 export interface ConversionOptions {
@@ -146,6 +172,8 @@ export const DEFAULT_MAX_DURATION_MS = 30_000;
 
 // `ShapeGeometry`'s own default when no `curveSegments` is passed. Named here
 // because the pre-flight estimate has to predict what the constructor will do.
+/** Segments per glyph curve: `detail` over this, so default text is as smooth as a circle. */
+const TEXT_CURVE_DETAIL_DIVISOR = 8;
 const SHAPE_GEOMETRY_CURVE_SEGMENTS = 12;
 
 // An extruded profile becomes two caps plus the wall ring between them, so it
@@ -275,6 +303,10 @@ export class Converter {
    *  collected here instead of entering the scene: the body of `mesh { }`,
    *  and a function body whose result is what it built. */
   private valueSink: Value[] | null = null;
+  /** Geometries that live on as values (defined shapes, function results,
+   *  `inset` results). Never in the scene themselves — placing one clones it —
+   *  so they are released together once the conversion is over. */
+  private retained: THREE.BufferGeometry[] = [];
 
   constructor(options: ConversionOptions = {}) {
     this.options = options;
@@ -283,7 +315,11 @@ export class Converter {
     // `detail` is readable as a symbol before any `detail` command runs.
     this.symbols.set("detail", this.detailLevel);
     // Shapes as values and shape-building functions are built here.
-    this.evaluator.hooks = { shape: (node) => this.shapeValue(node), call: (fn, args) => this.callShapeFunction(fn, args) };
+    this.evaluator.hooks = {
+      shape: (node) => this.shapeValue(node),
+      call: (fn, args) => this.callShapeFunction(fn, args),
+      retain: (geometry) => this.chargeRetained(geometry),
+    };
     this.evaluator.maxLoopIterations = this.maxLoopIterations;
     // Initialize with identity transform
     this.pushTransform();
@@ -303,6 +339,10 @@ export class Converter {
       // budget would stay allocated, once per rejected render.
       disposeObject3D(group);
       throw error;
+    } finally {
+      // Every value has been placed (as a clone) by now; the originals go.
+      this.retained.forEach((geometry) => geometry.dispose());
+      this.retained = [];
     }
 
     return group;
@@ -399,6 +439,10 @@ export class Converter {
         return this.convertFill(node);
       case "hull":
         return this.convertHull(node);
+      case "minkowski":
+        return this.convertMinkowski(node);
+      case "text":
+        return this.convertText(node);
       case "group":
         return this.convertBlock(node);
       case "detail":
@@ -455,26 +499,39 @@ export class Converter {
 
   /** A `path` handed to a builder: the flat face it encloses, which `profileOf`
    *  reads the perimeter back from. */
-  private convertPathProfile(node: PathNode): THREE.Mesh {
-    const shape = this.buildPath(node);
-    this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
-    this.requireEnclosedArea(shape, "path");
-    const mesh = this.makeMesh(this.placePath(new THREE.ShapeGeometry(shape), node), this.createMaterial({ properties: {} }));
-    this.applyCurrentTransform(mesh);
-    return mesh;
+  private convertPathProfile(node: PathNode): THREE.Mesh | THREE.Line {
+    return this.withPathDetail(() => {
+      const points = this.collectPathPoints(node);
+      const shape = this.shapeFromPathPoints(points);
+      // An open path has no face: it reaches the builder as a stroke, which
+      // `extrude` walls and `extrude … along` follows.
+      if (!isClosedPath(points)) return this.lineFromPath(node, shape);
+      this.chargePathEstimate(shape, SHAPE_GEOMETRY_CURVE_SEGMENTS);
+      this.requireEnclosedArea(shape, "path");
+      const mesh = this.makeMesh(this.placePath(new THREE.ShapeGeometry(shape), node), this.createMaterial({ properties: {} }));
+      this.applyCurrentTransform(mesh);
+      return mesh;
+    });
+  }
+
+  /** A `detail` inside a path applies to that path alone, as inside any
+   *  block: restore the enclosing level once its points are read. */
+  private withPathDetail<T>(build: () => T): T {
+    return this.withShapeOptions({}, build);
   }
 
   /** A `path` in the scene draws as a stroke, as upstream: `fill` makes a
    *  face of it, and a builder consumes it. Open paths are allowed here. */
   private convertPathLine(node: PathNode): THREE.Line {
-    const shape = this.buildPath(node);
-    const points = shape.getPoints(Math.max(1, Math.floor(this.detailLevel / 4)));
-    if (!points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)))
-      throw new Error("`path` needs finite path coordinates — these overflow");
+    return this.withPathDetail(() => this.lineFromPath(node, this.buildPath(node)));
+  }
+
+  private lineFromPath(node: PathNode, shape: THREE.Shape): THREE.Line {
+    const points = this.finitePoints(shape.getPoints(Math.max(1, Math.floor(this.detailLevel / 4))));
     if (points.length < 2) throw new Error("`path` needs at least two points");
     this.chargeEstimate(points.length);
     this.vertexCount += points.length;
-    const geometry = this.placePath(new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point.x, point.y, 0))), node);
+    const geometry = this.placePath(new THREE.BufferGeometry().setFromPoints(points), node);
     const material = this.currentTransform().material;
     const opacity = Math.min(1, Math.max(0, material.alpha * material.opacity));
     const line = new THREE.Line(
@@ -583,7 +640,7 @@ export class Converter {
   private finishMesh(geometry: THREE.BufferGeometry, node: { properties: ShapeProperties }, scaleBySize = true, material?: MaterialState): THREE.Mesh {
     let mesh: THREE.Mesh | undefined;
     try {
-      mesh = this.makeMesh(geometry, this.createMaterial(node, material));
+      mesh = this.makeMesh(geometry, this.createMaterial(node, material, geometry.hasAttribute("color")));
       this.applyExplicitTransforms(mesh, node.properties, scaleBySize);
       this.applyCurrentTransform(mesh);
       return mesh;
@@ -616,7 +673,7 @@ export class Converter {
   }
 
   /** Run `build` with produced values going to `sink` rather than the scene. */
-  private captureValues<T>(sink: Value[], build: () => T): T {
+  private captureValues<T>(sink: Value[] | null, build: () => T): T {
     const previous = this.valueSink;
     this.valueSink = sink;
     try {
@@ -666,9 +723,16 @@ export class Converter {
     if (value.kind === "polygon") {
       return { ...value, points: value.points.map((point) => new THREE.Vector3(...point).applyMatrix4(matrix).toArray() as Point3) };
     }
+    const geometry = value.geometry.clone().applyMatrix4(matrix);
+    try {
+      this.chargeRetained(geometry);
+    } catch (error) {
+      geometry.dispose();
+      throw error;
+    }
     return {
       ...value,
-      geometry: value.geometry.clone().applyMatrix4(matrix),
+      geometry,
       ...(value.polygons ? { polygons: value.polygons.map((polygon) => this.transformedForCapture(polygon) as PolygonValue) } : {}),
     };
   }
@@ -703,6 +767,7 @@ export class Converter {
     const count = geometry.getAttribute("position").count;
     this.chargeEstimate(count);
     this.vertexCount += count;
+    this.retained.push(geometry);
   }
 
   /** Build `nodes` at the origin in a throwaway group, collecting the values
@@ -716,6 +781,7 @@ export class Converter {
     const temporary = new THREE.Group();
     const captured: Value[] = [];
     const charged = this.vertexCount;
+    const retainedBefore = this.retained.length;
     try {
       this.captureValues(captured, () =>
         this.inScope(temporary, () => {
@@ -725,7 +791,7 @@ export class Converter {
         }),
       );
       const meshes = this.meshesIn(temporary);
-      const geometries = meshes.map((mesh) => mesh.geometry.clone().applyMatrix4(mesh.matrixWorld));
+      const geometries = meshes.map((mesh) => coloredClone(mesh).applyMatrix4(mesh.matrixWorld));
       const single = meshes.length === 1 ? meshes[0] : undefined;
       const faces = single?.geometry.userData.polygons as PolygonValue[] | undefined;
       const polygons =
@@ -739,6 +805,10 @@ export class Converter {
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = charged;
+      // The refund covers the scratch meshes only. A value retained meanwhile
+      // — a transformed capture, an `inset` result, a nested shape value —
+      // outlives the scratch and stays charged.
+      this.vertexCount += this.retained.slice(retainedBefore).reduce((sum, geometry) => sum + geometry.getAttribute("position").count, 0);
     }
   }
 
@@ -856,7 +926,9 @@ export class Converter {
     const { params = [], body = [], value, name } = fn.definition;
     return this.evaluator.withArguments(params, args, () => {
       const { captured, geometries } = this.buildScratch(body, (values) => {
-        if (value !== undefined) values.push(this.evaluator.evaluate(value));
+        // A shape the body ends with is placed where the body's transforms
+        // left the frame, as a statement there would be.
+        if (value !== undefined) values.push(this.transformedForCapture(this.evaluator.evaluate(value)));
       });
       for (const geometry of geometries) {
         this.chargeRetained(geometry);
@@ -1042,6 +1114,8 @@ export class Converter {
       ...(state.glow === undefined ? {} : { emissive: state.glow.clone() }),
       flatShading: state.smoothing !== undefined && state.smoothing <= 0,
       wireframe: this.options.wireframe ?? false,
+      // Remembered so a shape kept as a value can carry the colour it was given.
+      userData: { colored: vertexColors || state.color !== undefined },
     });
   }
 
@@ -1086,7 +1160,8 @@ export class Converter {
           if (child.type === "path") {
             throw new Error("A `path` has no volume and cannot be a CSG operand — wrap it in `extrude`, `lathe` or `fill`");
           }
-          const object = this.convertNode(child);
+          // Operands go to the operation, not to a function's result sink.
+          const object = this.captureValues(null, () => this.convertNode(child));
           // `convertNode` returns null for the commands that only change state
           // (`translate`, `color`, `define`, `detail`, …), so nothing may be
           // read off it before this guard.
@@ -1535,25 +1610,88 @@ export class Converter {
 
   private convertExtrude(node: ExtrudeNode): THREE.Mesh {
     return this.withShapeOptions(node.properties, () => {
+      if (node.along) return this.convertExtrudeAlong(node, node.along);
       const { depth, properties } = this.extrudeProperties(node);
       if (!node.path) {
-        return this.buildFromChildren({ children: node.children ?? [], properties }, (meshes) => {
-          const shapes = meshes.map((mesh) => this.planarShape(mesh));
-          if (!shapes.length) throw new Error("Extrude requires a path or planar shape");
+        return this.buildFromChildren({ children: node.children ?? [], properties }, (meshes, lines) => {
+          const shapes = meshes.flatMap((mesh) => this.planarShapes(mesh));
+          if (!shapes.length && !lines.length) throw new Error("Extrude requires a path or planar shape");
           for (const shape of shapes) this.chargePathEstimate(shape, 1, 12);
-          return new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 }).translate(0, 0, -depth / 2);
+          const solids = shapes.length ? [new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 }).translate(0, 0, -depth / 2)] : [];
+          // An open path extrudes to a wall along it, with no caps.
+          const walls = lines.map((line) => ribbonGeometry(linePoints(line), depth));
+          const parts = [...solids, ...walls];
+          for (const part of parts) this.chargeEstimate(part.getAttribute("position").count);
+          const geometry = parts.length === 1 ? parts[0]! : mergeMeshGeometries(parts);
+          if (parts.length > 1) parts.forEach((part) => part.dispose());
+          return geometry;
         });
       }
-      const shape = this.requireEnclosedArea(this.buildPath(node.path), "extrude");
-
-      // Create extruded geometry
-      const curveSegments = Math.max(1, Math.floor(this.detailLevel / 4));
-      this.chargePathEstimate(shape, curveSegments, EXTRUDE_VERTICES_PER_POINT);
-
-      // Centred on the profile plane (±depth / 2), as upstream extrudes.
-      const geometry = this.placePath(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments }).translate(0, 0, -depth / 2), node.path);
-      return this.finishMesh(geometry, { properties });
+      return this.withPathDetail(() => {
+        const path = node.path!;
+        const points = this.collectPathPoints(path);
+        const shape = this.shapeFromPathPoints(points);
+        const curveSegments = Math.max(1, Math.floor(this.detailLevel / 4));
+        this.chargePathEstimate(shape, curveSegments, EXTRUDE_VERTICES_PER_POINT);
+        // An open path extrudes to a wall along it; a closed one to a solid
+        // centred on the profile plane (±depth / 2), as upstream extrudes.
+        const geometry = isClosedPath(points)
+          ? new THREE.ExtrudeGeometry(this.requireEnclosedArea(shape, "extrude"), { depth, bevelEnabled: false, curveSegments }).translate(0, 0, -depth / 2)
+          : ribbonGeometry(this.finitePoints(shape.getPoints(curveSegments)), depth);
+        return this.finishMesh(this.placePath(geometry, path), { properties });
+      });
     });
+  }
+
+  /** Path samples as 3D points, refused when they would not survive the trip
+   *  into a Float32 position attribute. */
+  private finitePoints(points: readonly THREE.Vector2[]): THREE.Vector3[] {
+    const drawable = (value: number) => Number.isFinite(value) && Math.abs(value) <= MAX_COORDINATE;
+    if (!points.every((point) => drawable(point.x) && drawable(point.y))) throw new Error("`path` needs finite path coordinates — these overflow");
+    return points.map((point) => new THREE.Vector3(point.x, point.y, 0));
+  }
+
+  /** `extrude { section … along path }`: every planar child is a section swept
+   *  along the path — its +Z turned to the path's tangent — and the sections
+   *  are joined into one solid, capped at the ends of an open path. `size`
+   *  scales the result as a whole, as on any shape. */
+  private convertExtrudeAlong(node: ExtrudeNode, along: SceneNode): THREE.Mesh {
+    return this.buildFromChildren({ children: node.children ?? [], properties: node.properties }, (meshes) => {
+      const sections = meshes.map((mesh) => this.sectionOf(mesh));
+      if (!sections.length) throw new Error("`extrude … along` needs a planar section to sweep");
+      const { points, closed } = this.sweepPathOf(along);
+      this.chargeEstimate(sections.reduce((sum, section) => sum + section.length * points.length, 0));
+      const parts = sections.map((section) => loftGeometry(sweepRings(section, points, closed), closed));
+      const geometry = parts.length === 1 ? parts[0]! : mergeMeshGeometries(parts);
+      if (parts.length > 1) parts.forEach((part) => part.dispose());
+      return geometry;
+    });
+  }
+
+  /** A planar child's perimeter as a section in the XY plane, wound
+   *  counter-clockwise so the swept walls face outward. */
+  private sectionOf(mesh: THREE.Mesh): THREE.Vector3[] {
+    const ring = profileOf(mesh);
+    if (ring.some((p) => Math.abs(p.z) > 1e-5)) throw new Error("`extrude … along` sections must lie in the XY plane");
+    return THREE.ShapeUtils.isClockWise(ring.map((p) => new THREE.Vector2(p.x, p.y))) ? ring.reverse() : ring;
+  }
+
+  /** The points of the `along` path — a stroke for an open path, a planar
+   *  shape's perimeter for a closed one — built in a scratch group. */
+  private sweepPathOf(along: SceneNode): { points: THREE.Vector3[]; closed: boolean } {
+    const temporary = new THREE.Group();
+    const charged = this.vertexCount;
+    try {
+      const { meshes, lines } = this.buildOperands(temporary, [along]);
+      if (meshes.length + lines.length !== 1) throw new Error("`along` needs exactly one path");
+      const line = lines[0];
+      const points = line ? linePoints(line) : profileOf(meshes[0]!);
+      if (points.length < 2) throw new Error("`along` needs a path with at least two points");
+      return { points, closed: line === undefined };
+    } finally {
+      disposeObject3D(temporary);
+      this.vertexCount = charged;
+    }
   }
 
   private buildPath(pathNode: PathNode): THREE.Shape {
@@ -1583,12 +1721,13 @@ export class Converter {
   private collectPathPoints(pathNode: PathNode): PathPoint[] {
     const frame = new THREE.Matrix4();
     const points: PathPoint[] = [];
+    let corners = false;
 
     const place = (command: PointCommand | CurveCommand) => {
       if (command.z !== undefined && Math.abs(this.evaluateNumber(command.z)) > PATH_POINT_EPSILON) {
         throw new Error("Paths here are planar — a `point` / `curve` may not have a nonzero third coordinate");
       }
-      this.placePathPoint(frame, points, this.evaluateNumber(command.x), this.evaluateNumber(command.y), command.type === "curve");
+      this.placePathPoint(frame, points, this.evaluateNumber(command.x), this.evaluateNumber(command.y), command.type === "curve" && !corners);
     };
     const move = (step: THREE.Matrix4) => {
       frame.multiply(step);
@@ -1603,9 +1742,14 @@ export class Converter {
         case "define":
           this.handleDefine(command);
           break;
-        case "detail":
-          this.handleDetail(command);
+        case "detail": {
+          // `detail 0` draws the curve points as corners, as upstream's
+          // unsubdivided path does; the level itself is clamped as elsewhere.
+          const requested = this.evaluateNumber(command.value);
+          corners = requested < 1;
+          this.handleDetail({ type: "detail", value: { type: "number", value: requested } });
           break;
+        }
         case "point":
         case "curve":
           place(command);
@@ -1700,8 +1844,7 @@ export class Converter {
     const first = points[0];
     if (first === undefined) return shape;
 
-    const last = points[points.length - 1] as PathPoint;
-    const closed = points.length > 2 && samePathPoint(first, last);
+    const closed = isClosedPath(points);
     const ring = closed ? points.slice(0, -1) : points;
     const at = (index: number): PathPoint => ring[(index + ring.length) % ring.length] as PathPoint;
 
@@ -1809,29 +1952,38 @@ export class Converter {
   /** Build `children` into a throwaway group at the block's own origin and hand
    *  back every mesh in it, world matrices already resolved. The group stays
    *  owned by the caller, which disposes it. */
-  private buildOperands(temporary: THREE.Group, children: SceneNode[]): { meshes: THREE.Mesh[]; material: MaterialState } {
+  private buildOperands(temporary: THREE.Group, children: SceneNode[]): { meshes: THREE.Mesh[]; lines: THREE.Line[]; material: MaterialState } {
     let material = this.currentTransform().material;
     this.operandDepth++;
     try {
-      this.inScope(temporary, () => {
-        this.currentTransform().matrix.identity();
-        this.addChildren(temporary, children);
-        // The material the block ends with is the builder's own — upstream a
-        // `material steel` inside `lathe { … }` colours the lathe.
-        material = cloneMaterialState(this.currentTransform().material);
-      });
+      // A value the operands produce (`inset(source r)` inside `minkowski`) is
+      // an operand here, not part of an enclosing function's result.
+      this.captureValues(null, () =>
+        this.inScope(temporary, () => {
+          this.currentTransform().matrix.identity();
+          this.addChildren(temporary, children);
+          // The material the block ends with is the builder's own — upstream a
+          // `material steel` inside `lathe { … }` colours the lathe.
+          material = cloneMaterialState(this.currentTransform().material);
+        }),
+      );
     } finally {
       this.operandDepth--;
     }
     temporary.updateMatrixWorld(true);
     const meshes: THREE.Mesh[] = [];
+    const lines: THREE.Line[] = [];
     temporary.traverse((object) => {
       if ((object as THREE.Mesh).isMesh) meshes.push(object as THREE.Mesh);
+      else if ((object as THREE.Line).isLine) lines.push(object as THREE.Line);
     });
-    return { meshes, material };
+    return { meshes, lines, material };
   }
 
-  private buildFromChildren(node: { children: SceneNode[]; properties: ShapeProperties }, build: (meshes: THREE.Mesh[]) => THREE.BufferGeometry): THREE.Mesh {
+  private buildFromChildren(
+    node: { children: SceneNode[]; properties: ShapeProperties },
+    build: (meshes: THREE.Mesh[], lines: THREE.Line[]) => THREE.BufferGeometry,
+  ): THREE.Mesh {
     const temporary = new THREE.Group();
     // The operand meshes are charged as they are built — the budget has to hold
     // while they exist — but they are disposed below and never enter the scene,
@@ -1844,7 +1996,7 @@ export class Converter {
     try {
       const operands = this.buildOperands(temporary, node.children);
       material = operands.material;
-      geometry = build(operands.meshes);
+      geometry = build(operands.meshes, operands.lines);
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = chargedBeforeOperands;
@@ -1865,10 +2017,77 @@ export class Converter {
     });
   }
 
-  private planarShape(mesh: THREE.Mesh): THREE.Shape {
-    const ring = profileOf(mesh);
-    if (ring.some((p) => Math.abs(p.z) > 1e-5)) throw new Error("Fill/extrude profiles must lie in the XY plane");
-    return new THREE.Shape(ring.map((p) => new THREE.Vector2(p.x, p.y)));
+  /** A flat child's faces as shapes, holes included, so a filled letter
+   *  extrudes with its counter. */
+  private planarShapes(mesh: THREE.Mesh): THREE.Shape[] {
+    const loops = boundaryLoops(mesh);
+    if (loops.some((ring) => ring.some((p) => Math.abs(p.z) > 1e-5))) throw new Error("Fill/extrude profiles must lie in the XY plane");
+    return shapesFromRings(loops.map((ring) => ring.map((p) => new THREE.Vector2(p.x, p.y))));
+  }
+
+  /** `text`: laid out from the origin (see `layoutText`). Inside a builder or
+   *  as a value it is the filled glyphs, which `fill` and `extrude` read back
+   *  as shapes with holes; in the scene it draws as outlines, as upstream
+   *  draws paths. `size` scales it — upstream's line height is one unit. */
+  private convertText(node: TextNode): THREE.Object3D | null {
+    return this.withShapeOptions(node.properties, () => {
+      if (node.font !== undefined) this.warn("`font` is not rendered by this viewer and was skipped");
+      const layout = layoutText(this.textOf(node), {
+        ...(node.wrapWidth === undefined ? {} : { wrapWidth: this.textWrapWidth(node.wrapWidth) }),
+        lineSpacing: node.lineSpacing === undefined ? 0 : this.evaluateNumber(node.lineSpacing),
+        curveSegments: Math.max(1, Math.floor(this.detailLevel / TEXT_CURVE_DETAIL_DIVISOR)),
+      });
+      if (layout.missing.length) this.warn(`The built-in font has no glyph for ${[...new Set(layout.missing)].map((c) => `"${c}"`).join(" ")} — drawn as "?"`);
+      const points = layout.rings.reduce((sum, ring) => sum + ring.length, 0);
+      if (layout.shapes.length === 0) return null;
+      if (this.operandDepth > 0 || this.valueSink !== null) {
+        this.chargeEstimate(points);
+        return this.finishMesh(new THREE.ShapeGeometry(layout.shapes, 1), node, true);
+      }
+      return this.textOutline(node, layout, points);
+    });
+  }
+
+  private textWrapWidth(value: Expression): number {
+    const width = this.evaluateNumber(value);
+    if (!(width > 0)) throw new Error("`wrapwidth` must be a positive number");
+    return width;
+  }
+
+  /** The lines of a `text` block joined, each line's values interpolated. */
+  private textOf(node: TextNode): string {
+    const lines = node.lines.map((line) => {
+      const value = this.evaluator.evaluate(line);
+      return interpolate(Array.isArray(value) ? value : [value], (item) => printable(item as Value));
+    });
+    const text = lines.join("\n");
+    if (text.length > MAX_TEXT_LENGTH) throw new Error(`\`text\` is limited to ${MAX_TEXT_LENGTH} characters`);
+    return text;
+  }
+
+  /** The glyph outlines as one set of line segments — two vertices per ring
+   *  point — in the text's own material (its `color`, `opacity`, `material`),
+   *  falling back to the enclosing one as a mesh would. */
+  private textOutline(node: TextNode, layout: TextLayout, points: number): THREE.LineSegments {
+    this.chargeEstimate(points * 2);
+    const positions = new Float32Array(points * 6);
+    let offset = 0;
+    for (const ring of layout.rings) {
+      ring.forEach((point, i) => {
+        const following = ring[(i + 1) % ring.length]!;
+        positions.set([point.x, point.y, 0, following.x, following.y, 0], offset);
+        offset += 6;
+      });
+    }
+    this.vertexCount += points * 2;
+    const geometry = new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const state = this.materialFor(node.properties, this.currentTransform().material);
+    const opacity = Math.min(1, Math.max(0, state.alpha * state.opacity));
+    const color = state.color?.clone() ?? new THREE.Color(0.8, 0.8, 0.8);
+    const line = new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color, opacity, transparent: opacity < 1 }));
+    this.applyExplicitTransforms(line, node.properties, true);
+    this.applyCurrentTransform(line);
+    return line;
   }
 
   private convertFill(node: FillNode): THREE.Object3D {
@@ -1878,7 +2097,7 @@ export class Converter {
       const pathNode = node.children.length === 1 ? node.children.find((child): child is PathNode => child.type === "path") : undefined;
       if (!pathNode) {
         return this.buildFromChildren(node, (meshes) => {
-          const shapes = meshes.map((mesh) => this.planarShape(mesh));
+          const shapes = meshes.flatMap((mesh) => this.planarShapes(mesh));
           if (!shapes.length) throw new Error("Fill requires a path or planar shape");
           for (const shape of shapes) this.chargePathEstimate(shape, 1, 3);
           return new THREE.ShapeGeometry(shapes, 1);
@@ -1891,6 +2110,40 @@ export class Converter {
       this.requireEnclosedArea(shape, "fill");
       const geometry = this.placePath(new THREE.ShapeGeometry(shape), pathNode);
       return this.finishMesh(geometry, node);
+    });
+  }
+
+  /** `minkowski { a b … }`: the children summed left to right, each solid
+   *  swept over every point of the next. The result keeps the first child's
+   *  colour, as upstream keeps its material. */
+  private convertMinkowski(node: MinkowskiNode): THREE.Object3D {
+    return this.buildFromChildren(node, (meshes) => {
+      if (meshes.length < 2) throw new Error("`minkowski` needs at least two shapes");
+      const [first, ...rest] = meshes;
+      let geometry = first!.geometry.clone().applyMatrix4(first!.matrixWorld);
+      const identity = new THREE.Matrix4();
+      try {
+        for (const mesh of rest) {
+          this.chargeEstimate(geometry.getAttribute("position").count * mesh.geometry.getAttribute("position").count);
+          const sum = minkowskiSum({ geometry, matrix: identity }, { geometry: mesh.geometry, matrix: mesh.matrixWorld });
+          geometry.dispose();
+          geometry = sum;
+        }
+      } catch (error) {
+        geometry.dispose();
+        throw error;
+      }
+      this.chargeEstimate(geometry.getAttribute("position").count);
+      const color = uniformColorOf(first!);
+      if (color)
+        geometry.setAttribute(
+          "color",
+          new THREE.Float32BufferAttribute(
+            new Float32Array(geometry.getAttribute("position").count * 3).map((_, i) => color[i % 3]!),
+            3,
+          ),
+        );
+      return geometry;
     });
   }
 
@@ -1924,12 +2177,14 @@ export class Converter {
     return result;
   }
 
+  /** A `position`: one value is X alone (`position 1` is `1 0 0`, as
+   *  upstream and as `translate` here), the rest are padded with zeros. */
   private evaluateVector3(value: Vector3 | Expression | undefined): Vector3 {
     if (value === undefined) return [0, 0, 0];
     if (Array.isArray(value) && typeof value[0] === "number") {
       return value as Vector3;
     }
-    const result = this.evaluator.evaluateToVector3(value as Expression);
+    const result = this.evaluateTranslateVector(value as Expression);
     if (!result.every(Number.isFinite)) throw new Error("Expected finite vector components");
     return result;
   }
@@ -2015,6 +2270,43 @@ function isShapeValue(value: Value): value is MeshValue | PolygonValue {
  *  (a lathe, a polygon list, a CSG result) combine. The inputs are not
  *  touched (each is cloned first), so the caller disposes the ones it owns;
  *  the result is always a new geometry. */
+/** A mesh's geometry with the colour its material was given baked in as
+ *  vertex colours, so the shape keeps it once it is only a value. A mesh
+ *  drawn in the default colour stays uncoloured and takes the colour in force
+ *  wherever it is placed. */
+function coloredClone(mesh: THREE.Mesh): THREE.BufferGeometry {
+  const geometry = mesh.geometry.clone();
+  const color = uniformColorOf(mesh);
+  if (color && !geometry.hasAttribute("color")) {
+    const count = geometry.getAttribute("position").count;
+    geometry.setAttribute(
+      "color",
+      new THREE.Float32BufferAttribute(
+        new Float32Array(count * 3).map((_, i) => color[i % 3]!),
+        3,
+      ),
+    );
+  }
+  return geometry;
+}
+
+/** The colour a mesh was explicitly given, or the one colour all its vertices
+ *  share; nothing for a mesh whose vertices differ, since a result built from
+ *  new vertices could not carry those. */
+function uniformColorOf(mesh: THREE.Mesh): [number, number, number] | undefined {
+  const material = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial | undefined;
+  const color = mesh.geometry.getAttribute("color");
+  if (color && color.count > 0) {
+    const first: [number, number, number] = [color.getX(0), color.getY(0), color.getZ(0)];
+    for (let i = 1; i < color.count; i++) {
+      if (Math.abs(color.getX(i) - first[0]) > 1e-6 || Math.abs(color.getY(i) - first[1]) > 1e-6 || Math.abs(color.getZ(i) - first[2]) > 1e-6) return undefined;
+    }
+    return first;
+  }
+  if (material?.userData?.colored && material.color) return [material.color.r, material.color.g, material.color.b];
+  return undefined;
+}
+
 function mergeMeshGeometries(parts: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
   const colored = parts.some((part) => part.hasAttribute("color"));
   const prepared = parts.map((part) => {

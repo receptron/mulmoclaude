@@ -7,7 +7,7 @@
 
 import { ref, type ComputedRef, type Ref } from "vue";
 import { errorMessage } from "@mulmoclaude/common";
-import { downloadFilename } from "../helpers";
+import { downloadFilename, staleSince, type StoryRef } from "../helpers";
 import type { MulmoScriptTransport } from "../transport";
 import type { MulmoScriptHostAdapter } from "../hostAdapter";
 
@@ -15,12 +15,17 @@ export interface UseMediaExportOptions {
   api: MulmoScriptTransport;
   adapter: MulmoScriptHostAdapter;
   filePath: ComputedRef<string>;
+  /** Which registered root `filePath` is relative to; `undefined` = the host's default (#3014). */
+  root: ComputedRef<string | undefined>;
   chatSessionId: ComputedRef<string | undefined>;
 }
 
 type MediaKind = "movie" | "pdf";
 
-export function useMediaExport({ api, adapter, filePath, chatSessionId }: UseMediaExportOptions) {
+export function useMediaExport({ api, adapter, filePath, root, chatSessionId }: UseMediaExportOptions) {
+  // The PAIR, not the path: `stories/deck.json` exists in every root (#3014), so a late
+  // resolution must be matched against the root it was asked for as well.
+  const storyRef = (): StoryRef => ({ filePath: filePath.value, root: root.value });
   const movieGenerating = ref(false);
   const movieDownloading = ref(false);
   const moviePath = ref<string | null>(null);
@@ -37,11 +42,11 @@ export function useMediaExport({ api, adapter, filePath, chatSessionId }: UseMed
   // describes the OLD script, so drop it; the new script's own
   // initializeScript / pubsub subscription owns the visible state.
   async function generateMovie(): Promise<void> {
-    const requestedFilePath = filePath.value;
+    const requested = storyRef();
     movieGenerating.value = true;
     movieError.value = null;
-    const response = await api.call("generateMovie", { filePath: requestedFilePath, chatSessionId: chatSessionId.value });
-    if (filePath.value !== requestedFilePath) return;
+    const response = await api.call("generateMovie", { ...requested, chatSessionId: chatSessionId.value });
+    if (staleSince(storyRef(), requested)) return;
     movieGenerating.value = false;
     if (!response.ok) {
       // Surface inline (instead of `alert()` which blocks + has no retry
@@ -53,10 +58,10 @@ export function useMediaExport({ api, adapter, filePath, chatSessionId }: UseMed
   }
 
   async function generatePdf(): Promise<void> {
-    const requestedFilePath = filePath.value;
+    const requested = storyRef();
     pdfGenerating.value = true;
-    const response = await api.call("generatePdf", { filePath: requestedFilePath, chatSessionId: chatSessionId.value });
-    if (filePath.value !== requestedFilePath) return;
+    const response = await api.call("generatePdf", { ...requested, chatSessionId: chatSessionId.value });
+    if (staleSince(storyRef(), requested)) return;
     pdfGenerating.value = false;
     if (!response.ok) {
       alert(response.error);
@@ -66,18 +71,18 @@ export function useMediaExport({ api, adapter, filePath, chatSessionId }: UseMed
   }
 
   async function refreshMoviePath(): Promise<void> {
-    const requestedFilePath = filePath.value;
-    if (!requestedFilePath) return;
-    const response = await api.call("movieStatus", { filePath: requestedFilePath });
-    if (filePath.value !== requestedFilePath) return;
+    const requested = storyRef();
+    if (!requested.filePath) return;
+    const response = await api.call("movieStatus", requested);
+    if (staleSince(storyRef(), requested)) return;
     if (response.ok && response.data.moviePath) moviePath.value = response.data.moviePath;
   }
 
   async function refreshPdfPath(): Promise<void> {
-    const requestedFilePath = filePath.value;
-    if (!requestedFilePath) return;
-    const response = await api.call("pdfStatus", { filePath: requestedFilePath });
-    if (filePath.value !== requestedFilePath) return;
+    const requested = storyRef();
+    if (!requested.filePath) return;
+    const response = await api.call("pdfStatus", requested);
+    if (staleSince(storyRef(), requested)) return;
     if (response.ok && response.data.pdfPath) pdfPath.value = response.data.pdfPath;
   }
 
@@ -89,7 +94,9 @@ export function useMediaExport({ api, adapter, filePath, chatSessionId }: UseMed
     downloading.value = true;
     let objectUrl: string | null = null;
     try {
-      const blob = await fetchMediaBlob(kind === "movie" ? { moviePath: sourcePath } : { pdfPath: sourcePath });
+      // The root travels with the path: an artifact ref is relative to ITS root, and the same
+      // spelling exists in every other one (#3014).
+      const blob = await fetchMediaBlob(kind === "movie" ? { moviePath: sourcePath, root: root.value } : { pdfPath: sourcePath, root: root.value });
       objectUrl = URL.createObjectURL(blob);
       clickDownloadAnchor(objectUrl, downloadFilename(sourcePath, fallbackName));
     } catch (err) {

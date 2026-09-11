@@ -237,7 +237,7 @@ describe("conversion budgets", () => {
   // answer for one shape of model and `maxVertices` for another.
   it("lets the vertex budget, not the object count, bound a grid-shaped model", () => {
     // 150x150 cubes: 22,500 objects, ~540k vertices. Inside every ceiling now.
-    const group = astToThreeJS(parseShapeScript("for x in -75 to 74 {\n  for z in -75 to 74 {\n    cube { position x 0 z size 0.8 }\n  }\n}"));
+    const group = astToThreeJS(parseShapeScript("for x in -75 to 74 {\n for z in -75 to 74 {\n  cube {\n   position x 0 z\n   size 0.8\n  }\n }\n}"));
     let vertices = 0;
     group.traverse((object) => {
       const geometry = (object as { geometry?: { attributes?: { position?: { count: number } } } }).geometry;

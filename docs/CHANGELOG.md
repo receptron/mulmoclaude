@@ -8,6 +8,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Changed
+
+#### `@mulmoclaude/shapescript-plugin@2.5.0` — one statement per line, no `tau`
+
+**Behaviour change** toward upstream. The upstream app reads a property's arguments to the end of
+the line, so `sphere { position 0 1 0 size 2 }` is a `position` with five arguments there and the
+script fails; this parser stopped at the next keyword and accepted it, which let a 15,000-line
+generated model render here and fail in the app. Two statements on one line are now a parse error
+naming the rule (a block may still open on its statement's line and close on its own, and `else`
+follows the closing brace), so the agent corrects the script at authoring time instead of the user
+discovering it upstream. `tau` is removed for the same reason — upstream has no such constant;
+write `2 * pi`. The bundled samples and the tool description follow the rule.
+
+Also fixed: a USDZ export of a model with coloured polygons (`mesh { polygon { color … } }`) came
+out white in Quick Look. Those faces carry vertex colours on a white material, which the exporter
+writes as `displayColor` and USD viewers ignore in favour of the material's `diffuseColor`; the
+export now splits such a mesh into one mesh per colour with that colour on a plain material.
+
+### Added
+
+#### `@mulmoclaude/shapescript-plugin@2.4.0` — `text`
+
+`text "Hello"` draws glyph outlines laid out as the upstream app lays them out: the left margin at
+x = 0, the first baseline at y = 0, one world unit per line, `size` scaling the line height (in
+one or two dimensions), `wrapwidth` and `linespacing` as options, several lines in a block, and
+values interpolated (`text "Bob has " apples " apples"`, `extrude text i`). `fill` and `extrude`
+turn the outlines into faces and solids — with their counters, since the builders now read a flat
+profile's holes rather than refusing them — and a text is a value with `.bounds`, so upstream's
+centring recipe (`translate -t.bounds.width/2 -t.bounds.height/2`) works. The face is a bundled
+Helvetiker (a Helvetica look-alike, licensed for redistribution) scaled to Helvetica's cap height;
+`font` is accepted and skipped with a warning, and a character the face lacks draws as `?` with a
+warning naming it. Text is capped at 2000 characters before the vertex budget applies.
+
 ### Fixed
 
 #### Every bridge connected to port 3001 whether or not the server was on it (#3078, PR #3081)
@@ -69,6 +102,22 @@ Making that banner truthful turned up three async defects around it, all fixed h
 Also sweeps the `@mulmoclaude/core` peer and dev range to `^4.8.0` (PR #3056).
 
 ### Added
+
+#### `@mulmoclaude/shapescript-plugin@2.3.0` — minkowski, inset, extrude along; Fillet and Spirals
+
+The last two upstream examples render, so all nine do. `minkowski { a b }` sums shapes (one hull
+for convex operands, merged per-face hulls for a non-convex one), `inset(mesh distance)` moves a
+mesh value's faces inward (each vertex to where its faces' offset planes meet, exact at corners),
+and together they round edges as upstream's Fillet does. `extrude { section along path }` sweeps
+a section along a path, mitred at corners and capped at the ends of an open path; an open path
+extrudes to a two-sided wall; `detail` reads as a value and `detail 0` inside a path draws its
+curve points as corners; a `detail` inside a path no longer leaks past it. A shape kept as a
+value keeps the one colour it was given (the filleted cone stays blue); a mesh whose vertices
+differ in colour gives an uncoloured `minkowski` result. **Behaviour change** toward
+upstream: `extrude` no longer closes an open path for you — repeat the first point to get a
+solid, otherwise the path extrudes to a wall; and a lone `position` value is X alone
+(`position 1` is `1 0 0`, as `translate 1` already was — it padded to `1 1 1`, which laid the
+Spirals out diagonally and hung Fillet's cylinder off a cube corner).
 
 #### `@mulmoclaude/shapescript-plugin@2.2.0` — shapes as values, meshes from polygons, Dodecahedron
 
@@ -271,7 +320,7 @@ the same way.
 An unmatched brace is now a `PARSE_ERROR` reported at its own line and column, like every other
 diagnostic `presentShapeScript` returns.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.2.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.7.0`, `@mulmoclaude/shapescript-plugin@2.5.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 ---
 

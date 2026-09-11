@@ -79,8 +79,8 @@ arguments with spaces; commas also work here (max(0, j - 1)) but NOT in the upst
 Inside a larger expression parenthesise a bare call: (sqrt 9) + (sqrt 16).
 Custom functions: define hyp(a b) { sqrt(a * a + b * b) } — parameters, optional defines, then the result
 expression. A function may also build shapes: define face(data) { polygon { … } } returns what it built.
-Write ONE statement per line. This parser accepts "define a 1 define b 2" on one line; the upstream app
-rejects it, and "size 2 1 radius 0.5" on one line reads radius as a fourth size component in both.
+Write ONE statement per line: "define a 1 define b 2" on one line is a parse error here, as in the upstream
+app, where "size 2 1 radius 0.5" reads radius as a fourth size component.
 
 Examples:
 for i in 1 to 8 {
@@ -127,7 +127,7 @@ A bare path draws as a LINE (stroke), as upstream; use fill / extrude / lathe / 
 - arc { angle A } inside a path: A half-turns clockwise from +Y, radius size/2 (default 0.5), with optional
   position / orientation / size — e.g. two quarter arcs and two points make a rounded slab.
 - curve X Y is a quadratic Bézier CONTROL point: the outline passes through the point commands on either side, not through it. Two curves in a row get an implicit on-curve midpoint, so eight curves in an octagon draw a circle.
-- A path may carry position / orientation / size of its own (path { position 0 0 2 orientation 0 0.5 0 point … }); that is how a loft section is placed in 3D. Give loft and extrude PATH children, not fill{} meshes — the upstream app rejects a mesh there.
+- A path may carry position / orientation / size of its own (path { position 0 0 2 … } with orientation and points on their own lines); that is how a loft section is placed in 3D. Give loft and extrude PATH children, not fill{} meshes — the upstream app rejects a mesh there.
 - rotate (half-turns) / translate / scale inside a path move the frame for later points:
   path {
       for 0 to 8 {
@@ -165,14 +165,38 @@ A bare path draws as a LINE (stroke), as upstream; use fill / extrude / lathe / 
       cube { position 1 0 0 }
   }
 - stencil preserves the first shape and paints its surface with later shapes' materials.
+- minkowski (the Minkowski sum; with inset it rounds edges, as upstream's Fillet example does):
+  define fillet(source radius) {
+      minkowski {
+          inset(source radius)
+          sphere { size radius * 2 }
+      }
+  }
+  fillet(cone { color red } 0.1)
+- extrude … along (a section swept along a path, capped at the ends of an open path):
+  extrude {
+      circle { size 0.1 }
+      along path { for i in 0 to 20 { curve 0 1 - i / 20 rotate 0.2 } }
+  }
 Loft sections must each have one perimeter and enclose an area; extrude/fill primitive profiles must lie in XY.
+An extrude path is a solid only when it is closed (its last point repeats its first); an open path extrudes
+to a wall, as upstream. inset(mesh distance) moves a mesh value's faces inward (outward when negative).
 A material command inside a builder block (extrude { color red … }) colours the result; size on a builder or
-group scales it. Not supported: extrude along/twist, minkowski, inset, svgpath, text.
-- mesh { polygon { point x y z … } … }: a mesh from explicit faces; polygon { color red point a point b point c }
-  takes 3D points (a tuple works: point v) and a colour per face. Faces may come from a function: mesh { for f in faces { face f } }.
+group scales it. Not supported: extrude twist, svgpath.
+- text "Hello" / text { size 0.5 … } with wrapwidth, linespacing and each "line" on its own line: glyph outlines in the built-in
+  Helvetica-like font, left margin at x 0 and first baseline at y 0, one unit per line (size scales it). Bare text draws
+  outlines; fill text "Hi" makes faces and extrude { size 1 1 0.3 text "Hi" } solids. Values interpolate:
+  text "Bob has " apples " apples", text i. Centre it with its bounds: define t text "Hi" then
+  translate -t.bounds.width/2 -t.bounds.height/2 before fill t. font is accepted and ignored (one face only).
+- mesh { polygon { point x y z … } … }: a mesh from explicit faces; polygon { color red … point a … }
+  (one point per line) takes 3D points (a tuple works: point v) and a colour per face. Faces may come from a function: mesh { for f in faces { face f } }.
 
 ### Additional Expressions:
-- Constants: pi, true, false (tau exists here but NOT in the upstream app; write 2 * pi)
+- Constants: pi, true, false (there is no tau; write 2 * pi)
+- ONE STATEMENT PER LINE, as in the upstream app: sphere { position 0 1 0 size 2 } is refused (upstream reads it as a
+  position with five arguments). Put each property, point and shape on its own line; a block may open on its
+  statement's line and close on its own.
+- A lone position / translate value is X alone (position 1 = 1 0 0); a lone size is uniform; a lone orientation is a roll.
 - Scientific notation and unary plus: 1e-3, +2
 - Ranges as values: define loops 1 to 5 step 2, then for i in loops { … }, for i in loops step 1, and
   "if 3 in loops"; the in operator also tests tuples (2 in (1 2 3)) and strings.
@@ -196,9 +220,8 @@ post { height 3 }
 ### Compatibility:
 This plugin implements the documented modeling subset, not all upstream ShapeScript syntax; units, scoping,
 materials and path semantics follow upstream, so a script written against the upstream docs renders the
-same here. Not supported (each is refused by name): import, text/font, minkowski, inset, svgpath,
-extrude along/twist, object values and paths as values. Textures, cameras and lights are accepted but
-not drawn.
+same here. Not supported (each is refused by name): import, svgpath, extrude twist,
+object values and paths as values. Textures, fonts, cameras and lights are accepted but not drawn.
 
 ### Comments:
 // Single-line comment

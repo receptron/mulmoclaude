@@ -57,7 +57,8 @@ Switch statements for multiple cases
 Calls: C-like max(0 (j - 1)) with NO space before the parenthesis, or bare max 0 (j - 1) / sqrt 9 as upstream.
 Separate arguments with spaces. Commas work here but not in the upstream app.
 Custom functions return a value (define hyp(a b) { sqrt(a * a + b * b) }) or the shapes they build (define face(d) { polygon { … } }).
-One statement per line; the upstream app rejects two statements on one line.
+ONE STATEMENT PER LINE: sphere { position 0 1 0 size 2 } is refused, here and in the upstream app — put each
+property, point and shape on its own line (a block may open on its statement's line).
 
 ### Best Practices:
 1. Use variables for repeated values
@@ -113,13 +114,17 @@ loft {
     circle
 }
 Stencil preserves the first shape's volume and paints the intersecting surface.
-Constants: pi, true, false (avoid tau, upstream lacks it; write 2 * pi). Tuple/string access: values[0], values[-1], vector.x, value.count.
+Constants: pi, true, false (no tau; write 2 * pi). Tuple/string access: values[0], values[-1], vector.x, value.count.
 Ranges are values (define r 1 to 5 step 2; for i in r; if 3 in r). A bare path draws as a line; fill/extrude it for a surface.
 Polygon supports sides (3–256). String literals and join/split/trim are supported. print records output for you.
 Use the tool schema for exact syntax and builder limits. This is a modeling subset of upstream ShapeScript;
-imports, text/fonts, minkowski/inset/svgpath/along and object values are refused by name;
+imports, svgpath and object values are refused by name;
+text "Hello" makes glyph outlines (built-in font; font is ignored) from x 0 on baseline y 0, one unit per line — fill or
+extrude it for faces/solids, a text block with size and one "line" per line, t.bounds.width to centre it;
+minkowski { a b } sums shapes, inset(mesh d) offsets a mesh value's faces (together they round edges),
+extrude { section along path } sweeps a section, and an open extrude path makes a wall (close it for a solid);
 shapes are values (define ico icosphere { detail 0 }; ico.polygons, .bounds, .volume), for/if work as expressions,
-functions may build shapes, and mesh { polygon { point … } } builds a mesh from explicit faces;
+functions may build shapes, and mesh { polygon { … } } with one point per line builds a mesh from explicit faces;
 textures, cameras and lights are accepted but not drawn (the result reports them).
 If presentShapeScript returns an error diagnostic, correct the script and retry; no visualization was created.
 

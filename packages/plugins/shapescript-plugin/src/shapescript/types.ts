@@ -132,6 +132,8 @@ export type SceneNode =
   | LatheNode
   | FillNode
   | HullNode
+  | MinkowskiNode
+  | TextNode
   | GroupNode
   | DetailNode
   | SeedNode
@@ -344,6 +346,8 @@ export interface ExtrudeNode {
   path?: PathNode;
   properties: ShapeProperties;
   children?: SceneNode[];
+  /** `along <path>`: sweep the children (as sections) along this path. */
+  along?: SceneNode;
 }
 
 export interface LoftNode {
@@ -368,6 +372,28 @@ export interface HullNode {
   type: "hull";
   properties: ShapeProperties;
   children: SceneNode[];
+}
+
+/** `minkowski { a b … }`: the Minkowski sum of its children, left to right. */
+export interface MinkowskiNode {
+  type: "minkowski";
+  properties: ShapeProperties;
+  children: SceneNode[];
+}
+
+/** `text "Hello"` / `text { size 0.5 … "Hello" }`: glyph outlines laid out
+ *  from the origin — the left margin at x = 0, the first baseline at y = 0. */
+export interface TextNode {
+  type: "text";
+  /** One expression per line of text; a tuple's values are interpolated. */
+  lines: Expression[];
+  properties: ShapeProperties;
+  /** `wrapwidth`: wrap lines to this width in world units. */
+  wrapWidth?: Expression;
+  /** `linespacing`: extra distance between lines, in world units. */
+  lineSpacing?: Expression;
+  /** `font` inside the block: accepted and skipped with a warning. */
+  font?: Expression;
 }
 
 export interface GroupNode {
@@ -483,6 +509,8 @@ export enum TokenType {
   LATHE = "LATHE",
   FILL = "FILL",
   HULL = "HULL",
+  MINKOWSKI = "MINKOWSKI",
+  TEXT = "TEXT",
   GROUP = "GROUP",
   MESH = "MESH",
   PATH = "PATH",

@@ -8,6 +8,7 @@ import {
   isSameScript,
   resolveSilentAdvanceSeconds,
   shouldAutoRenderBeat,
+  staleSince,
   validateBeatJSON,
   type SafeParseSchema,
 } from "../src/vue/helpers";
@@ -279,5 +280,37 @@ describe("clearReactiveRecords", () => {
     clearReactiveRecords(record);
     assert.deepEqual(record, {});
     assert.doesNotThrow(() => clearReactiveRecords());
+  });
+});
+
+/**
+ * The stale-response guard's identity is the PAIR `(root, filePath)`.
+ *
+ * `stories/deck.json` exists in every registered root (#3014), so a guard that compares paths
+ * alone lets one repository's deck accept another's late response while both are open under the
+ * same name — the class this issue's table calls out, which sending `root` does not close on its
+ * own.
+ */
+describe("staleSince", () => {
+  const DECK = "stories/deck.json";
+
+  it("is not stale for the same path in the same root", () => {
+    assert.equal(staleSince({ filePath: DECK, root: "acme" }, { filePath: DECK, root: "acme" }), false);
+    assert.equal(staleSince({ filePath: DECK }, { filePath: DECK }), false);
+  });
+
+  it("is stale for a different path, as it always was", () => {
+    assert.equal(staleSince({ filePath: "stories/other.json" }, { filePath: DECK }), true);
+  });
+
+  it("is stale for the SAME path in a DIFFERENT root — the case the path alone cannot see", () => {
+    assert.equal(staleSince({ filePath: DECK, root: "acme" }, { filePath: DECK, root: "widgets" }), true);
+    assert.equal(staleSince({ filePath: DECK, root: "widgets" }, { filePath: DECK, root: "acme" }), true);
+  });
+
+  it("reads an absent root as the host's default, not as a third value", () => {
+    assert.equal(staleSince({ filePath: DECK }, { filePath: DECK, root: undefined }), false);
+    assert.equal(staleSince({ filePath: DECK, root: "" }, { filePath: DECK }), false);
+    assert.equal(staleSince({ filePath: DECK }, { filePath: DECK, root: "acme" }), true);
   });
 });
