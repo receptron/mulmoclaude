@@ -211,10 +211,13 @@ describe("a story is addressed by the pair, not the path", () => {
       // backtracks super-linearly on a long brace body (sonarjs/super-linear-regex), and a
       // linter finding inside the guard is the guard nobody keeps.
       const bindings = [
-        // The optional `: <type>` is not cosmetic: `const root: string | undefined = <fold>` is
-        // the very shape this asserts, and without it the annotation alone was enough to hide a
-        // fold (Codex, round 7). A type is anything up to the `=` that is not one.
-        ...source.matchAll(/(?:const|let|var)\s+root\s*(?::[^=;\n]+)?=\s*([^;\n]*)/g),
+        // Everything between the name and the `=` is skipped in ONE character class that cannot
+        // contain an `=` — no optional group around a quantifier, which is what
+        // `security/detect-unsafe-regex` rejects and what backtracks (Codex, round 8). That span
+        // is the optional `: <type>`, and it is not cosmetic: `const root: string | undefined =
+        // <fold>` is the very shape this asserts, and the annotation alone hid a fold until
+        // round 7. `root\b` keeps `rootDir` out.
+        ...source.matchAll(/(?:const|let|var)\s+root\b[^=;\n]*=\s*([^;\n]*)/g),
         ...source.matchAll(/(?:const|let|var)\s+(\{[^}]*\})\s*=\s*([^;\n]*)/g),
       ].filter((binding) => /\broot\b/.test(binding[0]));
       bindings.forEach((binding) => {
