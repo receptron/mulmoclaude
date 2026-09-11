@@ -184,16 +184,24 @@ describe("a story is addressed by the pair, not the path", () => {
     // legitimate parse blinded it to `getOptionalStringQuery(req, "root")` in the same file,
     // which was a live fold in the download routes.
     //
-    // KNOWN LIMITS — enumerated rather than implied, because this guard was tightened three
-    // times in one review loop and a regex has a ceiling. NOT reported:
+    // WHAT IT ASSERTS, exhaustively — and therefore what it does NOT.
     //
-    //   1. a root laundered through a helper — in another file OR in THIS one. A function that
-    //      takes `root` as a PARAMETER and passes it on is not examined either, and neither is a
-    //      root carried inside an intermediate object (`const args = { root: raw }`) and spread
-    //      or read at the call (Codex, round 6);
-    //   2. an op reached by `ops["movieStatusOp"]`, `?.()`, or an alias;
-    //   3. a DESTRUCTURED root — its provenance is not visible here (see below);
-    //   4. a root read and passed in one expression other than a direct request read.
+    // Exactly two shapes are reported:
+    //
+    //   A. a DIRECT declaration-with-initialiser of a name `root`, typed or not, whose
+    //      initialiser does not call `parseSuppliedRoot` / `suppliedRoot`;
+    //   B. an op call handed `req.query.root` / `req.body.root`.
+    //
+    // EVERYTHING ELSE IS NOT REPORTED. That is a closed statement; the earlier drafts of this
+    // comment listed missed spellings instead, and that list could never be finished — rounds 6,
+    // 7 and 9 of one review each added another one (a same-file helper, a typed binding, then
+    // `let root; root = raw;`). A textual rule has infinitely many blind spellings, so naming
+    // them is not a specification, it is a queue.
+    //
+    // Illustrative, NOT exhaustive: a root laundered through a helper (any file), a function
+    // PARAMETER, an intermediate object `{ root: raw }`, `ops["movieStatusOp"]` / `?.()` /
+    // aliases, a destructured root, and a declaration separated from its assignment
+    // (`let root; root = raw;`).
     //
     // The real closure for all four is a branded `ParsedStoryRoot` that only `parseSuppliedRoot`
     // can produce, with the host's op wrappers typed to require it — a package signature change,
