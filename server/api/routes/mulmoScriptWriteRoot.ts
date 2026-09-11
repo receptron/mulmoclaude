@@ -18,11 +18,11 @@ import type { OpFailure } from "@mulmoclaude/mulmoscript-plugin/server";
 /** The three ops primitives this decision needs — injected so the rule is testable alone. */
 export interface StoryWriteGuards {
   /** May this host write to that root at all? `null` = yes. */
-  guardStoryWriteRoot: (root: string | undefined) => OpFailure | null;
+  guardStoryWriteRoot: (root: ParsedStoryRoot) => OpFailure | null;
   /** Does that wire path belong to that root? `null` = yes. */
-  guardStoryWirePath: (filePath: unknown, root?: string) => OpFailure | null;
+  guardStoryWirePath: (filePath: unknown, root?: ParsedStoryRoot) => OpFailure | null;
   /** The artifacts `FileOps` bound to that root, or `null` when it is not registered. */
-  artifactsForRoot: (root: string | undefined) => FileOps | null;
+  artifactsForRoot: (root: ParsedStoryRoot) => FileOps | null;
 }
 
 /**
@@ -35,12 +35,41 @@ export interface StoryWriteGuards {
  * script while believing it named another. Reading `?root=` twice gives an array, which is
  * exactly that shape arriving by accident.
  */
-export type SuppliedRoot = { ok: true; root: string | undefined } | { ok: false; error: string };
+export type SuppliedRoot = { ok: true; root: ParsedStoryRoot } | { ok: false; error: string };
+
+/**
+ * A stories root that HAS been through `parseSuppliedRoot`, or the default root.
+ *
+ * The brand is what makes the rule a type rather than a convention (#3086). A plain string is no
+ * longer assignable where a root is expected, so a request value cannot reach a story op without
+ * passing through the parser — and the parser is the one place that refuses a malformed one.
+ *
+ * That convention had been enforced by a textual sweep, and a review spent five rounds on
+ * spellings it missed (a same-file helper, a typed binding, `let root; root = raw;`, …). A
+ * textual rule has infinitely many blind spellings; a type has none.
+ *
+ * `undefined` is a legitimate value and needs no brand: it means the host's default root, which
+ * is what every pre-root caller meant.
+ */
+export type ParsedStoryRoot = (string & { readonly __parsedStoryRoot: unique symbol }) | undefined;
+
+/**
+ * The ONLY place a `ParsedStoryRoot` is minted — and a type GUARD, not a cast.
+ *
+ * A brand is normally minted with `as`, which this repo forbids and its lint enforces. A
+ * user-defined predicate says the same thing with a condition the compiler can see, and the
+ * condition here is the real one: a named root is a non-empty string that has already been shown
+ * to BE a string by the caller below. Every other file gets the brand only by calling
+ * `parseSuppliedRoot`.
+ */
+const isNamedStoryRoot = (value: string): value is string & ParsedStoryRoot => value.length > 0;
 
 export function parseSuppliedRoot(value: unknown): SuppliedRoot {
   if (value === undefined) return { ok: true, root: undefined };
   if (typeof value !== "string") return { ok: false, error: `mulmoScript root must be a string, got ${Array.isArray(value) ? "array" : typeof value}` };
-  return { ok: true, root: value === "" ? undefined : value };
+  // An empty string is "no root named" — a query param or JSON field serialised from an empty
+  // value — and so is anything the predicate declines, which is the same case by another route.
+  return isNamedStoryRoot(value) ? { ok: true, root: value } : { ok: true, root: undefined };
 }
 
 export type StoryWriteTarget =
@@ -49,7 +78,7 @@ export type StoryWriteTarget =
   /** A guard refused, with the sentence it wrote. */
   | { ok: false; failure: OpFailure }
   /** No `FileOps` exists for that root — the caller answers 400 naming it. */
-  | { ok: false; unregisteredRoot: string | undefined };
+  | { ok: false; unregisteredRoot: ParsedStoryRoot };
 
 /**
  * Decide where a write goes.
@@ -60,7 +89,7 @@ export type StoryWriteTarget =
  * non-empty string. A wrong-typed root never arrives — it was refused with a 400 before this
  * ran, precisely so it could not be mistaken for the first case.
  */
-export function resolveStoryWriteTarget(guards: StoryWriteGuards, filePath: unknown, root: string | undefined): StoryWriteTarget {
+export function resolveStoryWriteTarget(guards: StoryWriteGuards, filePath: unknown, root: ParsedStoryRoot): StoryWriteTarget {
   const rootRefusal = guards.guardStoryWriteRoot(root);
   if (rootRefusal) return { ok: false, failure: rootRefusal };
   // The path is checked AGAINST the root, not on its own: `stories/deck.json` is well-formed in

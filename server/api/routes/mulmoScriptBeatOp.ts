@@ -13,7 +13,7 @@
 import type { Request, Response } from "express";
 import type { OpFailure } from "@mulmoclaude/mulmoscript-plugin/server";
 import { badRequest, sendError } from "../../utils/httpError.js";
-import { parseSuppliedRoot } from "./mulmoScriptWriteRoot.js";
+import { parseSuppliedRoot, type ParsedStoryRoot } from "./mulmoScriptWriteRoot.js";
 
 export interface ErrorResponse {
   error: string;
@@ -48,8 +48,9 @@ export interface BeatOpArgs {
   chatSessionId?: string | undefined;
   /** Which registered stories root `filePath` is relative to (#3014); absent = the default.
    *  Without it every beat op here resolved the DEFAULT root's file of that name, because the
-   *  same `stories/…` spelling exists in each one (#3077). */
-  root?: string | undefined;
+   *  same `stories/…` spelling exists in each one (#3077). BRANDED, so it can only have come
+   *  through `parseSuppliedRoot` — a raw body value no longer type-checks here (#3086). */
+  root?: ParsedStoryRoot;
 }
 
 /** Untrusted request body: `filePath` / `beatIndex` are whatever JSON the
