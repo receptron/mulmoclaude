@@ -265,13 +265,23 @@ export async function checkWorkspaceDrift({
   return results;
 }
 
-function formatLine(result) {
+// One console line per result. Every status the audit can return needs its own
+// branch: `pending-publish` used to fall through to the `✓ … (src == published)`
+// line below, which says the opposite of what happened — the counts DIFFER, the
+// bump just means it is intentional. That line read as fully clean while
+// @mulmobridge/client sat bumped-but-unpublished, and the launcher release it
+// would have broken was caught by a hand-run loop instead (#3099).
+export function formatLine(result) {
   const { packageBaseName, localVersion, publishedVersion, status, fallbackReason } = result;
   const local = localVersion ? `v${localVersion}` : "(no local version)";
   const published = publishedVersion ? `→ published v${publishedVersion}` : "";
   const fallback = fallbackReason ? ` [${fallbackReason}]` : "";
+  const counts = `src has ${result.localCount} value-export lines, published dist has ${result.distCount}`;
   if (status === "drifted") {
-    return `  ⚠ @mulmobridge/${packageBaseName} ${local} ${published}: src has ${result.localCount} value-export lines, published dist has ${result.distCount}${fallback}`;
+    return `  ⚠ @mulmobridge/${packageBaseName} ${local} ${published}: ${counts}${fallback}`;
+  }
+  if (status === "pending-publish") {
+    return `  ⧗ @mulmobridge/${packageBaseName} ${local} ${published}: ${counts} — bumped but NOT published yet${fallback}`;
   }
   if (status === "skipped") {
     return `  · @mulmobridge/${packageBaseName} ${local}: skipped — ${result.reason}`;
