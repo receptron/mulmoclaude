@@ -38,12 +38,17 @@ bump is not left to the next accidental discovery.
   comment corrections from #3106 in `src/notifier/`, and its declared range on
   `@mulmoclaude/common` moves to `^1.3.0`.
 
-Every declared range on the three is swept in the same change — 33 on common, 9 on webhook-runtime,
-9 on core — because a caret range on an internal package does not float a consumer forward on its
-own. The launcher's OWN version is untouched; that field belongs to `/publish-mulmoclaude`.
+Every declared range on the three is swept in the same change, counted per declaration rather than
+per file because a manifest can declare the same package twice: **34 on `@mulmoclaude/common`** (33
+`dependencies` + one plugin's `devDependencies`, across 33 files), **9 on
+`@mulmobridge/webhook-runtime`** (all `dependencies`), and **17 on `@mulmoclaude/core`** (the
+launcher's `dependencies` plus eight plugins' `devDependencies` AND `peerDependencies`, across 9
+files — the same 17 the `4.9.0` release commit swept). A caret range on an internal package does not
+float a consumer forward on its own, so a range left behind pins that consumer to the old line. The launcher's OWN version is untouched; that field belongs to `/publish-mulmoclaude`.
 
 Publish order is bottom-up and not optional here, since each dependent imports something the
 published copy lacks: common → webhook-runtime and client → the bridges.
+
 #### A bridge that crashed said nothing about which bridge it was, and Ctrl-C dropped work in flight (#3084)
 
 Counting all 25 packages under `packages/bridges/`: none had an `unhandledRejection` handler, none
