@@ -139,8 +139,12 @@ Every bridge needs the current server bearer token (#272). Two
 ways to resolve it, in this order:
 
 1. `MULMOCLAUDE_AUTH_TOKEN` environment variable. Set this
-   explicitly when running the bridge on a different host than the
-   server, or when pinning the token across server restarts (#316).
+   explicitly when the bridge cannot read the workspace at all —
+   a different host, a container without it mounted (#316). Not
+   for surviving a server restart: a bridge that can read the pair
+   re-reads it and reconnects on its own (#3078), so pinning buys
+   nothing there and keeps a credential alive past the run that
+   issued it.
 2. `<workspace>/.session-token`. The server writes this at startup,
    `chmod 0600`. Read it as UTF-8, trim whitespace.
 

@@ -1,18 +1,16 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import * as readline from "readline";
-import { createBridgeClient, resolveApiUrl } from "@mulmobridge/client";
+import { createBridgeClient } from "@mulmobridge/client";
 
 const TRANSPORT_ID = "cli";
 const CHAT_ID = "terminal";
 
 async function main(): Promise<void> {
-  // Same resolver `createBridgeClient` uses, so the banner names the server
-  // this bridge actually connects to rather than a guess (#3078).
-  const apiUrl = resolveApiUrl();
   console.log("MulmoClaude CLI bridge");
-  console.log(`Connecting to ${apiUrl}`);
   console.log("Type /help for commands, Ctrl+C to exit.\n");
+  // The address itself is printed by `createBridgeClient` now, for every
+  // bridge rather than this one (#3085).
 
   const client = createBridgeClient({ transportId: TRANSPORT_ID });
 

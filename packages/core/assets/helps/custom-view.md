@@ -64,7 +64,7 @@ would run ahead of it and see no `__MC_VIEW`; there is no reason to write one.)
 window.__MC_VIEW = {
   slug: "annual-plan", // this collection
   token: "<scoped capability token>", // Authorization bearer
-  dataUrl: "http://localhost:3001/api/collections/annual-plan/view-data",
+  dataUrl: "http://127.0.0.1:<port>/api/collections/annual-plan/view-data", // absolute, filled in by the host
   onChange: (cb) => unsubscribe, // live refresh — see "Staying live" below
   searchQuery: "", // live text in the app's own search box — see "One search box"
   onSearchQueryChange: (cb) => unsubscribe, // fires when the user types there

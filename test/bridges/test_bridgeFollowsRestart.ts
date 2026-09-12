@@ -119,8 +119,12 @@ beforeEach(unpublish);
  *  properties are observable (see the fixture). */
 function spawnBridge(args: string[]): ReturnType<typeof spawn> {
   const fixture = fileURLToPath(new URL("./fixtures/minimal-bridge.mjs", import.meta.url));
-  const loader = fileURLToPath(new URL("../../node_modules/tsx/dist/loader.mjs", import.meta.url));
-  return spawn("node", ["--import", `file://${loader}`, fixture, ...args], {
+  // Plain `node`, no tsx loader: the fixture is `.mjs` and the client it imports
+  // resolves to the BUILT package, so the loader only added a compile step — and
+  // its on-disk cache is one more thing a restricted sandbox can deny. A child
+  // that starts in 0.1s instead of waiting on a transform is also a child whose
+  // budget below means what it says.
+  return spawn("node", [fixture, ...args], {
     env: { ...process.env, MULMOCLAUDE_WORKSPACE_PATH: workspace, MULMOCLAUDE_API_URL: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -407,6 +411,77 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
       assert.equal(client.socket, original, "the socket must survive a failure the sidecars do not explain");
     } finally {
       client.close();
+    }
+  });
+});
+
+// `error-recovery.md` tells the operator to read the bridge's `Connecting to …`
+// line and compare it with `.server-port` — that is the whole first step of the
+// "bot does not reply and nothing errors" recipe, and the reason #3085 exists is
+// that a help describing a diagnostic the code does not emit is worse than no
+// help. Nothing else in the suite reads this line, so without these two cases a
+// deleted `console.error` leaves every gate green and the shipped help false.
+//
+// The stream matters as much as the text: the help quotes it as terminal output,
+// and a bridge's stdout is its transcript. Asserting on the child's STDERR is
+// what pins that.
+describe("the bridge prints the address the help tells you to read (#3085)", () => {
+  /** Poll the child's accumulated stderr until `wanted` shows up. `fate` is
+   *  whether the child is still alive — without it a timeout reads the same
+   *  whether the diagnostic is missing or the process never started at all,
+   *  which is the difference between a real finding and a sandbox. */
+  async function waitForLine(read: () => string, wanted: string, budgetMs: number, fate: () => string): Promise<string> {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      if (read().includes(wanted)) return read();
+      await sleep(POLL_MS);
+    }
+    // `throw` rather than `assert.fail`: the latter is `never` to TypeScript but
+    // a plain call to eslint, which then reads the function as falling off its
+    // end (`consistent-return`).
+    throw new Error(`never printed ${JSON.stringify(wanted)} in ${budgetMs}ms. Child: ${fate()}. Its stderr:\n${read()}`);
+  }
+
+  it("names the published address on startup, and again after it follows a restart", async () => {
+    const first = await startGeneration("gen-say-a", "token-say-a");
+    publish(first);
+    const child = spawnBridge([]);
+    const chunks: string[] = [];
+    child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk.toString()));
+    const stderr = (): string => chunks.join("");
+    const ended: { how: string | null } = { how: null };
+    child.on("error", (error: Error) => {
+      ended.how = `failed to start (${error.message})`;
+    });
+    child.on("exit", (code, signal) => {
+      ended.how = `exited code=${String(code)} signal=${String(signal)}`;
+    });
+    const fate = (): string => ended.how ?? "still running";
+    try {
+      const atStartup = await waitForLine(stderr, `Connecting to http://127.0.0.1:${first.port}`, RECONNECT_BUDGET_MS, fate);
+      assert.equal(atStartup.includes("localhost:3001"), false, "the bridge announced a hardcoded address");
+
+      // The restart the help's "compare the LAST one" sentence is about. Both
+      // sidecars go first, the way a clean shutdown leaves them (#3082).
+      await first.stop();
+      unpublish();
+      const second = await startGeneration("gen-say-b", "token-say-b");
+      publish(second);
+      try {
+        const afterRestart = await waitForLine(stderr, `Connecting to http://127.0.0.1:${second.port}`, RECONNECT_BUDGET_MS, fate);
+        assert.ok(
+          afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${second.port}`) > afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${first.port}`),
+          "the last address printed must be where the bridge is now, not where it was",
+        );
+      } finally {
+        await second.stop();
+      }
+    } finally {
+      // Harmless on the happy path, where `first` is already stopped: closing a
+      // closed server still invokes its callback. The point is the failure path,
+      // where an unstopped generation would outlive the case.
+      child.kill("SIGKILL");
+      await first.stop();
     }
   });
 });

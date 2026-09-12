@@ -13,7 +13,8 @@ Generic HTTP-webhook bridge for [MulmoClaude](https://github.com/receptron/mulmo
 ## Quick start
 
 ```bash
-# Start the bridge (with MulmoClaude running on :3001)
+# Start the bridge (MulmoClaude must be running; the bridge finds its port
+# in the workspace, so you do not need to know it)
 npx @mulmobridge/webhook
 
 # In another terminal

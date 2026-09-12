@@ -94,7 +94,8 @@ Paste the log into your [GitHub issue](https://github.com/receptron/mulmoclaude/
 Once your bridge works with the mock, switch to the real server:
 
 ```bash
-# 1. Stop the mock server first (Ctrl+C) — both use port 3001
+# 1. Unset MULMOCLAUDE_AUTH_TOKEN — the mock's token is not the real server's
+#    (stopping the mock is optional; see the note below)
 # 2. Install and start MulmoClaude
 git clone https://github.com/receptron/mulmoclaude.git
 cd mulmoclaude && yarn install && yarn dev
@@ -103,7 +104,16 @@ cd mulmoclaude && yarn install && yarn dev
 npx @mulmobridge/telegram
 ```
 
-> **Important:** Stop the mock server before starting MulmoClaude — both default to `http://localhost:3001`. If the mock is still running, the real server will fail to bind or your bridge will keep talking to the mock. Override with `MULMOCLAUDE_API_URL` if you need both running simultaneously.
+> **Important: unset `MULMOCLAUDE_AUTH_TOKEN` before you switch.** The port is no longer
+> the thing that bites. Both default to `3001`, but MulmoClaude walks forward off a busy
+> default and publishes the port it actually bound to `<workspace>/.server-port`, which is
+> where the bridge reads it — so the two can run side by side and the bridge still finds the
+> real server. What does bite is the token: leave `mock-test-token` exported and the bridge
+> presents the mock's credential to MulmoClaude, which rejects it (`bearer token rejected`),
+> and it will keep retrying with the wrong one. A pinned token is also the one case where a
+> bridge still falls back to `http://localhost:3001` while the real server has not published
+> a port yet — and that address is the mock. Unset it and the bridge reads the workspace for
+> both halves.
 
 ## Supported bridge platforms
 
