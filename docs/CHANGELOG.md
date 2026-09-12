@@ -37,6 +37,11 @@ therefore needs both `MULMOCLAUDE_API_URL` and `MULMOCLAUDE_AUTH_TOKEN`.
 It opens by saying what NOT to advise: "restart the bridge" after a server restart has been
 wrong since #3078.
 
+The version bump is not ceremony. `@mulmoclaude/core@2.0.1` exists because 2.0.0 shipped
+without 32 lines of this same file, and the note on it puts the reason better than a rule
+would: a section that never reaches npm is a section the agent never has. 4.8.0 is what npm
+serves today, so these edits reach nobody until core is published — which this PR does not do.
+
 ### Fixed
 
 #### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)

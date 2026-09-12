@@ -47,7 +47,7 @@ fails」）。つまり古い記述は、エージェントが**古い助言を�
 
 `assets/helps/*` は `files: ["dist", "assets"]` で npm に載るので、**`@mulmoclaude/core` の
 版上げが要る**（CLAUDE.md）。4.8.0 → 4.9.0。`check:launcher-sync` は「宣言レンジの下限 =
-workspace の version」を要求するので、**18 箇所のレンジを同じ PR で sweep** する。
+workspace の version」を要求するので、**宣言レンジを同じ PR で sweep** する（**9 マニフェスト / 17 フィールド** — `dependencies` / `peerDependencies` / `devDependencies` に分かれて入っているので、マニフェスト数とフィールド数は一致しない）。
 
 publish はこの PR では行わない。
 
