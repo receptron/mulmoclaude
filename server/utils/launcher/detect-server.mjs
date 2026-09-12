@@ -20,6 +20,15 @@ export const HEALTH_PATH = "/api/health";
 // A loopback request that hasn't answered in this long is not going to.
 const PROBE_TIMEOUT_MS = 2000;
 
+// The TOTAL budget for one probe, which the above is not: Node's `timeout`
+// option is an INACTIVITY timeout, so a response that dribbles a byte faster
+// than `PROBE_TIMEOUT_MS` keeps the socket busy, never emits `end`, and leaves
+// the probe pending forever. Harmless while only the icon launcher asked — it
+// had already drawn its page — but `refuseSecondInstance` now asks on the
+// startup path of every launch, where a pending probe is a `yarn dev` that
+// hangs with nothing printed (CodeRabbit, #3079).
+const PROBE_DEADLINE_MS = 5000;
+
 export const SERVER_PRESENCE = {
   mulmoclaude: "mulmoclaude",
   foreign: "foreign",
@@ -60,17 +69,25 @@ function looksLikeHealthBody(body) {
  */
 export function detectRunningServer(port, { get = httpGet } = {}) {
   return new Promise((resolve) => {
-    const request = get({ host: "127.0.0.1", port, path: HEALTH_PATH, timeout: PROBE_TIMEOUT_MS }, (res) => {
+    // One holder so `settle` can be written before the request and the timer it
+    // tears down, both of which it needs and neither of which exists yet.
+    // Repeat calls are harmless: `resolve` past the first is ignored, and
+    // `destroy()` itself re-enters here through the request's `error`.
+    const probe = { request: null, deadline: null };
+    const settle = (outcome) => {
+      clearTimeout(probe.deadline);
+      probe.request?.destroy();
+      resolve(classifyHealthProbe(outcome));
+    };
+    probe.deadline = setTimeout(() => settle({ errorCode: "ETIMEDOUT" }), PROBE_DEADLINE_MS);
+    probe.request = get({ host: "127.0.0.1", port, path: HEALTH_PATH, timeout: PROBE_TIMEOUT_MS }, (res) => {
       res.setEncoding("utf8");
       const chunks = [];
       res.on("data", (chunk) => chunks.push(chunk));
-      res.on("end", () => resolve(classifyHealthProbe({ status: res.statusCode, body: chunks.join("") })));
+      res.on("end", () => settle({ status: res.statusCode, body: chunks.join("") }));
     });
-    request.on("error", (error) => resolve(classifyHealthProbe({ errorCode: error.code ?? "UNKNOWN" })));
-    request.on("timeout", () => {
-      request.destroy();
-      resolve(classifyHealthProbe({ errorCode: "ETIMEDOUT" }));
-    });
+    probe.request.on("error", (error) => settle({ errorCode: error.code ?? "UNKNOWN" }));
+    probe.request.on("timeout", () => settle({ errorCode: "ETIMEDOUT" }));
   });
 }
 
