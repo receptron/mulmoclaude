@@ -68,7 +68,13 @@ function stemOf(filePath: string): string {
   return base.replace(/\.shape$/i, "");
 }
 
-async function resolveSource(context: ShapeScriptDispatchContext, args: Record<string, unknown>): Promise<{ script: string; title: string | undefined }> {
+/** The source one tool call names — inline `script`, or `path` to a saved `.shape`
+ *  — plus the title the call gave it or the file's stem. Shared by the export
+ *  and publish tools so both accept exactly the same paths. */
+export async function resolveShapeSource(
+  context: ShapeScriptDispatchContext,
+  args: Record<string, unknown>,
+): Promise<{ script: string; title: string | undefined }> {
   const script = optionalString(args.script);
   const filePath = optionalString(args.path);
   const title = optionalString(args.title);
@@ -87,7 +93,7 @@ async function resolveSource(context: ShapeScriptDispatchContext, args: Record<s
  * model, exactly as it does for `renderShapeScript`.
  */
 export async function executeExportShapeScriptUsdz(context: ShapeScriptDispatchContext, args: Record<string, unknown>): Promise<ExportUsdzResult> {
-  const { script, title } = await resolveSource(context, args);
+  const { script, title } = await resolveShapeSource(context, args);
   const bytes = await shapeScriptToUsdz(script);
   const { relPath, filePath } = usdzArtifactPath(title);
   await context.files.artifacts.write(relPath, bytes);

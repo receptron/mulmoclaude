@@ -24,3 +24,4 @@ export {
   savedMessage,
 } from "./tool";
 export type { RenderToolDeps, RenderToolResult } from "./tool";
+export { renderShapeThumbnail } from "./thumbnail";

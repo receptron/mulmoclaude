@@ -76,6 +76,9 @@ const requireHandles = (): RemoteHostSessionHandles => {
 };
 
 export const currentUid = (): string | null => handles?.auth.currentUser?.uid ?? null;
+// The Google display name, as the gallery shows an author. Empty when the
+// account has none; null when there is no session at all.
+export const currentDisplayName = (): string | null => (handles?.auth.currentUser ? (handles.auth.currentUser.displayName ?? "") : null);
 export const currentFirestore = (): Firestore => requireHandles().firestore;
 export const currentStorage = (): FirebaseStorage => requireHandles().storage;
 

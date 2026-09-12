@@ -20,6 +20,7 @@ export { isPresentableShapePath, isShapeArtifactPath, shapeArtifactPath, usdzArt
 // capability — so it lives on `.` rather than a server-only entry.
 export { sceneToUsdz, shapeScriptToUsdz, USDZ_MIME_TYPE, USDZ_EXTENSION } from "../export/usdz";
 export {
+  resolveShapeSource,
   executeExportShapeScriptUsdz,
   EXPORT_USDZ_TOOL_NAME,
   EXPORT_USDZ_DESCRIPTION,
@@ -28,6 +29,21 @@ export {
   EXPORT_USDZ_TOOL_TIMEOUT_MS,
 } from "../export/tool";
 export type { ExportUsdzResult } from "../export/tool";
+export {
+  executePublishShapeScript,
+  shapePostFrom,
+  shapePostUrl,
+  normalizeKeywords as normalizeShapeKeywords,
+  PUBLISH_TOOL_NAME,
+  PUBLISH_DESCRIPTION,
+  PUBLISH_PROMPT,
+  PUBLISH_SCHEMA,
+  SHAPE_GALLERY_URL,
+  SHAPE_POST_KEYS,
+  SHAPE_POST_LIMITS,
+  NOT_CONNECTED_MESSAGE,
+} from "./publish";
+export type { PublishShapeScriptContext, PublishShapeResult, ShapeGalleryWriter, ShapePostDoc } from "./publish";
 export { samples } from "./samples";
 
 // Re-export ShapeScript utilities

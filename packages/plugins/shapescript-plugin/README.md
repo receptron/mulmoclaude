@@ -58,6 +58,27 @@ The file lands at `artifacts/shapes/<slug>-<epoch-ms>-<token>.usdz`. The View's 
 button builds the same archive in the browser with `shapeScriptToUsdz` and saves it locally.
 USDZ units are metres, so `size 1` is one metre in AR.
 
+## Publishing to the gallery
+
+`publishShapeScript` posts a model to the public gallery on mulmoserver (server.mulmocast.com/shapes)
+and returns its URL. The tool's contract — schema, description, the document a post is
+(`SHAPE_POST_KEYS`, which mulmoserver's rules pin with `hasOnly`), the keyword normalisation — is the
+package's; Firebase is not. A host supplies a `ShapeGalleryWriter` over its own signed-in session
+(the remote-host session, which is the user's account on mulmoserver's Firebase) and, optionally,
+`renderShapeThumbnail` from `./render` for the card picture:
+
+```ts
+import { executePublishShapeScript, PUBLISH_TOOL_NAME, PUBLISH_DESCRIPTION, PUBLISH_SCHEMA, PUBLISH_PROMPT } from "@mulmoclaude/shapescript-plugin";
+import { renderShapeThumbnail } from "@mulmoclaude/shapescript-plugin/render";
+
+// gallery: { uid, authorName, createPost(id, doc), uploadThumbnail?(id, png) } — or null when not signed in
+const { message, url } = await executePublishShapeScript({ files: shapeFiles, gallery, renderThumbnail: renderShapeThumbnail }, args);
+```
+
+`createPost` must add `createdAt` / `updatedAt` as `serverTimestamp()`; the rules refuse a client
+clock. With `gallery: null` the tool throws `NOT_CONNECTED_MESSAGE`, which tells the user to connect
+Remote Host.
+
 ## ShapeScript language
 
 - **Primitives**: `cube`, `sphere`, `icosphere`, `cylinder`, `cone`, `torus`, `circle`, `square`,
