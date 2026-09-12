@@ -25,7 +25,7 @@ The bridge reads the bearer token from `<workspace>/.session-token` (`$MULMOCLAU
 
 | Variable | Description | Default |
 |---|---|---|
-| `MULMOCLAUDE_API_URL` | Server URL | auto (`.server-port`, else `http://localhost:3001`) |
+| `MULMOCLAUDE_API_URL` | Server URL | auto (`.server-port`; waits if nothing is published) |
 | `MULMOCLAUDE_AUTH_TOKEN` | Bearer token override | reads from file |
 | `CLI_BRIDGE_DEFAULT_ROLE` | Role id for new bridge sessions (see below). | — |
 | `BRIDGE_DEFAULT_ROLE` | Shared fallback across every bridge. | — |

@@ -28,7 +28,7 @@ yarn telegram
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | Yes | BotFather token | - |
 | `TELEGRAM_ALLOWED_CHAT_IDS` | Yes | Comma-separated integer chat IDs | empty (deny all) |
-| `MULMOCLAUDE_API_URL` | No | Server URL | auto (`.server-port`, else `http://localhost:3001`) |
+| `MULMOCLAUDE_API_URL` | No | Server URL | auto (`.server-port`; waits if nothing is published) |
 | `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token override | reads from file |
 | `TELEGRAM_POLL_TIMEOUT_SEC` | No | Long-poll timeout | `25` |
 

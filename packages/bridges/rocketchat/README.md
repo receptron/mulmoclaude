@@ -48,7 +48,7 @@ DM the bot user from another Rocket.Chat account and you'll get a reply.
 | `ROCKETCHAT_ALLOWED_USERS`     | no       | (all)   | CSV of usernames (without `@`) allowed to converse — empty = everyone |
 | `ROCKETCHAT_POLL_INTERVAL_SEC` | no       | `5`     | Poll interval in seconds (min 2) |
 | `MULMOCLAUDE_AUTH_TOKEN`       | no       | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`          | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`          | no       | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

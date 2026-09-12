@@ -23,7 +23,7 @@ how they fit into the five layers), see
 |---|---|
 | Protocol | [socket.io](https://socket.io) 4.x |
 | Path | `/ws/chat` |
-| Host | `http://127.0.0.1:<port>`, where `<port>` is the number in `<workspace>/.server-port` (server binds `127.0.0.1` only). `http://localhost:3001` only as a last resort — see [Finding the server](#finding-the-server) |
+| Host | `http://127.0.0.1:<port>`, where `<port>` is the number in `<workspace>/.server-port` (server binds `127.0.0.1` only). No default: with nothing published, WAIT — see [Finding the server](#finding-the-server) |
 | Transport | `websocket` (long-polling skipped — loopback always upgrades) |
 
 The server is written with `socket.io` 4.8.x. Clients **must** be
@@ -49,7 +49,13 @@ Resolve in this order:
 2. `<workspace>/.server-port` → `http://127.0.0.1:<port>`. Accept
    decimal digits only and range-check `1..65535`; anything else
    means "nothing published", not a port.
-3. `http://localhost:3001`, as a last resort only.
+
+**With neither, wait — do not fall back to `http://localhost:3001`.**
+Presenting a bearer token at an address the workspace never named is
+the thing to avoid, and the window is not narrow: the server writes
+`.session-token` before it binds its port, with sandbox setup (a
+Docker image build on a cold start) in between, so "token readable,
+port absent" can last minutes (#3078).
 
 Address `127.0.0.1`, not `localhost`: the server binds the IPv4
 loopback explicitly, while `localhost` resolves to `::1` first on a
@@ -269,7 +275,10 @@ const published = (() => {
     return null;
   }
 })();
-const apiUrl = process.env.MULMOCLAUDE_API_URL || published || "http://localhost:3001";
+// No default: an address the workspace never named is not a place to present a
+// bearer token. With nothing published, wait and re-read (see above).
+const apiUrl = process.env.MULMOCLAUDE_API_URL || published;
+if (!apiUrl) throw new Error("no server published yet — retry rather than guessing a port");
 
 const socket = io(apiUrl, {
   path: "/ws/chat",

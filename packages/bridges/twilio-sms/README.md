@@ -49,7 +49,7 @@ Text the Twilio number — you'll get a reply.
 | `TWILIO_ALLOW_UNVERIFIED`| no          | —       | Set to `1` to skip signature verification (local testing only). Prints a loud warning and leaves `/sms` wide open. Do **not** set in production. |
 | `TWILIO_ALLOWED_NUMBERS` | no          | (all)   | CSV of sender E.164 numbers allowed (empty = accept every number) |
 | `MULMOCLAUDE_AUTH_TOKEN` | no          | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`    | no          | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`    | no          | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

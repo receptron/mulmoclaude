@@ -49,7 +49,7 @@ Send a DM (`visibility: direct`) to the bot account from another account — you
 | `MASTODON_ALLOWED_ACCTS`   | no       | (all)   | CSV of `acct` strings allowed to converse — e.g. `alice@mastodon.social,bob@mstdn.jp`. Empty = accept everyone |
 | `MASTODON_DM_ONLY`         | no       | `true`  | `true` only processes `direct`-visibility statuses; `false` also handles public / unlisted mentions |
 | `MULMOCLAUDE_AUTH_TOKEN`   | no       | auto    | Override for the MulmoClaude bearer token (auto-read from `<workspace>/.session-token` otherwise) |
-| `MULMOCLAUDE_API_URL`      | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`      | no       | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

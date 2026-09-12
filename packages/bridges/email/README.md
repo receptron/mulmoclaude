@@ -49,7 +49,7 @@ Send an email to the bot address — you'll get a reply threaded under your orig
 | `EMAIL_ALLOWED_SENDERS`    | no       | (all)   | CSV of allowed sender addresses (case-insensitive) |
 | `EMAIL_POLL_INTERVAL_SEC`  | no       | `30`    | Poll interval in seconds (min 10) |
 | `MULMOCLAUDE_AUTH_TOKEN`   | no       | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`      | no       | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL`      | no       | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 

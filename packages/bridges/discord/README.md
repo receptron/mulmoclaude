@@ -53,7 +53,7 @@ npx @mulmobridge/discord
 |---|---|---|
 | `DISCORD_BOT_TOKEN` | Yes | Bot token from Developer Portal |
 | `DISCORD_ALLOWED_CHANNELS` | No | CSV of channel IDs to restrict (empty = all) |
-| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`, else `http://localhost:3001`) |
+| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`; waits if nothing is published) |
 | `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token (auto-read from workspace) |
 | `DISCORD_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a discord session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
 | `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `DISCORD_BRIDGE_DEFAULT_ROLE` wins when both are set. |

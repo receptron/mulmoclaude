@@ -60,7 +60,19 @@ instead`). Whatever it ends up binding, it publishes to `<workspace>/.server-por
 1. `opts.apiUrl` — an explicit value always wins
 2. `$MULMOCLAUDE_API_URL`
 3. `http://127.0.0.1:<port>` from `<workspace>/.server-port`
-4. `http://localhost:3001`
+
+**There is no fourth step, on purpose.** With none of those, the client does not
+fall back to `http://localhost:3001` — it waits for the server to publish a port
+and joins it then. The default would be a destination for a bearer token the
+workspace never pointed at that address, and the window where the token is
+readable and the port is not can be minutes wide: the server writes
+`.session-token` before it binds, with sandbox setup (a Docker image build on a
+cold start) in between (#3078).
+
+`resolveApiUrl()` still returns `http://localhost:3001` as its last step, and
+`DEFAULT_API_URL` is still exported — they are for naming a default, not for
+connecting to one. `resolvePublishedApiUrl()` is the same order WITHOUT that
+step, and is what the client uses.
 
 The workspace itself is `$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when
 that is unset — the same rule the server applies, and the same root the bearer
