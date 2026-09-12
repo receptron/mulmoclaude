@@ -24,6 +24,32 @@ now. Sections keep their written order when open and closed ones mix.
 
 Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
+#### A bridge no longer has to be restarted every time the server is (#3078)
+
+`@mulmobridge/client` resolved the token and the port once, at construction, and a socket's URL
+is fixed when the socket is built. So a server restart left every bridge pinned to the
+generation it started against: rejected with `invalid token` if the port happened not to
+change, and addressing a port nobody was on if it did. The client printed "re-run the bridge"
+and stopped, which is where "I restart the server and then restart every bridge by hand" came
+from.
+
+The pair is now re-read after every failed connection, and the socket is rebuilt when the
+server comes back as a different generation. Handlers registered through `onPush`,
+`onTextChunk`, `onConnect` and `onDisconnect` are re-attached to the replacement, and `.socket`
+became a getter for the one in use now.
+
+An auth error is not a sufficient trigger, and that is why this needs a supervisor rather than
+a token refresh: `invalid token` only arrives when the bridge still REACHES the server. When
+the port moved, nothing answers, so the only evidence is a refused connection.
+
+Rebuilding happens only when the pair actually moved. A server that is simply down produces an
+unbroken stream of refusals, and tearing the socket down for each one would replace socket.io's
+reconnection with a worse copy of it. Mid-restart both sidecars are briefly absent; that is the
+absence of a generation rather than a new one, so it means "keep waiting" — the process must not
+exit there, which is a startup-only path.
+
+---
+
 ## [1.16.0] - 2026-09-12
 
 **3D models became a first-class canvas view, and a MulmoScript deck can now live in a registered stories root instead of only the workspace.**

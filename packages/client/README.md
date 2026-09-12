@@ -60,7 +60,25 @@ instead`). Whatever it ends up binding, it publishes to `<workspace>/.server-por
 1. `opts.apiUrl` — an explicit value always wins
 2. `$MULMOCLAUDE_API_URL`
 3. `http://127.0.0.1:<port>` from `<workspace>/.server-port`
-4. `http://localhost:3001`
+
+The fourth step — `http://localhost:3001` — depends on **who supplied the
+token**, and that is a security boundary rather than a quirk:
+
+- **Token from the workspace** (`.session-token`): no fallback. The workspace
+  owns both halves, so a token without a port is HALF a generation — the server
+  is mid-startup and has not bound yet. The client waits and joins when the port
+  appears. The window is not narrow: the server writes `.session-token` before
+  it binds, with sandbox setup (a Docker image build on a cold start) in
+  between, so it can last minutes (#3078).
+- **Token pinned by you** (`MULMOCLAUDE_AUTH_TOKEN`): the default still applies.
+  You supplied the credential and are pointing the bridge somewhere deliberately
+  — a container without the workspace mounted, say — so there is no freshly
+  minted secret to strand.
+
+`resolveApiUrl()` still returns `http://localhost:3001` as its last step, and
+`DEFAULT_API_URL` is still exported — they are for naming a default, not for
+connecting to one. `resolvePublishedApiUrl()` is the same order WITHOUT that
+step, and is what the client uses.
 
 The workspace itself is `$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when
 that is unset — the same rule the server applies, and the same root the bearer
@@ -78,8 +96,17 @@ variable, or run the bridge from the directory holding the `.env`.
 | `readBridgeToken()` / `tokenFilePath()` | at call time |
 | `TOKEN_FILE_PATH` | at import time — a snapshot, kept for compatibility |
 
-The port is read once, when the client is created. A server that restarts onto a
-*different* port after that still needs the bridge restarted.
+### Following a restart
+
+The pair is re-read whenever the connection fails. If the server comes back as a
+different generation — a new token, a new port, or both — the client rebuilds its
+socket against it and your handlers are re-attached; nothing needs restarting
+(#3078). If the pair is unchanged, the socket is left alone so socket.io's own
+reconnection handles an ordinary outage.
+
+One case is outside this: a server-initiated disconnect (`io server disconnect`)
+is the one reason socket.io does not retry, so no connection failure follows it.
+The chat-service never issues one, so there is nothing to recover from today.
 
 ## Ecosystem
 
