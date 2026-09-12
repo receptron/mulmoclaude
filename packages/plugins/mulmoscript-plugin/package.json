@@ -48,7 +48,7 @@
   "peerDependencies": {
     "@mulmocast/beat-editor": "^1.1.1",
     "@mulmocast/types": "^2.9.0",
-    "@mulmoclaude/core": "^4.8.0",
+    "@mulmoclaude/core": "^4.9.0",
     "graphai": "^2.0.18",
     "gui-chat-protocol": "^2.0.0",
     "mulmocast": "^2.9.0",
@@ -56,7 +56,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@mulmoclaude/core": "^4.8.0",
+    "@mulmoclaude/core": "^4.9.0",
     "@tailwindcss/vite": "^4.3.2",
     "@types/node": "^26.4.1",
     "@typescript-eslint/eslint-plugin": "^8.70.0",

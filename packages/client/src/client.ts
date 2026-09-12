@@ -179,6 +179,12 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   };
 
   const open = (credentials: Credentials): Socket => {
+    // Say where we are going, every time, from the SHARED client — so the
+    // answer exists for all 25 bridges and not just the one that happened to
+    // print a banner. `error-recovery.md` leans on this line to separate "an
+    // old build hardcoding 3001" from "the address is right": a diagnostic the
+    // help describes has to be one the code actually emits (#3085).
+    console.error(`Connecting to ${credentials.apiUrl}`);
     const socket = io(credentials.apiUrl, {
       path: CHAT_SOCKET_PATH,
       auth: buildAuth(opts.transportId, credentials.token, options),

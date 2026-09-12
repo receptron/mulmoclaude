@@ -7,7 +7,7 @@ This is useful when you want to reach your MulmoClaude away from your computer �
 ## How It Works
 
 - You create a **bot** with Telegram's BotFather; it gives you a token.
-- You run a **bridge process** (`yarn telegram`) on the same machine as the MulmoClaude server. The bridge uses your bot token to receive messages from Telegram, forwards them to MulmoClaude over `localhost:3001`, and sends the replies back to the Telegram user.
+- You run a **bridge process** (`yarn telegram`) on the same machine as the MulmoClaude server. The bridge uses your bot token to receive messages from Telegram, forwards them to MulmoClaude over the loopback port the server actually bound, and sends the replies back to the Telegram user. It finds that port itself, and follows it when the server restarts.
 - A short **allowlist** of Telegram chat IDs controls who can talk to the bot. Everyone else gets `"Access denied"`.
 
 Your computer has to be on and connected to the internet for the bot to respond. Close the laptop → the bot goes silent.
@@ -41,7 +41,7 @@ In terminal A, start MulmoClaude:
 yarn dev
 ```
 
-Wait until you see `[server] listening port=3001`.
+Wait until you see `[server] listening port=…`. The number is whatever the server bound: it honours `PORT`, and an implicit default that is already busy walks forward. You do not need to note it — the bridge reads it from the workspace.
 
 In terminal B, start the bridge. Leave the allowlist **empty on purpose** for the first run — you will need to discover your own chat ID before you can add it.
 
@@ -56,8 +56,14 @@ Expected output:
 ```
 MulmoClaude Telegram bridge
 Allowlist: (empty — all chats will be denied)
+Connecting to http://127.0.0.1:<port>
 Connected (<socket id>).
 ```
+
+That third line is the bridge telling you which server it found. If it ever says
+`http://localhost:3001` while `.server-port` says something else, that bridge is
+an old build — see "a messaging bridge's bot does not reply" in the error
+recovery help.
 
 ## Step 3 — Find Your Chat ID and Allowlist It
 
@@ -114,7 +120,7 @@ Any other text is treated as a message to the assistant.
 
 ## Troubleshooting
 
-**`Connect error: bearer token rejected`** — MulmoClaude was restarted, so its bearer token changed. Restart `yarn telegram` to pick up the new one. To avoid this, pin `MULMOCLAUDE_AUTH_TOKEN` to the same value on both sides (see `docs/developer.md` §Auth).
+**`Connect error: bearer token rejected`** — MulmoClaude restarted and its bearer token changed. **Do not restart the bridge**: it re-reads the token and the port after a failed connection and reconnects on its own, usually within a second or two. If it is still saying this after that, the server has not finished starting (it writes the token before it binds its port, and a cold start builds the sandbox image in between) — wait for `[server] listening port=…`. Pinning `MULMOCLAUDE_AUTH_TOKEN` on both sides is for a bridge that cannot read the workspace at all, not for this.
 
 **`TELEGRAM_ALLOWED_CHAT_IDS: "foo" is not an integer chat id`** — typo in the allowlist. Chat IDs are plain integers only — no spaces, quotes, or `#` prefix. Negative integers (for group chats) are allowed.
 
@@ -129,7 +135,7 @@ Any other text is treated as a message to the assistant.
 - The bot token is a password. If it leaks, regenerate it via BotFather's `/revoke`.
 - The allowlist is the only thing standing between "my friends" and "every Telegram user on Earth". Keep it current — remove chat IDs when you no longer want that person to have access, and restart the bridge.
 - The bridge logs chat IDs, usernames, and message lengths, but **not** message contents or the bot token. If you need a full audit trail, record it separately.
-- The MulmoClaude bearer token never leaves your machine. The bridge only talks to `localhost:3001`; your friends talk to Telegram's servers, which then talk to your bridge.
+- The MulmoClaude bearer token never leaves your machine. The bridge only ever talks to the IPv4 loopback (`127.0.0.1`), whatever port the server bound; your friends talk to Telegram's servers, which then talk to your bridge.
 
 ## Full Operator Guide
 
