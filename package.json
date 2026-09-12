@@ -19,6 +19,7 @@
     "plugins:codegen": "tsx scripts/codegen-plugin-barrels.ts",
     "plugins:codegen:check": "tsx scripts/codegen-plugin-barrels.ts --check",
     "check:launcher-sync": "node scripts/mulmoclaude/launcherSync.mjs",
+    "check:published-deps": "node scripts/mulmoclaude/publishedDeps.mjs",
     "audit:releases": "node scripts/packages/audit-releases.mjs",
     "check:changelog-ships": "node scripts/packages/check-changelog-ships.mjs",
     "check:doc-links": "node scripts/docs/check-doc-links.mjs",
