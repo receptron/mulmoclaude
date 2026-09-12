@@ -387,7 +387,8 @@ sees every plugin's entries, and must be able to dismiss any of them. Per-plugin
 `PUBSUB_CHANNELS.notifier`. Events are a discriminated union — `published`, `updated`, `cleared`,
 `cancelled` — and the composable rebuilds each payload field by field, because pub-sub JSON is
 untrusted. `src/components/NotificationBell.vue` renders the active list plus a read-only
-History section. Clicking a row routes to `navigateTarget` with `notificationId=<id>` spliced
+History section — five entries at first, the rest behind "Show more", so a cap's worth of
+repetitive terminations cannot swamp the panel. Clicking a row routes to `navigateTarget` with `notificationId=<id>` spliced
 in, so the landing page knows which entry to clear — `?` or `&` depending on what the target
 already has, and always before any `#fragment` rather than after it.
 

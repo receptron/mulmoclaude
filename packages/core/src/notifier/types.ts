@@ -106,8 +106,10 @@ export interface NotifierHistoryFile {
   entries: NotifierHistoryEntry[];
 }
 
-/** History size cap. The bell popup's History section renders this
- *  many entries; older ones fall off when new terminations land. */
+/** History size cap — how many terminated entries the FILE keeps, not
+ *  how many the UI shows: older ones fall off when new terminations
+ *  land. The bell popup renders `HISTORY_INITIAL_VISIBLE` of them and
+ *  reveals the rest behind "Show more" (`NotificationBell.vue`). */
 export const HISTORY_CAP = 50;
 
 /** Pub-sub event published on the host's notifier channel after every
