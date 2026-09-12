@@ -31,5 +31,9 @@ export function asInt(value: string | undefined, fallback: number, opts: IntRang
 }
 
 /** The port range the backend accepts, so both sides bound the value identically.
- *  `min: 0` is deliberate — 0 asks the OS for an ephemeral port. */
-export const PORT_RANGE: IntRange = Object.freeze({ min: 0, max: 65_535 });
+ *  `min: 0` is deliberate — 0 asks the OS for an ephemeral port.
+ *
+ *  `Required<IntRange>`, not `IntRange`: both bounds are always present here, and
+ *  saying so lets a caller compare against them (`port <= PORT_RANGE.max`) without
+ *  a non-null assertion. Still assignable wherever an `IntRange` is expected. */
+export const PORT_RANGE: Required<IntRange> = Object.freeze({ min: 0, max: 65_535 });
