@@ -10,6 +10,11 @@ export interface ExportedNames {
   opaque: boolean;
 }
 
+/** Statements beginning with `export`, with a brace group's newlines flattened so
+ *  a wrapped list is one statement, and `;`-separated statements split apart.
+ *  Column 0 only — an indented `export` in a built file is text, not an export. */
+export function exportStatements(source: string): string[];
+
 export function parseExportedNames(source: string): ExportedNames;
 
 /** Line-count fallback, used only for an opaque entry. */
