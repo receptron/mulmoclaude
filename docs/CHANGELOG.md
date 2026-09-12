@@ -23,12 +23,12 @@ Every number below is one a command produces, next to the thing it counts — th
 PR's review went to prose that miscounted its own sweep, so the counts now sit in the table instead
 of in sentences:
 
-| package                        | version           | bump  | gained since its tag                                                                                                                                                                                                                                                             | ranges swept (declarations / files)                                                                                                            |
+| package                        | version           | bump  | what npm does not serve yet                                                                                                                                                                                                                                                      | ranges swept (declarations / files)                                                                                                            |
 | ------------------------------ | ----------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@mulmoclaude/common`          | 1.2.0 → **1.3.0** | minor | `asInt`, `PORT_RANGE`, type `IntRange`, moved from `server/utils/envCoerce.ts`; `PORT_RANGE` typed `Required<IntRange>` so a caller compares against its bounds without a non-null assertion                                                                                     | **34** / 33 — 33 `dependencies` + one plugin's `devDependencies`                                                                               |
 | `@mulmobridge/webhook-runtime` | 1.1.0 → **1.2.0** | minor | `listenWebhook` — the single bind path for the nine webhook bridges: resolves the port, refuses an unusable value with the env var named, explains `EADDRINUSE` / `EACCES`, reports the port actually bound                                                                      | **9** / 9 — all `dependencies`                                                                                                                 |
 | `@mulmoclaude/core`            | 4.9.0 → **4.9.1** | patch | no export and no behaviour change: the new `assets/helps/error-recovery.md` sections (which reach npm users only through a core publish, since the agent reads that file before asking the user anything on a tool failure) and #3106's comment-only edits under `src/notifier/` | **17** / 9 — the launcher's `dependencies` plus eight plugins' `devDependencies` AND `peerDependencies`; the same 17 the `4.9.0` release swept |
-| `@mulmobridge/client`          | already 1.2.0     | —     | `installProcessGuards` — bumped in #3110, the PR that added it, so nothing to do here                                                                                                                                                                                            | —                                                                                                                                              |
+| `@mulmobridge/client`          | already 1.2.0     | —     | **two** things, not one: `installProcessGuards` + `SHUTDOWN_GRACE_MS` (from #3110, which bumped it — nothing to do here) **and `resolvePublishedApiUrl`**, another PR's unpublished work (`18b8c5ea3`) that rides along in 1.2.0                                                 | —                                                                                                                                              |
 
 A caret range on an internal package does not float a consumer forward on its own, so a range left
 behind pins that consumer to the old line. **The launcher's OWN `version` is untouched** (still
@@ -42,13 +42,21 @@ passed. `yarn audit:releases --code-only` names them, and widening the gate is #
 Publish order is bottom-up, and which edges are STRICT matters, because a strict edge published
 backwards ships code calling an export npm does not serve yet:
 
-| edge                                            | strict? | what forces it                                                                                            |
-| ----------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
-| `common@1.3.0` → `webhook-runtime@1.2.0`        | **yes** | `webhook-runtime/src/port.ts` imports `asInt` and `PORT_RANGE`; published `common@1.2.0` has neither      |
-| `webhook-runtime@1.2.0` → the 9 webhook bridges | **yes** | all nine call `listenWebhook`                                                                             |
-| `client@1.2.0` → all 24 resident bridges        | **yes** | all 24 call `installProcessGuards`                                                                        |
-| `common` → `client@1.2.0`                       | no      | `client` takes only `isRecord`, `scanEnvOptions`, `errorMessage` from common — all in the published 1.2.0 |
-| anything → `core@4.9.1`                         | no      | it uses none of common's new exports; its range moves for consistency                                     |
+| edge                                            | strict? | what forces it                                                                                                                                                   |
+| ----------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `common@1.3.0` → `webhook-runtime@1.2.0`        | **yes** | `webhook-runtime/src/port.ts` imports `asInt` and `PORT_RANGE`; published `common@1.2.0` has neither                                                             |
+| `webhook-runtime@1.2.0` → the 9 webhook bridges | **yes** | all nine call `listenWebhook`                                                                                                                                    |
+| `client@1.2.0` → all 24 resident bridges        | **yes** | all 24 call `installProcessGuards`                                                                                                                               |
+| `common` → `client@1.2.0`                       | no      | `client` takes only `isRecord`, `scanEnvOptions` and `errorMessage` from common — all present in the published **`common@1.2.0`** (the two 1.2.0s are unrelated) |
+| anything → `core@4.9.1`                         | no      | it uses none of common's new exports; its range moves for consistency                                                                                            |
+
+One trap for anyone re-deriving this with `git diff <name>@<version>..HEAD`: the
+`@mulmobridge/client@1.1.0` **tag lags its own publish**. The published tarball exports
+`resolveApiUrl` — checked directly against
+`https://unpkg.com/@mulmobridge/client@1.1.0/dist/index.js` — and the tag does not, which is why
+`drift.mjs` measures one line of drift against the tarball while the tag diff shows two added export
+lines. The tarball is the authority for "what a consumer has"; a tag is only as good as the
+discipline that wrote it, which is why this repo requires one on every publish.
 
 #### A bridge that crashed said nothing about which bridge it was, and Ctrl-C dropped work in flight (#3084)
 
