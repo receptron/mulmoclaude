@@ -50,7 +50,7 @@ export function makeNotifyTool(deps: NotifyToolDeps) {
 
     prompt:
       "Use the `notify` MCP tool — NOT a user-installed `/notify` skill — when the user asks for a notification ('通知して' / 'remind me' / 'tell me when …') or when reporting completion of a long-running task / monitoring summary / scheduled reminder firing. " +
-      "This is the canonical built-in notification path: it reaches the web bell, and on macOS the Reminders sink as well (on by default — `DISABLE_MACOS_REMINDER_NOTIFICATIONS=1` or `--disable-macos-reminders` silences it). It does NOT reach messaging bridges. It has NO active-user suppression — if the user asks for a notification, fire one. " +
+      "This is the canonical built-in notification path: it reaches the web bell, and on macOS the Reminders sink as well (on by default — the user may have silenced it with `--disable-macos-reminders`, `DISABLE_MACOS_REMINDER_NOTIFICATIONS=1`, or the Settings toggle). It does NOT reach messaging bridges. It has NO active-user suppression — if the user asks for a notification, fire one. " +
       "After firing, briefly tell the user you sent the notification.",
 
     async handler(args: Record<string, unknown>, ctx?: McpToolContext): Promise<string> {
