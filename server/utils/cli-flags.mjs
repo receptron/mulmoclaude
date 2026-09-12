@@ -32,6 +32,11 @@ export const CLI_FLAGS = Object.freeze([
     env: "CHAT_INDEX_FORCE_RUN_ON_STARTUP",
     help: "Run the chat-index pass immediately on startup (= CHAT_INDEX_FORCE_RUN_ON_STARTUP=1)",
   },
+  {
+    flag: "--allow-multiple-instances",
+    env: "MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES",
+    help: "Start even when one is already running against this workspace (= MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1)",
+  },
 ]);
 
 /**

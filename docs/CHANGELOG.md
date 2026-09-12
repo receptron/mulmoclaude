@@ -10,6 +10,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### `yarn dev` no longer starts a second server against a workspace that already has one (#3079)
+
+Only the icon launcher ever checked. `yarn dev`, `yarn server` and `npx mulmoclaude` walked
+forward off a busy port — 3001 → 3002 — and started a SECOND server, announcing it in one
+`log.info` line. Nobody meant to run two, and two over one workspace overwrite each other's
+`.session-token`: after that a stateless plugin dispatch authenticates cleanly against the wrong
+server while the session-scoped `/api/internal/tool-result` push lands where the session does not
+exist and is dropped, so plugin views simply stop rendering on one of them and nothing errors.
+
+All three paths now refuse that launch. The question is asked of `<workspace>/.server-port` rather
+than of the port, because the harm is a shared WORKSPACE: a second instance with its own
+`MULMOCLAUDE_WORKSPACE_PATH` needs no flag on any port, and one sharing this workspace is refused
+even on a port nobody wanted — which `PORT=3100 yarn dev`, previously the documented escape hatch,
+now is. A stale sidecar left by a killed instance does not stop anything: the port it names is
+probed, and only a MulmoClaude-shaped answer counts. A busy port held by some other program still
+walks forward exactly as before.
+
+`MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1` opts back in, with the token stomping that implies
+(`--allow-multiple-instances` is the equivalent flag on `npx mulmoclaude` and `yarn server`; `yarn
+dev` is a compound script and drops trailing args, so the env var is the only form that works there).
 #### A bridge that crashed said nothing about which bridge it was, and Ctrl-C dropped work in flight (#3084)
 
 Counting all 25 packages under `packages/bridges/`: none had an `unhandledRejection` handler, none
