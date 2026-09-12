@@ -81,6 +81,9 @@ async function serverLog(namespace, message, options = {}) {
   await safePost(req, LOG_TIMEOUT_MS);
 }
 
+// packages/common/dist/envCoerce.js
+var PORT_RANGE = Object.freeze({ min: 0, max: 65535 });
+
 // packages/common/dist/index.js
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -215,7 +218,11 @@ function mirrorSkillDelete(workspaceRoot2, slug) {
   return { dest };
 }
 
-// packages/core/dist/dist-D8zokgGo.js
+// packages/core/dist/dist-BzoA9pDR.js
+Object.freeze({
+  min: 0,
+  max: 65535
+});
 function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
