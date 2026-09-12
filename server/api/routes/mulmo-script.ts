@@ -19,7 +19,7 @@ import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { bindRoute } from "../../utils/router.js";
 import { GENERATION_KINDS } from "../../../src/types/events.js";
 import { makeBeatOpHandler, sendOpFailure, validBeatIndex, type ErrorResponse } from "./mulmoScriptBeatOp.js";
-import { parseSuppliedRoot, resolveStoryWriteTarget, type StoryWriteGuards } from "./mulmoScriptWriteRoot.js";
+import { parseSuppliedRoot, resolveStoryWriteTarget, type ParsedStoryRoot, type StoryWriteGuards } from "./mulmoScriptWriteRoot.js";
 
 // Express adapters over the shared ops instance from
 // `server/plugins/mulmoscript-server.ts`. Every op body lives in
@@ -90,7 +90,7 @@ function stringQuery(value: unknown): string | null {
  * Returns `null` after answering the response, so a caller stops with `if (root === null) return;`.
  * A root that is a string but not REGISTERED is refused by the ops, not here.
  */
-function suppliedRoot(value: unknown, res: Response): string | undefined | null {
+function suppliedRoot(value: unknown, res: Response): ParsedStoryRoot | null {
   const parsed = parseSuppliedRoot(value);
   if (parsed.ok) return parsed.root;
   badRequest(res, parsed.error);
@@ -100,7 +100,7 @@ function suppliedRoot(value: unknown, res: Response): string | undefined | null 
 function parseBeatQuery<TRes>(
   req: Request<object, TRes, object, BeatQuery>,
   res: Response,
-): { filePath: string; beatIndex: number; root: string | undefined } | null {
+): { filePath: string; beatIndex: number; root: ParsedStoryRoot } | null {
   const filePath = stringQuery(req.query.filePath);
   const beatIndexStr = stringQuery(req.query.beatIndex);
   // Number() (not parseInt) so "1.5" stays fractional and fails the
@@ -154,7 +154,10 @@ function sendPackageFailure(res: Response, failure: MulmoScriptFailure): void {
 bindRoute(router, API_ROUTES.mulmoScript.save, async (req: Request<object, object, SaveMulmoScriptArgs>, res: Response) => {
   // Realpath symlink containment before the package's lexical guard —
   // see mulmoScriptOps.guardStoryWirePath.
-  const guard = mulmoScriptOps.guardStoryWirePath(req.body?.filePath);
+  // `undefined` is the DEFAULT root, said out loud: this is the agent's tool path and `root` is
+  // not in the tool schema, so there is none to name (#3015). The parameter is required now
+  // precisely so that has to be written rather than meant by silence (#3086).
+  const guard = mulmoScriptOps.guardStoryWirePath(req.body?.filePath, undefined);
   if (guard) {
     sendOpFailure(res, guard);
     return;
@@ -173,9 +176,9 @@ bindRoute(router, API_ROUTES.mulmoScript.save, async (req: Request<object, objec
     // schema so a model cannot name one (#3015). Every save that reaches here is in the
     // default root by construction. Named as an exception in
     // `test/plugins/mulmoscript/test_storyRootSweep.ts`.
-    const resolved = mulmoScriptOps.resolveStory(outcome.filePath);
+    const resolved = mulmoScriptOps.resolveStory(outcome.filePath, undefined);
     if (resolved.ok) {
-      mulmoScriptOps.triggerAutoBackgroundMovie(resolved.absolutePath, outcome.filePath, getSessionQuery(req) || undefined);
+      mulmoScriptOps.triggerAutoBackgroundMovie(resolved.absolutePath, outcome.filePath, getSessionQuery(req) || undefined, undefined);
     }
   }
 
@@ -299,7 +302,7 @@ interface GenerationRequestBody {
 function resolveStoryRequest(
   req: Request<object, object, GenerationRequestBody>,
   res: Response,
-): { filePath: string; absoluteFilePath: string; root: string | undefined; chatSessionId?: string | undefined } | null {
+): { filePath: string; absoluteFilePath: string; root: ParsedStoryRoot; chatSessionId?: string | undefined } | null {
   const { filePath, chatSessionId } = req.body;
   if (typeof filePath !== "string" || !filePath) {
     badRequest(res, "filePath is required");
