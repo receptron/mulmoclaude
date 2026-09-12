@@ -142,13 +142,11 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   const subscriptions = emptySubscriptions();
 
   const pending: Pending = new Set();
-  // `DEFAULT_API_URL` is a placeholder here, never a destination: the idle
-  // socket below is built with `autoConnect: false` and is replaced before it
-  // ever handshakes, so the token cannot reach it.
-  let current: Credentials = { apiUrl: resolvePublishedApiUrl(opts.apiUrl) ?? DEFAULT_API_URL, token };
-  let attempt = 0;
-  let retry: ReturnType<typeof setTimeout> | null = null;
-  let closed = false;
+  const published = resolvePublishedApiUrl(opts.apiUrl);
+  // `DEFAULT_API_URL` is a placeholder when nothing is published, never a
+  // destination: the idle socket is built with `autoConnect: false` and is
+  // replaced before it ever handshakes, so the token cannot reach it.
+  const startedAt: Credentials = { apiUrl: published ?? DEFAULT_API_URL, token };
 
   /** The pair as the workspace has it NOW, or null while the server is mid-restart.
    *
@@ -173,7 +171,7 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
     });
     installDefaultLogging(socket);
     socket.on("connect", () => {
-      attempt = 0;
+      live.attempt = 0;
     });
     socket.on("connect_error", scheduleReresolve);
     attach(socket, subscriptions);
@@ -193,8 +191,17 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
    */
   const openIdle = (): Socket => io(DEFAULT_API_URL, { path: CHAT_SOCKET_PATH, transports: ["websocket"], autoConnect: false });
 
-  const published = resolvePublishedApiUrl(opts.apiUrl);
-  let socket = published === null ? openIdle() : open(current);
+  /** Everything the supervisor mutates, boxed so every binding stays `const`.
+   *  Built after `open` / `openIdle` because it holds the socket they make;
+   *  they only READ it from callbacks, which cannot fire before it exists. */
+  const live: SupervisorState = {
+    socket: published === null ? openIdle() : open(startedAt),
+    current: startedAt,
+    attempt: 0,
+    retry: null,
+    closed: false,
+  };
+
   if (published === null) {
     console.error("\nThe server has not published a port yet — waiting for it rather than guessing.\n");
     scheduleReresolve();
@@ -203,63 +210,63 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   /** Replace the socket only when the pair actually moved — a server that is
    *  merely down must keep socket.io's own reconnection, not a worse copy. */
   function reresolve(): void {
-    retry = null;
-    if (closed) return;
+    live.retry = null;
+    if (live.closed) return;
     const fresh = reread();
-    attempt += 1;
-    if (!credentialsChanged(current, fresh) || fresh === null) {
+    live.attempt += 1;
+    if (!credentialsChanged(live.current, fresh) || fresh === null) {
       // Keep waiting. A LIVE socket would re-arm this itself through its next
       // `connect_error`, but the idle socket built when nothing was published
       // never connects and so never emits one — without this the wait is
       // single-shot and a bridge started before its server would hang forever.
       // The `retry !== null` guard in `scheduleReresolve` stops the two paths
       // from doubling up, and the backoff caps the cost of an idle wait.
-      if (!socket.connected) scheduleReresolve();
+      if (!live.socket.connected) scheduleReresolve();
       return;
     }
     console.error(`\nServer moved: reconnecting to ${fresh.apiUrl}.\n`);
     abandon(pending, "the server restarted before this was acknowledged — resend");
-    socket.removeAllListeners();
-    socket.close();
-    current = fresh;
-    attempt = 0;
-    socket = open(current);
+    live.socket.removeAllListeners();
+    live.socket.close();
+    live.current = fresh;
+    live.attempt = 0;
+    live.socket = open(live.current);
   }
 
   function scheduleReresolve(): void {
-    if (closed || retry !== null) return;
-    retry = setTimeout(reresolve, backoffMs(attempt));
-    retry.unref?.();
+    if (live.closed || live.retry !== null) return;
+    live.retry = setTimeout(reresolve, backoffMs(live.attempt));
+    live.retry.unref?.();
   }
 
   return {
-    send: (externalChatId, text, attachments) => sendMessage(socket, pending, externalChatId, text, attachments),
+    send: (externalChatId, text, attachments) => sendMessage(live.socket, pending, externalChatId, text, attachments),
     onPush: (handler) => {
       subscriptions.push.push(handler);
-      socket.on(CHAT_SOCKET_EVENTS.push, handler);
+      live.socket.on(CHAT_SOCKET_EVENTS.push, handler);
     },
     onTextChunk: (handler) => {
       subscriptions.textChunk.push(handler);
-      socket.on(CHAT_SOCKET_EVENTS.textChunk, (event: { text: string }) => {
+      live.socket.on(CHAT_SOCKET_EVENTS.textChunk, (event: { text: string }) => {
         handler(event.text);
       });
     },
     onConnect: (handler) => {
       subscriptions.connect.push(handler);
-      socket.on("connect", handler);
+      live.socket.on("connect", handler);
     },
     onDisconnect: (handler) => {
       subscriptions.disconnect.push(handler);
-      socket.on("disconnect", handler);
+      live.socket.on("disconnect", handler);
     },
     close: () => {
-      closed = true;
-      if (retry !== null) clearTimeout(retry);
+      live.closed = true;
+      if (live.retry !== null) clearTimeout(live.retry);
       abandon(pending, "the bridge closed before this was acknowledged");
-      socket.disconnect();
+      live.socket.disconnect();
     },
     get socket() {
-      return socket;
+      return live.socket;
     },
   };
 }
@@ -268,17 +275,35 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
  *  can settle them instead of leaving them to time out (see `abandon`). */
 type Pending = Set<(ack: MessageAck) => void>;
 
+/** The supervisor's mutable state. One object so the bindings can be `const`. */
+interface SupervisorState {
+  socket: Socket;
+  current: Credentials;
+  attempt: number;
+  retry: ReturnType<typeof setTimeout> | null;
+  closed: boolean;
+}
+
 function sendMessage(socket: Socket, pending: Pending, externalChatId: string, text: string, attachments?: Attachment[]): Promise<MessageAck> {
   const payload: Record<string, unknown> = { externalChatId, text };
   if (attachments && attachments.length > 0) payload.attachments = attachments;
   return new Promise((resolve) => {
+    // The timeout is OURS, not `socket.timeout(...)`'s, because it has to be
+    // CANCELLABLE. socket.io arms its ack timer at emit time and keeps it armed
+    // on a socket that is closed underneath it, so a send abandoned by a rebuild
+    // left a six-minute timer behind per send — measured: the test process exited
+    // at 6:00.45, exactly REPLY_TIMEOUT_MS, long after every assertion had passed
+    // (Codex, #3078). `settle` clears it, so `abandon` clears it too.
+    const state: { timer?: ReturnType<typeof setTimeout> } = {};
     const settle = (ack: MessageAck): void => {
       if (!pending.delete(settle)) return;
+      clearTimeout(state.timer);
       resolve(ack);
     };
+    state.timer = setTimeout(() => settle({ ok: false, error: `timeout: no ack within ${REPLY_TIMEOUT_MS}ms` }), REPLY_TIMEOUT_MS);
     pending.add(settle);
-    socket.timeout(REPLY_TIMEOUT_MS).emit(CHAT_SOCKET_EVENTS.message, payload, (err: Error | null, ack: MessageAck | undefined) => {
-      settle(err ? { ok: false, error: `timeout: ${err.message}` } : (ack ?? { ok: false, error: "no ack from server" }));
+    socket.emit(CHAT_SOCKET_EVENTS.message, payload, (ack: MessageAck | undefined) => {
+      settle(ack ?? { ok: false, error: "no ack from server" });
     });
   });
 }
