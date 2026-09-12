@@ -271,6 +271,18 @@ describe("conversion budgets", () => {
     disposeObject3D(group);
   });
 
+  it("charges a defined shape value each time it is placed by name", () => {
+    // `ico` is a `customShape` node placing a value, not a `shape` statement:
+    // it has to cost the same as writing the icosphere out each time. The
+    // `define` builds the icosphere once too, so five placements cost six.
+    const script = "define ico icosphere { size 1 }\nfor i in 1 to 5 {\n ico { position i 0 0 }\n}";
+    disposeObject3D(astToThreeJS(parseShapeScript(script), { maxNodes: 6 }));
+    assert.throws(() => astToThreeJS(parseShapeScript(script), { maxNodes: 5 }), /more than 5 objects/);
+    // A `mesh { }` block collects its children into one object, but each child
+    // allocates geometry until the merge, so each is charged.
+    assert.throws(() => astToThreeJS(parseShapeScript("mesh {\n cube\n cube\n}"), { maxNodes: 2 }), /more than 2 objects/);
+  });
+
   // Pinned rather than asserted loosely: these are the numbers a script author
   // and the tool's error messages both reason about, so a change to them should
   // be a decision, not a side effect.

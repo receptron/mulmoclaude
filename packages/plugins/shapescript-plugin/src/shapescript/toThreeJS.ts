@@ -743,6 +743,10 @@ export class Converter {
       this.valueSink.push(this.transformedForCapture(value));
       return null;
     }
+    // A value placed here is an object the statement list did not charge for:
+    // a defined shape used by name (`define ico icosphere { … }` then `ico`),
+    // a function's result, a bare symbol. Same budget as a primitive statement.
+    if (isShapeValue(value) || (Array.isArray(value) && value.length > 0 && value.every(isShapeValue))) this.chargeNode();
     if (isObjectValue(value) && value.kind === "mesh") return this.placeMesh(value);
     if (isObjectValue(value) && value.kind === "polygon") return this.placePolygons([value]);
     if (Array.isArray(value) && value.length > 0 && value.every((item) => isObjectValue(item) && (item.kind === "mesh" || item.kind === "polygon"))) {
@@ -2311,8 +2315,11 @@ export class Converter {
  *  to the block as option values. */
 /** The statements that put an object in the scene, and so count against
  *  `maxNodes`. A builder is one object however many operands it merges; each
- *  operand is charged on its own as it is visited. `customShape` and `group`
- *  are containers whose contents are charged, and everything else is state. */
+ *  operand is charged on its own as it is visited, as is each node collected
+ *  by `mesh { }` — the geometry exists until the merge, so the work is real.
+ *  `customShape` and `group` are containers whose contents are charged, a
+ *  shape VALUE placed by name is charged in `placeValue`, and everything else
+ *  is state. */
 const GEOMETRY_NODE_TYPES: ReadonlySet<SceneNode["type"]> = new Set<SceneNode["type"]>([
   "shape",
   "csg",
