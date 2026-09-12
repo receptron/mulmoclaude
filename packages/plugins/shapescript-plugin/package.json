@@ -42,9 +42,9 @@
     "test": "tsx --test test/test_*.ts"
   },
   "dependencies": {
-    "three": "^0.185.1",
+    "three": "^0.186.0",
     "three-bvh-csg": "^0.0.18",
-    "three-mesh-bvh": "0.9.13"
+    "three-mesh-bvh": "0.9.15"
   },
   "peerDependencies": {
     "@mulmoclaude/core": "^4.9.1",
@@ -57,7 +57,7 @@
     "@mulmoclaude/core": "^4.9.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
-    "@types/three": "^0.185.1",
+    "@types/three": "^0.186.0",
     "@typescript-eslint/eslint-plugin": "^8.70.0",
     "@typescript-eslint/parser": "^8.70.0",
     "@vitejs/plugin-vue": "^6.0.8",
