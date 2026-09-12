@@ -1,9 +1,0 @@
-{
-  "name": "mulmoclaude-fixture-drift-drifted",
-  "version": "0.0.0",
-  "dependencies": {
-    "@mulmobridge/protocol": "^0.1.0",
-    "@mulmobridge/client": "^0.1.0",
-    "express": "^5.0.0"
-  }
-}

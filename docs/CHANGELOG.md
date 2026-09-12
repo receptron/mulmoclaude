@@ -10,6 +10,50 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### The publish-drift gate was scanning 4 packages and counting the wrong thing (#3116)
+
+`scripts/mulmoclaude/drift.mjs` exists to refuse one specific state: a new runtime export shipped
+at an unchanged version, so npm keeps serving a tarball without it and consumers crash at runtime
+with "does not provide an export named …". It did catch that for `@mulmobridge/client` in #3110.
+It could not have caught it for the other two packages in the same change, and three separate
+reasons were measured rather than guessed:
+
+**Which packages.** It read the launcher's `dependencies` and kept the `@mulmobridge/*` ones —
+four packages: `chat-service`, `client`, `protocol`, `web-push`. That leaves out
+`@mulmoclaude/common` (declared by 32 other workspaces), `@mulmobridge/webhook-runtime` (9),
+`@mulmoclaude/core` (8), `@mulmoclaude/markdown-utils` (2) and `@receptron/task-scheduler` (1).
+#3109 added `asInt` / `PORT_RANGE` to common and `listenWebhook` to webhook-runtime at unchanged
+versions, and the gate passed. The set is now every publishable workspace another workspace
+declares — 20 today — discovered from the `workspaces` globs, so a bridge under
+`packages/bridges/<name>` or a package whose directory does not match its name
+(`@receptron/task-scheduler` lives in `packages/scheduler`) is no longer unreachable.
+
+**What to compare.** It compared the local `src/index.ts` against the published `dist`, which only
+holds when dist mirrors src one-to-one — a tsc build. For a vite-bundled package it is nonsense:
+`@mulmoclaude/x-plugin`'s src has 6 export lines and its dist has 1, so the old metric called it
+**drifted** while it was byte-identical to what npm serves, and `@mulmoclaude/core` came out 229
+against 30. The comparison is now local **built** dist against published dist, the same relative
+path on both sides, so the build system cannot skew it. The smoke workflow already runs
+`yarn build:packages && yarn build` first; a missing local dist is reported as `skipped`, never as
+clean.
+
+**What to count.** Lines cannot see a bundle's surface. `x-plugin`'s entire public API is one line —
+`export { extractTweetId, formatTweet, readUrlArg, readXPost, searchX, tweetBody };` — so a seventh
+name added there leaves the count at 1 and the gate passes. The unit is now the set of exported
+**names**, per `exports` subpath, which is also what lets the gate say WHICH export is new instead of
+"the count went up by one". A `export * from` entry cannot be enumerated without the published
+tarball, so it falls back to line counting and says so; a wildcard subpath (`"./*": "./dist/*.js"`)
+is skipped with a reason.
+
+Measured on this tree: 20 packages, 17 `ok`, 3 `pending-publish` (`common`, `webhook-runtime`,
+`client` — the three genuinely awaiting publish), 0 `drifted`. The three false positives the old
+metric produced are gone, and `client`'s report now names `resolvePublishedApiUrl` — a third
+unpublished export that #3115's review had to find by hand.
+
+The workflow trigger moved with it. `mulmoclaude_smoke.yaml` only ran for
+`packages/{mulmoclaude,protocol,client,chat-service}`, so a PR touching `@mulmoclaude/common` never
+started the job at all: widening the scan set does nothing while the trigger stays narrow.
+
 #### `@mulmoclaude/common@1.3.0`, `@mulmobridge/webhook-runtime@1.2.0`, `@mulmoclaude/core@4.9.1` — the versions catch up with #3084
 
 #3084 left shared packages carrying new exports at unchanged versions. That is the state

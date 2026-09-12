@@ -1,292 +1,389 @@
-// @mulmobridge/* drift check (§2 of publish-mulmoclaude skill).
+// Workspace publish-drift check (§2 of the publish-mulmoclaude skill).
 //
-// Problem: a local `packages/<name>/src/` file adds a new runtime
-// export without a version bump. The tarball a real user installs
-// from the registry ships the OLD dist/, so consumers crash with:
+// Problem: a local `packages/<x>/src/` file adds a new runtime export without a
+// version bump. The tarball a real user installs from the registry ships the OLD
+// dist, so consumers crash with:
 //   does not provide an export named X
-// at runtime — invisible to lint, typecheck, or local dev.
+// at runtime — invisible to lint, typecheck, or local dev, because in a yarn
+// workspace `node_modules/<name>` is a symlink into `packages/<x>/` and the local
+// dist is always freshly built.
 //
-// Detection strategy: count value-export LINES in src/index.ts and
-// in the currently-published dist (fetched from the npm registry),
-// flag when src > published.
+// Three things about the shape of this check were measured, not assumed (#3116):
 //
-// Why the registry and not `node_modules/.../dist`: in a yarn-
-// workspace repo, `node_modules/@mulmobridge/<name>` is a symlink
-// into `packages/<name>/`. `yarn build:packages` then rebuilds that
-// symlinked dist from the current src, making `src == dist` in CI
-// regardless of whether the published version lags behind — the
-// whole point of the check. Compare against the registry payload
-// instead so the drift picks up exactly what a fresh
-// `npm install mulmoclaude` would see at runtime.
+//  1. WHICH PACKAGES. It used to read the launcher's `dependencies` and keep the
+//     `@mulmobridge/*` ones, which is four packages: chat-service, client,
+//     protocol, web-push. That missed `@mulmoclaude/common` (declared by 32 other
+//     workspaces), `@mulmobridge/webhook-runtime` (9), `@mulmoclaude/core` (8),
+//     `@mulmoclaude/markdown-utils` (2) and `@receptron/task-scheduler` (1) — and
+//     #3109 shipped new exports in two of those with no version bump, past a green
+//     gate. The set is now every publishable workspace that another workspace
+//     declares, whatever its scope and wherever it sits in the tree.
 //
-// "Value export LINES" = every `^export …` line except ones that
-// are entirely type-only (`export type …`, `export interface …`,
-// `export { type … }`). Counting lines (not individual specifiers)
-// matches the original skill heuristic and has caught every real
-// drift we've seen.
+//  2. WHAT TO COMPARE. It used to compare the local `src/index.ts` against the
+//     published `dist`. That only holds when dist mirrors src one-to-one, i.e. a
+//     tsc build. For a vite-bundled package it is nonsense: `x-plugin`'s src has 6
+//     export lines and its dist has 1, so the old metric called it DRIFTED when it
+//     was identical to what npm serves; `core` came out 229 against 30. The
+//     comparison is now local BUILT dist against published dist — same relative
+//     path on both sides, so the build system cannot skew it. The smoke workflow
+//     runs `yarn build:packages && yarn build` first, so CI's dist is current; a
+//     missing local dist is reported as `skipped`, never as clean.
+//
+//  3. WHAT TO COUNT. Lines cannot see a bundle's exports. `x-plugin`'s whole
+//     public surface is one line — `export { extractTweetId, formatTweet,
+//     readUrlArg, readXPost, searchX, tweetBody };` — so a seventh name added there
+//     keeps the count at 1 and the old metric passes. The unit is now the set of
+//     exported NAMES, per `exports` subpath.
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MULMOBRIDGE_SCOPE = "@mulmobridge/";
-const DEFAULT_INSTALLED_ROOT = "node_modules";
 const REGISTRY_BASE = "https://registry.npmjs.org";
 const UNPKG_BASE = "https://unpkg.com";
 const REGISTRY_TIMEOUT_MS = 15_000;
 
-// Returns how many `^export …` lines in `source` declare at least
-// one runtime (value) export. Type-only lines are filtered.
+// Names a module exports, or `opaque: true` when the file re-exports a whole
+// module (`export * from "./chunk.js"`) and the set cannot be enumerated without
+// resolving that file — which is not possible for the published side without
+// downloading the whole tarball. An opaque entry falls back to line counting,
+// which is weaker but still catches a new re-export line.
+export function parseExportedNames(source) {
+  const names = new Set();
+  let opaque = false;
+  const IDENT = /^[A-Za-z_$][\w$]*/;
+  const DECLARERS = new Set(["function", "function*", "class", "const", "let", "var"]);
+  const firstWord = (text) => {
+    const cut = text.search(/[^\w$*]/);
+    return cut === -1 ? text : text.slice(0, cut === 0 ? 1 : cut);
+  };
+  // One name from a brace specifier: `a` -> a, `a as b` -> b, `type T` -> none.
+  const specifierName = (raw) => {
+    const spec = raw.trim();
+    if (spec === "" || spec.startsWith("type ")) return null;
+    const parts = spec.split(/\s+/);
+    const picked = parts.length >= 3 && parts[parts.length - 2] === "as" ? parts[parts.length - 1] : parts[0];
+    const match = IDENT.exec(picked);
+    return match === null || match[0] === "default" ? null : match[0];
+  };
+
+  for (const line of source.split(/\r?\n/)) {
+    if (!line.startsWith("export")) continue;
+    let rest = line.slice("export".length);
+    if (rest !== "" && !/^[\s{*]/.test(rest)) continue; // `exported` etc., not a keyword
+    rest = rest.trim();
+    if (rest.startsWith("*")) {
+      opaque = true;
+      continue;
+    }
+    if (rest.startsWith("{")) {
+      const close = rest.indexOf("}");
+      const body = close === -1 ? rest.slice(1) : rest.slice(1, close);
+      for (const piece of body.split(",")) {
+        const name = specifierName(piece);
+        if (name !== null) names.add(name);
+      }
+      continue;
+    }
+    // Strip modifiers one word at a time — cheaper and safer than one regex with
+    // nested optional groups, which eslint's ReDoS rules reject outright.
+    let head = firstWord(rest);
+    while (head === "declare" || head === "async") {
+      rest = rest.slice(head.length).trim();
+      head = firstWord(rest);
+    }
+    if (head === "default" || head === "type" || head === "interface") continue;
+    if (!DECLARERS.has(head) && !(head === "function" || head === "function*")) continue;
+    const after = rest.slice(head.length).trim();
+    const match = IDENT.exec(after);
+    if (match !== null) names.add(match[0]);
+  }
+  return { names, opaque };
+}
+
+// Kept from the line-counting era: it is the fallback for an opaque entry, and
+// the only metric available when a `export * from` hides the real surface.
 //
-// Matches only when `export` is at column 0 (no leading whitespace)
-// to mirror the skill's `grep -E '^export'` exactly — indented
-// `export` tokens inside namespaces or conditional blocks aren't
-// module-level re-exports and shouldn't count.
+// "Value export LINES" = every `^export …` line except ones that are entirely
+// type-only (`export type …`, `export interface …`, `export { type … }`).
 export function countValueExportLines(source) {
   const lines = source.split(/\r?\n/);
   let count = 0;
   for (const line of lines) {
     if (!line.startsWith("export")) continue;
-    // `export type Foo = …` / `export interface Foo { … }`
     if (/^export\s+(?:type|interface)\b/.test(line)) continue;
-    // `export { type Foo, type Bar }` — brace starts with `type`.
-    // Matches the skill's heuristic even when the brace also has
-    // runtime bindings (rare in practice).
     if (/^export\s*\{\s*type\b/.test(line)) continue;
     count += 1;
   }
   return count;
 }
 
-// Read the local workspace package.json for `<packageBaseName>` to
-// surface its version string. Returns `null` if the file can't be
-// read — not every @mulmobridge/* dep has a local workspace twin.
-async function readLocalVersion(root, packageBaseName) {
-  const pkgPath = path.join(root, "packages", packageBaseName, "package.json");
+/** The `exports` subpaths of a manifest, mapped to the file each one serves.
+ *  Falls back to `module` / `main` / `dist/index.js` for a package with no
+ *  `exports` map, which is what the single-entry packages relied on. */
+export function entryTargets(pkg) {
+  const out = new Map();
+  const exp = pkg?.exports;
+  if (exp !== null && typeof exp === "object") {
+    for (const [subpath, value] of Object.entries(exp)) {
+      const target = typeof value === "string" ? value : (value?.import ?? value?.default ?? value?.require ?? null);
+      if (typeof target === "string") out.set(subpath, target.replace(/^\.\/+/, ""));
+    }
+  }
+  if (out.size === 0) {
+    const target = pkg?.module ?? pkg?.main ?? "dist/index.js";
+    out.set(".", String(target).replace(/^\.\/+/, ""));
+  }
+  return out;
+}
+
+async function readManifest(file) {
   try {
-    const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
-    return typeof pkg.version === "string" ? pkg.version : null;
+    return JSON.parse(await readFile(file, "utf8"));
   } catch {
     return null;
   }
 }
 
-// Default published-source fetcher: queries the npm registry for
-// the package's `latest` dist-tag version, then pulls the `main` /
-// `module` entry from unpkg. Returns `null` on any network / 404
-// failure so the caller can skip rather than crash.
-async function defaultFetchPublishedSource({ packageBaseName, timeoutMs = REGISTRY_TIMEOUT_MS } = {}) {
-  const fullName = MULMOBRIDGE_SCOPE + packageBaseName;
+// Every publishable workspace, by name, with the directory it lives in. Walks
+// the root manifest's `workspaces` globs rather than assuming `packages/<name>`:
+// the bridges sit under `packages/bridges/<name>` and the plugins under
+// `packages/plugins/<name>`, and `@receptron/task-scheduler` lives in
+// `packages/scheduler` — a name-to-path guess is wrong for most of the tree.
+async function readWorkspaces(root) {
+  const rootPkg = await readManifest(path.join(root, "package.json"));
+  const patterns = Array.isArray(rootPkg?.workspaces) ? rootPkg.workspaces : (rootPkg?.workspaces?.packages ?? []);
+  const { glob } = await import("node:fs/promises");
+  const found = new Map();
+  for (const pattern of patterns) {
+    for await (const dir of glob(pattern, { cwd: root })) {
+      const pkg = await readManifest(path.join(root, dir, "package.json"));
+      if (pkg === null || typeof pkg.name !== "string") continue;
+      if (pkg.private === true) continue;
+      found.set(pkg.name, { name: pkg.name, dir, pkg });
+    }
+  }
+  return found;
+}
+
+/** The scan set: publishable workspaces that at least one other workspace
+ *  declares, in any dependency field. A package nothing imports cannot break a
+ *  consumer by lacking an export; one the launcher alone imports can, because the
+ *  launcher's own published `server/` and `src/` call into it. */
+export async function discoverWorkspaceLibraries({ root = process.cwd() } = {}) {
+  const workspaces = await readWorkspaces(root);
+  const consumers = new Map();
+  for (const { name, pkg } of workspaces.values()) {
+    for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+      for (const dep of Object.keys(pkg[field] ?? {})) {
+        if (!workspaces.has(dep) || dep === name) continue;
+        const seen = consumers.get(dep) ?? new Set();
+        seen.add(name);
+        consumers.set(dep, seen);
+      }
+    }
+  }
+  return [...workspaces.values()]
+    .filter((entry) => (consumers.get(entry.name)?.size ?? 0) > 0)
+    .map((entry) => ({ ...entry, consumers: [...(consumers.get(entry.name) ?? [])].sort() }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The registry's `latest` version for a package, or null with a reason. */
+export async function defaultFetchPublishedVersion({ name, timeoutMs = REGISTRY_TIMEOUT_MS } = {}) {
   const controller = new AbortController();
   const killer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const metaRes = await fetch(`${REGISTRY_BASE}/${encodeURIComponent(fullName)}/latest`, {
-      signal: controller.signal,
-    });
-    if (!metaRes.ok) return { version: null, source: null, reason: `registry ${metaRes.status}` };
-    const meta = await metaRes.json();
+    const res = await fetch(`${REGISTRY_BASE}/${encodeURIComponent(name)}/latest`, { signal: controller.signal });
+    if (!res.ok) return { version: null, reason: `registry ${res.status}` };
+    const meta = await res.json();
     const version = typeof meta.version === "string" ? meta.version : null;
-    if (!version) return { version: null, source: null, reason: "registry meta missing version" };
-    // Prefer the package's declared `main` / `module` entry rather
-    // than assuming `dist/index.js` — a future refactor of the
-    // @mulmobridge/* packages could move the entry file.
-    const entry = typeof meta.module === "string" ? meta.module : typeof meta.main === "string" ? meta.main : "dist/index.js";
-    const distRes = await fetch(`${UNPKG_BASE}/${fullName}@${version}/${entry.replace(/^\.?\/+/, "")}`, {
-      signal: controller.signal,
-    });
-    if (!distRes.ok) return { version, source: null, reason: `unpkg ${distRes.status}` };
-    const source = await distRes.text();
-    return { version, source, reason: null };
+    return version === null ? { version: null, reason: "registry meta missing version" } : { version, reason: null };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { version: null, source: null, reason: `network: ${message}` };
+    return { version: null, reason: `network: ${err instanceof Error ? err.message : String(err)}` };
   } finally {
     clearTimeout(killer);
   }
 }
 
-// Read installed-dist source (the pre-registry behaviour). Kept as
-// a fallback so offline / registry-unreachable callers still get a
-// signal, and the existing fixture-based tests keep working.
-async function readInstalledDistSource({ root, packageBaseName, installedRoot, distRelative }) {
-  const distPath = path.join(root, installedRoot, MULMOBRIDGE_SCOPE + packageBaseName, distRelative);
+/** One published file, by the same relative path the local dist uses. */
+export async function defaultFetchPublishedEntry({ name, version, entryPath, timeoutMs = REGISTRY_TIMEOUT_MS } = {}) {
+  const controller = new AbortController();
+  const killer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await readFile(distPath, "utf8");
-  } catch {
-    return null;
+    const res = await fetch(`${UNPKG_BASE}/${name}@${version}/${entryPath}`, { signal: controller.signal });
+    if (!res.ok) return { source: null, reason: `unpkg ${res.status}` };
+    return { source: await res.text(), reason: null };
+  } catch (err) {
+    return { source: null, reason: `network: ${err instanceof Error ? err.message : String(err)}` };
+  } finally {
+    clearTimeout(killer);
   }
 }
 
-// Inspect one package: compare local src value-export count with
-// the currently-published dist (fetched from the registry). Returns
-// `{ status: "ok"|"drifted"|"skipped", ... }`.
-//
-// Options:
-//   fetchPublishedSource: override for the registry fetcher; must
-//     resolve to `{ version, source, reason }` shape. Tests pass a
-//     fake; real runs use defaultFetchPublishedSource.
-//   installedRoot / distRelative: legacy local-dist fallback, used
-//     when `fetchPublishedSource` returns no source (offline CI,
-//     package not on registry, etc.). Also kept so the existing
-//     fixture tests can exercise the local-dist path without hitting
-//     the network.
-export async function checkPackageDrift({
-  root = process.cwd(),
-  packageBaseName,
-  srcRelative = "src/index.ts",
-  distRelative = "dist/index.js",
-  installedRoot = DEFAULT_INSTALLED_ROOT,
-  fetchPublishedSource = defaultFetchPublishedSource,
-} = {}) {
-  if (!packageBaseName) {
-    throw new Error("checkPackageDrift: packageBaseName is required");
+// Compare two module sources and say which runtime names the local one adds.
+// An opaque entry on either side falls back to line counting, and says so.
+export function compareEntry(localSource, publishedSource) {
+  const local = parseExportedNames(localSource);
+  const published = parseExportedNames(publishedSource);
+  if (local.opaque || published.opaque) {
+    const localCount = countValueExportLines(localSource);
+    const distCount = countValueExportLines(publishedSource);
+    return { added: [], localCount, distCount, opaque: true, drifted: localCount > distCount };
   }
-  const srcPath = path.join(root, "packages", packageBaseName, srcRelative);
-  const localVersion = await readLocalVersion(root, packageBaseName);
-
-  let srcSource;
-  try {
-    srcSource = await readFile(srcPath, "utf8");
-  } catch {
-    return { packageBaseName, localVersion, status: "skipped", reason: `local src not found at ${srcRelative}` };
-  }
-
-  const published = await fetchPublishedSource({ packageBaseName });
-  let distSource = published.source;
-  const publishedVersion = published.version;
-  let fallbackReason = null;
-  if (distSource === null) {
-    distSource = await readInstalledDistSource({ root, packageBaseName, installedRoot, distRelative });
-    if (distSource !== null) {
-      fallbackReason = `registry unreachable (${published.reason ?? "unknown"}) — compared against local ${installedRoot}/.../${distRelative}`;
-    }
-  }
-
-  if (distSource === null) {
-    return {
-      packageBaseName,
-      localVersion,
-      status: "skipped",
-      reason: `no dist to compare — registry: ${published.reason ?? "unknown"}, local dist not found either`,
-    };
-  }
-
-  const localCount = countValueExportLines(srcSource);
-  const distCount = countValueExportLines(distSource);
-  const drifted = localCount > distCount;
-
-  // A bumped version is the developer's acknowledgement that the new
-  // exports land under a new release. The registry still ships the
-  // old dist, but consumers of the NEW version will get the new
-  // exports once it's published — so from the drift-check's POV this
-  // is "pending publish", not "broken". Downgrading to non-failing
-  // also unblocks PRs that add exports + bump version + await the
-  // cascade publish to land after merge.
-  const isBumped = drifted && isLocalVersionAhead(localVersion, publishedVersion);
-
-  const status = drifted ? (isBumped ? "pending-publish" : "drifted") : "ok";
-  return {
-    packageBaseName,
-    localVersion,
-    publishedVersion,
-    status,
-    localCount,
-    distCount,
-    ...(fallbackReason ? { fallbackReason } : {}),
-  };
+  const added = [...local.names].filter((name) => !published.names.has(name)).sort();
+  return { added, localCount: local.names.size, distCount: published.names.size, opaque: false, drifted: added.length > 0 };
 }
 
-// Compare two semver-ish version strings and return true when
-// `local` is strictly ahead of `published`. Ignores pre-release /
-// build suffixes — we only bump majors / minors / patches in this
-// monorepo, and a prerelease drift is still "intentional" anyway.
-// Returns false on any malformed input so the drift check errs on
-// the strict side (caller's old behaviour preserved).
+/**
+ * Compare two semver-ish version strings and return true when `local` is
+ * strictly ahead of `published`. Ignores pre-release / build suffixes — this
+ * monorepo only bumps majors / minors / patches, and a prerelease drift is
+ * intentional anyway. Returns false on malformed input so the check errs strict.
+ */
 export function isLocalVersionAhead(local, published) {
-  if (typeof local !== "string" || typeof published !== "string") return false;
-  const parse = (str) => {
-    const [cleaned] = str.split(/[-+]/);
-    const parts = cleaned.split(".").map((part) => Number.parseInt(part, 10));
-    if (parts.length < 3) return null;
-    if (parts.some((part) => !Number.isFinite(part))) return null;
-    return parts.slice(0, 3);
+  const parse = (value) => {
+    if (typeof value !== "string") return null;
+    const match = /^(\d+)\.(\d+)\.(\d+)/.exec(value.trim());
+    return match === null ? null : [Number(match[1]), Number(match[2]), Number(match[3])];
   };
-  const localParts = parse(local);
-  const publishedParts = parse(published);
-  if (!localParts || !publishedParts) return false;
-  for (let idx = 0; idx < 3; idx++) {
-    if (localParts[idx] > publishedParts[idx]) return true;
-    if (localParts[idx] < publishedParts[idx]) return false;
+  const a = parse(local);
+  const b = parse(published);
+  if (a === null || b === null) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
   }
   return false;
 }
 
-// Auto-detect which @mulmobridge/* packages to check by reading the
-// launcher's package.json. Only packages that ALSO exist as a local
-// workspace (`packages/<name>/`) are returned — published-only deps
-// can't drift against themselves.
-export async function detectMulmobridgeDeps({ root = process.cwd() } = {}) {
-  const pkgPath = path.join(root, "packages", "mulmoclaude", "package.json");
-  const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
-  const deps = Object.keys(pkg.dependencies ?? {});
-  const bridges = deps.filter((name) => name.startsWith(MULMOBRIDGE_SCOPE)).map((name) => name.slice(MULMOBRIDGE_SCOPE.length));
-  const out = [];
-  for (const name of bridges) {
-    const localVersion = await readLocalVersion(root, name);
-    if (localVersion !== null) out.push(name);
+/**
+ * Inspect one workspace: for every `exports` subpath, compare the local built
+ * dist against the published one. Returns
+ * `{ status: "ok" | "drifted" | "pending-publish" | "skipped", ... }`.
+ *
+ * A bumped version downgrades drift to `pending-publish`: the registry still
+ * serves the old dist, but consumers of the NEW version will get the new exports
+ * once it is published, so from here it is "pending publish", not broken. That is
+ * also what unblocks a PR that adds exports, bumps, and waits for the cascade.
+ */
+export async function checkPackageDrift({
+  root = process.cwd(),
+  name,
+  dir,
+  pkg,
+  fetchPublishedVersion = defaultFetchPublishedVersion,
+  fetchPublishedEntry = defaultFetchPublishedEntry,
+} = {}) {
+  if (typeof name !== "string" || name === "") throw new Error("checkPackageDrift: `name` is required");
+  const manifest = pkg ?? (await readManifest(path.join(root, dir ?? "", "package.json")));
+  if (manifest === null) return { packageBaseName: name, localVersion: null, status: "skipped", reason: `no manifest under ${dir}` };
+  const localVersion = typeof manifest.version === "string" ? manifest.version : null;
+
+  const published = await fetchPublishedVersion({ name });
+  if (published.version === null) {
+    return {
+      packageBaseName: name,
+      localVersion,
+      publishedVersion: null,
+      status: "skipped",
+      reason: `no published version — ${published.reason ?? "unknown"}`,
+    };
   }
-  return out;
+
+  const entries = entryTargets(manifest);
+  const added = [];
+  const opaqueEntries = [];
+  const skipped = [];
+  let localCount = 0;
+  let distCount = 0;
+  let compared = 0;
+
+  for (const [subpath, entryPath] of entries) {
+    if (subpath.includes("*") || entryPath.includes("*")) {
+      // A wildcard subpath (`"./*": "./dist/*.js"`) names a family, not a file.
+      // Enumerating it would mean walking the published tarball; say so rather
+      // than reporting the unresolvable path as a missing build.
+      skipped.push(`${subpath} (wildcard subpath — not enumerable)`);
+      continue;
+    }
+    let localSource;
+    try {
+      localSource = await readFile(path.join(root, dir ?? "", entryPath), "utf8");
+    } catch {
+      // The dist file the manifest promises is not there. Reported, never silent:
+      // a missing local build is the one state that could make drift look clean.
+      skipped.push(`${subpath} (local ${entryPath} missing — build first)`);
+      continue;
+    }
+    const remote = await fetchPublishedEntry({ name, version: published.version, entryPath });
+    if (remote.source === null) {
+      skipped.push(`${subpath} (published ${entryPath}: ${remote.reason ?? "unavailable"})`);
+      continue;
+    }
+    const result = compareEntry(localSource, remote.source);
+    compared += 1;
+    localCount += result.localCount;
+    distCount += result.distCount;
+    if (result.opaque) opaqueEntries.push(subpath);
+    for (const exportName of result.added) added.push(`${subpath}:${exportName}`);
+    if (result.opaque && result.drifted) added.push(`${subpath}:+${result.localCount - result.distCount} export line(s)`);
+  }
+
+  if (compared === 0) {
+    return {
+      packageBaseName: name,
+      localVersion,
+      publishedVersion: published.version,
+      status: "skipped",
+      reason: `no entry could be compared — ${skipped.join("; ") || "no exports"}`,
+    };
+  }
+
+  const drifted = added.length > 0;
+  const status = drifted ? (isLocalVersionAhead(localVersion, published.version) ? "pending-publish" : "drifted") : "ok";
+  return {
+    packageBaseName: name,
+    localVersion,
+    publishedVersion: published.version,
+    status,
+    localCount,
+    distCount,
+    added,
+    entriesCompared: compared,
+    ...(skipped.length > 0 ? { partialReason: skipped.join("; ") } : {}),
+    ...(opaqueEntries.length > 0 ? { opaqueEntries } : {}),
+  };
 }
 
-// Run checkPackageDrift against every auto-detected (or explicit)
-// @mulmobridge/* workspace dep. Returns one result per package.
-export async function checkWorkspaceDrift({
-  root = process.cwd(),
-  packageBaseNames,
-  installedRoot = DEFAULT_INSTALLED_ROOT,
-  srcRelative,
-  distRelative,
-  fetchPublishedSource,
-} = {}) {
-  const names = packageBaseNames ?? (await detectMulmobridgeDeps({ root }));
+/** Run `checkPackageDrift` across the discovered scan set (or an explicit list). */
+export async function checkWorkspaceDrift({ root = process.cwd(), packageNames, ...rest } = {}) {
+  const discovered = await discoverWorkspaceLibraries({ root });
+  const targets = packageNames === undefined ? discovered : discovered.filter((entry) => packageNames.includes(entry.name));
   const results = [];
-  for (const name of names) {
-    results.push(
-      await checkPackageDrift({
-        root,
-        packageBaseName: name,
-        installedRoot,
-        srcRelative,
-        distRelative,
-        ...(fetchPublishedSource ? { fetchPublishedSource } : {}),
-      }),
-    );
+  for (const target of targets) {
+    results.push(await checkPackageDrift({ root, name: target.name, dir: target.dir, pkg: target.pkg, ...rest }));
   }
   return results;
 }
 
-// One console line per result. Every status the audit can return needs its own
-// branch: `pending-publish` used to fall through to the `✓ … (src == published)`
-// line below, which says the opposite of what happened — the counts DIFFER, the
-// bump just means it is intentional. That line read as fully clean while
-// @mulmobridge/client sat bumped-but-unpublished, and the launcher release it
-// would have broken was caught by a hand-run loop instead (#3099).
 export function formatLine(result) {
-  const { packageBaseName, localVersion, publishedVersion, status, fallbackReason } = result;
+  const { packageBaseName, localVersion, publishedVersion, status } = result;
   const local = localVersion ? `v${localVersion}` : "(no local version)";
   const published = publishedVersion ? `→ published v${publishedVersion}` : "";
-  const fallback = fallbackReason ? ` [${fallbackReason}]` : "";
-  const counts = `src has ${result.localCount} value-export lines, published dist has ${result.distCount}`;
+  const partial = result.partialReason ? ` [partial: ${result.partialReason}]` : "";
+  const opaque = result.opaqueEntries ? ` [opaque: ${result.opaqueEntries.join(", ")}]` : "";
+  const counts = `local dist exports ${result.localCount} name(s), published ${result.distCount}`;
   if (status === "drifted") {
-    return `  ⚠ @mulmobridge/${packageBaseName} ${local} ${published}: ${counts}${fallback}`;
+    return `  ⚠ ${packageBaseName} ${local} ${published}: ${counts} — adds ${result.added.join(", ")}${partial}${opaque}`;
   }
   if (status === "pending-publish") {
-    return `  ⧗ @mulmobridge/${packageBaseName} ${local} ${published}: ${counts} — bumped but NOT published yet${fallback}`;
+    return `  ⧗ ${packageBaseName} ${local} ${published}: ${counts} — adds ${result.added.join(", ")}, bumped but NOT published yet${partial}${opaque}`;
   }
   if (status === "skipped") {
-    return `  · @mulmobridge/${packageBaseName} ${local}: skipped — ${result.reason}`;
+    return `  · ${packageBaseName} ${local}: skipped — ${result.reason}`;
   }
-  return `  ✓ @mulmobridge/${packageBaseName} ${local} ${published}: ${result.localCount} value-export lines (src == published)${fallback}`;
+  return `  ✓ ${packageBaseName} ${local} ${published}: ${result.localCount} export name(s) match across ${result.entriesCompared} entry(ies)${partial}${opaque}`;
 }
 
 /**
@@ -294,7 +391,7 @@ export function formatLine(result) {
  *
  * `pending-publish` is deliberately non-fatal on an ordinary PR — the version bump is the
  * developer's acknowledgement, and blocking would stop a PR that adds exports and bumps
- * correctly while the cascade publish is still pending (see the note on `isBumped` above).
+ * correctly while the cascade publish is still pending.
  *
  * At RELEASE time the same state is the blocker itself: a package bumped but not published
  * is a dependency range whose lower bound does not exist on the registry, so
@@ -309,14 +406,14 @@ export const failingStatuses = (release) => (release ? ["drifted", "pending-publ
 
 // CLI: exits 1 if any package drifted, 0 otherwise. "skipped"
 // results don't fail the check but are printed so the operator can
-// decide if they should retry after `yarn install`.
+// decide if they should retry after a build.
 export async function main({ release = false } = {}) {
   const results = await checkWorkspaceDrift();
   for (const result of results) console.log(formatLine(result));
   const fails = failingStatuses(release);
   const blocking = results.filter((result) => fails.includes(result.status));
   if (blocking.length === 0) {
-    console.log(`[mulmoclaude:drift] OK — no workspace drift detected${release ? ", and nothing is waiting to be published" : ""}.`);
+    console.log(`[mulmoclaude:drift] OK — no workspace drift across ${results.length} package(s)${release ? ", and nothing is waiting to be published" : ""}.`);
     return 0;
   }
   const pending = blocking.filter((result) => result.status === "pending-publish");
