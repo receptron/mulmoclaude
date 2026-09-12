@@ -386,8 +386,10 @@ and `scheduleTestNotification`, both deleted with it.
 
 `POST /api/notifier` (`API_ROUTES.notifier.dispatch`) takes `{ action }` — `list`, `listHistory`,
 `clear`, `cancel`. `clear` and `cancel` are host-scoped on purpose: the bell belongs to the host,
-sees every plugin's entries, and must be able to dismiss any of them. Per-plugin isolation
-(`clearForPlugin`, `getForPlugin`) exists only on the in-process API.
+sees every plugin's entries, and must be able to dismiss any of them. The per-plugin variants
+(`updateForPlugin`, `getForPlugin`, `clearForPlugin`) exist only on the in-process API, and
+`pluginPkg` is what they enforce with: each compares it against the entry and no-ops on a
+mismatch, so one plugin cannot reach another's entries.
 
 `src/composables/useNotifications.ts` seeds both lists from that endpoint and then follows
 `PUBSUB_CHANNELS.notifier`. Events are a discriminated union — `published`, `updated`, `cleared`,

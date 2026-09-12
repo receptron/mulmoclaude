@@ -42,9 +42,11 @@ export interface NotifierEntry<TPluginData = unknown> {
   /** Engine-assigned UUID. Generated synchronously inside `publish()`
    *  so the caller can use it before persistence completes. */
   id: string;
-  /** Plugin namespace (e.g. `"encore"`, `"debug__system"`). The
-   *  engine never inspects it — used only for `listFor()` filtering
-   *  and as a UI grouping key. */
+  /** Plugin namespace (e.g. `"encore"`, `"debug__system"`), and the
+   *  key the per-plugin isolation is built on: `updateForPlugin`,
+   *  `getForPlugin` and `clearForPlugin` each compare it and no-op on
+   *  a mismatch, so one plugin cannot touch another's entries.
+   *  `listFor` filters on it, and the UI groups by it. */
   pluginPkg: string;
   severity: NotifierSeverity;
   lifecycle?: NotifierLifecycle;
