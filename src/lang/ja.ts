@@ -349,7 +349,13 @@ const jaMessages = {
       saveError: "保存に失敗しました",
     },
     modelTab: {
-      description: "Claude Code が各ターンで使う推論 effort を設定します。未設定の場合は Claude のデフォルトに従います。",
+      description: "Claude Code が各ターンで使うモデルと推論 effort を設定します。未設定の場合は Claude 側の解決に従います。",
+      modelLabel: "モデル",
+      modelUnset: "(未設定 — ~/.claude/settings.json に従う)",
+      modelHelperText:
+        "未設定のときは ~/.claude/settings.json のモデルが使われます。このファイルは VS Code や Cursor の Claude Code 拡張が /model の選択を保存する先でもあるため、そちらで切り替えると MulmoClaude のモデルも変わります。エイリアスは各ファミリーの最新世代に追随します。",
+      modelConfigured: "モデル: {model}",
+      modelNotConfigured: "未設定 (共有設定に従う)",
       effortLabel: "推論 effort",
       effortUnset: "(未設定 — Claude のデフォルトを使用)",
       helperText: "高いレベルほど思考時間が長くなりますが、レイテンシとトークン消費も増えます。",

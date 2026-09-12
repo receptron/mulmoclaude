@@ -349,7 +349,13 @@ const koMessages = {
       saveError: "저장에 실패했습니다",
     },
     modelTab: {
-      description: "Claude Code가 각 턴에 사용하는 추론 effort를 제어합니다. 설정하지 않으면 Claude의 기본값이 사용됩니다.",
+      description: "Claude Code가 각 턴에 사용하는 모델과 추론 effort를 설정합니다. 설정하지 않으면 Claude 쪽 해석을 따릅니다.",
+      modelLabel: "모델",
+      modelUnset: "(미설정 — ~/.claude/settings.json 따르기)",
+      modelHelperText:
+        "미설정이면 모델은 ~/.claude/settings.json에서 결정됩니다. VS Code나 Cursor의 Claude Code 확장도 /model 선택을 이 파일에 저장하므로, 그쪽에서 바꾸면 MulmoClaude의 모델도 함께 바뀝니다. 별칭은 각 패밀리의 최신 세대를 따라갑니다.",
+      modelConfigured: "모델: {model}",
+      modelNotConfigured: "미설정 (공유)",
       effortLabel: "추론 effort",
       effortUnset: "(미설정 — Claude 기본값 사용)",
       helperText: "레벨이 높을수록 사고 시간이 늘어나지만 지연 시간과 토큰 사용량도 증가합니다.",

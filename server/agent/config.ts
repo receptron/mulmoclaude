@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import type { Role } from "../../src/config/roles.js";
 import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 import { getActiveToolDescriptors } from "./activeTools.js";
-import type { EffortLevel, McpServerSpec, PreparedMcpServerSpec } from "../system/config.js";
+import type { ChatModel, EffortLevel, McpServerSpec, PreparedMcpServerSpec } from "../system/config.js";
 import { startStdioHttpShim, type ShimHandle } from "./stdioHttpShim.js";
 import { claudeConfigDir, claudeConfigJson } from "../utils/claudeConfigPath.js";
 import { getCurrentToken } from "../api/auth/token.js";
@@ -613,10 +613,14 @@ export interface CliArgsParams {
   // Reasoning effort (#1323). When undefined, the flag is omitted
   // and Claude picks its own default.
   effortLevel?: EffortLevel | undefined;
+  // Model family (#2923). When undefined, the flag is omitted and the
+  // CLI resolves the model from `~/.claude/settings.json` — the same
+  // file other Claude Code clients write their `/model` pick to.
+  chatModel?: ChatModel | undefined;
 }
 
 export function buildCliArgs(params: CliArgsParams): string[] {
-  const { systemPromptPath, activePlugins, claudeSessionId, mcpConfigPath, extraAllowedTools = [], effortLevel } = params;
+  const { systemPromptPath, activePlugins, claudeSessionId, mcpConfigPath, extraAllowedTools = [], effortLevel, chatModel } = params;
 
   const mcpToolNames = activePlugins.map((pluginName) => `mcp__mulmoclaude__${pluginName}`);
   // DEBUG: also pass the wildcard form `mcp__mulmoclaude` so Claude
@@ -682,6 +686,10 @@ export function buildCliArgs(params: CliArgsParams): string[] {
 
   if (effortLevel) {
     args.push("--effort", effortLevel);
+  }
+
+  if (chatModel) {
+    args.push("--model", chatModel);
   }
 
   return args;

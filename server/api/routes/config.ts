@@ -182,6 +182,12 @@ router.put(API_ROUTES.config.settings, (req: Request<unknown, unknown, AppSettin
   if (body.effortLevel === null) {
     delete merged.effortLevel;
   }
+  // chatModel null-sentinel (#2923) — mirrors effortLevel. Clearing the
+  // field is what restores "follow ~/.claude/settings.json", so it must
+  // leave settings.json without the key rather than with a stale value.
+  if (body.chatModel === null) {
+    delete merged.chatModel;
+  }
   // Chat-index null-sentinel (#1944): "off" is the documented default
   // (chatIndexMode() maps undefined → "off"), so the tab sends `null`
   // to drop the field entirely and keep settings.json free of default

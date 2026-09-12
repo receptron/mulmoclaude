@@ -23,6 +23,13 @@ import { isRecord, isStringArray, isStringRecord } from "../utils/types.js";
 export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
+// Model families accepted by `claude --model` (#2923). Deliberately
+// aliases only, never a pinned id like `claude-opus-4-8`: an alias
+// follows the user's saved choice onto the next generation, while a
+// pinned id silently keeps them on a model that is eventually retired.
+export const CHAT_MODELS = ["opus", "sonnet", "haiku"] as const;
+export type ChatModel = (typeof CHAT_MODELS)[number];
+
 // Chat-index summarizer setting (#1944). "off" disables the whole
 // AI-title / summary / keywords background indexer; "haiku" / "sonnet"
 // select the Claude model the summarizer spawns. Default (undefined)
@@ -73,6 +80,14 @@ export interface AppSettings {
   // every agent invocation (#1323). Unset → flag is omitted →
   // Claude's own default.
   effortLevel?: EffortLevel;
+
+  // Model family passed through as `claude --model <alias>` on every
+  // agent invocation (#2923). Unset → flag is omitted → the CLI
+  // resolves the model from `~/.claude/settings.json`, which is also
+  // where other Claude Code clients (VS Code / Cursor) persist their
+  // `/model` pick — so leaving this unset means a switch made in
+  // another editor silently changes the model MulmoClaude runs on.
+  chatModel?: ChatModel;
 
   // Local voice input (whisper.cpp). Ships off. `enabled` is the
   // user's explicit opt-in from Settings → Voice; flipping it true is
@@ -128,6 +143,7 @@ export const APP_SETTINGS_KEYS = [
   "googleMapsApiKey",
   "photoExif",
   "effortLevel",
+  "chatModel",
   "voiceInput",
   "chatIndex",
   "journal",
@@ -145,6 +161,7 @@ export const SAFE_SETTINGS_KEYS = [
   "extraAllowedTools",
   "photoExif",
   "effortLevel",
+  "chatModel",
   "voiceInput",
   "chatIndex",
   "journal",
@@ -189,6 +206,10 @@ function isEffortLevel(value: unknown): value is EffortLevel {
   return EFFORT_LEVELS.some((level) => level === value);
 }
 
+function isChatModel(value: unknown): value is ChatModel {
+  return CHAT_MODELS.some((model) => model === value);
+}
+
 function isChatIndexMode(value: unknown): value is ChatIndexMode {
   return CHAT_INDEX_MODES.some((mode) => mode === value);
 }
@@ -204,21 +225,35 @@ function isVoiceInputSettings(value: unknown): value is { enabled: boolean; mode
   return true;
 }
 
-// Optional fields: each is either absent or must match its type. Split out of
-// isAppSettings so that function stays under the cognitive-complexity ceiling
-// as new optional settings land.
+// Optional fields: each is either absent or must match its type.
 const isOptionalBoolean = (value: unknown): boolean => value === undefined || typeof value === "boolean";
+const isOptionalString = (value: unknown): boolean => value === undefined || typeof value === "string";
+const optional =
+  (isValid: (value: unknown) => boolean) =>
+  (value: unknown): boolean =>
+    value === undefined || isValid(value);
+
+type OptionalAppSettingsKey = Exclude<keyof AppSettings, "extraAllowedTools">;
+
+// A table rather than a chain of ifs, for two reasons. The chain hit the
+// cognitive-complexity ceiling once it reached nine settings, so every further
+// field forced a reshuffle. And `Record<OptionalAppSettingsKey, …>` turns the
+// real hazard — a field added to `AppSettings` and never validated, which
+// would then be accepted from disk in any shape — into a build error.
+const OPTIONAL_SETTING_VALIDATORS: Record<OptionalAppSettingsKey, (value: unknown) => boolean> = {
+  googleMapsApiKey: isOptionalString,
+  photoExif: optional(isPhotoExifSettings),
+  effortLevel: optional(isEffortLevel),
+  chatModel: optional(isChatModel),
+  voiceInput: optional(isVoiceInputSettings),
+  chatIndex: optional(isChatIndexMode),
+  journal: optional(isJournalMode),
+  pushEnabled: isOptionalBoolean,
+  macosRemindersEnabled: isOptionalBoolean,
+};
 
 function hasValidOptionalAppSettings(value: Record<string, unknown>): boolean {
-  if (value.googleMapsApiKey !== undefined && typeof value.googleMapsApiKey !== "string") return false;
-  if (value.photoExif !== undefined && !isPhotoExifSettings(value.photoExif)) return false;
-  if (value.effortLevel !== undefined && !isEffortLevel(value.effortLevel)) return false;
-  if (value.voiceInput !== undefined && !isVoiceInputSettings(value.voiceInput)) return false;
-  if (value.chatIndex !== undefined && !isChatIndexMode(value.chatIndex)) return false;
-  if (value.journal !== undefined && !isJournalMode(value.journal)) return false;
-  if (!isOptionalBoolean(value.pushEnabled)) return false;
-  if (!isOptionalBoolean(value.macosRemindersEnabled)) return false;
-  return true;
+  return Object.entries(OPTIONAL_SETTING_VALIDATORS).every(([key, isValid]) => isValid(value[key]));
 }
 
 export function isAppSettings(value: unknown): value is AppSettings {
@@ -245,8 +280,9 @@ export function isAppSettings(value: unknown): value is AppSettings {
  *  but lets nullable fields carry `null` as a "clear me" sentinel —
  *  callers normalise via `normaliseAppSettingsPatch` before merging
  *  into the storage shape (#1323). */
-export type AppSettingsPatch = Partial<Omit<AppSettings, "effortLevel" | "chatIndex" | "journal">> & {
+export type AppSettingsPatch = Partial<Omit<AppSettings, "effortLevel" | "chatModel" | "chatIndex" | "journal">> & {
   effortLevel?: EffortLevel | null;
+  chatModel?: ChatModel | null;
   chatIndex?: ChatIndexMode | null;
   journal?: JournalMode | null;
 };
@@ -254,10 +290,13 @@ export type AppSettingsPatch = Partial<Omit<AppSettings, "effortLevel" | "chatIn
 /** Convert a wire patch to the storage-shape patch by dropping any
  *  `null` sentinels (which mean "clear" for the corresponding field). */
 export function normaliseAppSettingsPatch(patch: AppSettingsPatch): Partial<AppSettings> {
-  const { effortLevel, chatIndex, journal, ...rest } = patch;
+  const { effortLevel, chatModel, chatIndex, journal, ...rest } = patch;
   const out: Partial<AppSettings> = { ...rest };
   if (effortLevel !== null && effortLevel !== undefined) {
     out.effortLevel = effortLevel;
+  }
+  if (chatModel !== null && chatModel !== undefined) {
+    out.chatModel = chatModel;
   }
   if (chatIndex !== null && chatIndex !== undefined) {
     out.chatIndex = chatIndex;
@@ -271,8 +310,8 @@ export function normaliseAppSettingsPatch(patch: AppSettingsPatch): Partial<AppS
 // Split each field's optional-with-null-sentinel validation into its own
 // mini-helper so `isAppSettingsPatch` stays under the cognitive-complexity
 // ceiling as new nullable fields land.
-const isOptionalString = (value: unknown): boolean => value === undefined || typeof value === "string";
 const isOptionalNullableEffortLevel = (value: unknown): boolean => value === undefined || value === null || isEffortLevel(value);
+const isOptionalNullableChatModel = (value: unknown): boolean => value === undefined || value === null || isChatModel(value);
 const isOptionalNullableChatIndexMode = (value: unknown): boolean => value === undefined || value === null || isChatIndexMode(value);
 const isOptionalNullableJournalMode = (value: unknown): boolean => value === undefined || value === null || isJournalMode(value);
 
@@ -282,6 +321,7 @@ export function isAppSettingsPatch(value: unknown): value is AppSettingsPatch {
   if (!isOptionalString(value.googleMapsApiKey)) return false;
   if (value.photoExif !== undefined && !isPhotoExifSettings(value.photoExif)) return false;
   if (!isOptionalNullableEffortLevel(value.effortLevel)) return false;
+  if (!isOptionalNullableChatModel(value.chatModel)) return false;
   if (value.voiceInput !== undefined && !isVoiceInputSettings(value.voiceInput)) return false;
   if (!isOptionalNullableChatIndexMode(value.chatIndex)) return false;
   if (!isOptionalNullableJournalMode(value.journal)) return false;
@@ -313,6 +353,9 @@ function cloneAppSettings(settings: AppSettings): AppSettings {
   }
   if (settings.effortLevel !== undefined) {
     copy.effortLevel = settings.effortLevel;
+  }
+  if (settings.chatModel !== undefined) {
+    copy.chatModel = settings.chatModel;
   }
   if (settings.voiceInput !== undefined) {
     copy.voiceInput = { enabled: settings.voiceInput.enabled };
@@ -407,6 +450,9 @@ export function saveSettings(settings: AppSettings): void {
   }
   if (settings.effortLevel !== undefined) {
     payload.effortLevel = settings.effortLevel;
+  }
+  if (settings.chatModel !== undefined) {
+    payload.chatModel = settings.chatModel;
   }
   if (settings.voiceInput !== undefined) {
     payload.voiceInput = { enabled: settings.voiceInput.enabled };

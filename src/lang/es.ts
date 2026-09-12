@@ -353,7 +353,14 @@ const esMessages = {
       saveError: "Error al guardar",
     },
     modelTab: {
-      description: "Controla el esfuerzo de razonamiento que Claude Code usa en cada turno. Déjalo sin configurar para usar el valor por defecto de Claude.",
+      description:
+        "Elige el modelo y el esfuerzo de razonamiento que Claude Code usa en cada turno. Deja cualquiera sin configurar para mantener la resolución propia de Claude.",
+      modelLabel: "Modelo",
+      modelUnset: "(sin configurar — seguir ~/.claude/settings.json)",
+      modelHelperText:
+        "Sin configurar, el modelo viene de ~/.claude/settings.json, el mismo archivo donde otros clientes de Claude Code (VS Code, Cursor) guardan su elección de /model, así que un cambio allí también afecta a MulmoClaude. Los alias siguen la última generación de cada familia.",
+      modelConfigured: "Modelo: {model}",
+      modelNotConfigured: "Sin configurar (compartido)",
       effortLabel: "Esfuerzo de razonamiento",
       effortUnset: "(sin configurar — usar valor por defecto de Claude)",
       helperText: "Niveles más altos permiten más tiempo de pensamiento pero aumentan la latencia y el uso de tokens.",

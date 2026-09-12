@@ -50,6 +50,7 @@ describe("cliArgsForInput", () => {
         mcpConfigPath: "/cfg.json",
         extraAllowedTools: ["Bash"],
         effortLevel: "high",
+        chatModel: "sonnet",
       }),
       PROMPT_PATH,
     );
@@ -57,6 +58,7 @@ describe("cliArgsForInput", () => {
     assert.equal(params.mcpConfigPath, "/cfg.json");
     assert.deepEqual(params.extraAllowedTools, ["Bash"]);
     assert.equal(params.effortLevel, "high");
+    assert.equal(params.chatModel, "sonnet");
   });
 
   it("leaves optional fields undefined when the input omits them", () => {
@@ -64,6 +66,7 @@ describe("cliArgsForInput", () => {
     assert.equal(params.claudeSessionId, undefined);
     assert.equal(params.mcpConfigPath, undefined);
     assert.equal(params.effortLevel, undefined);
+    assert.equal(params.chatModel, undefined);
   });
 
   it("does not carry over non-CLI fields (message, workspacePath, port)", () => {

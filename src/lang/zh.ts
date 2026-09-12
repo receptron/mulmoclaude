@@ -339,7 +339,13 @@ const zhMessages = {
       saveError: "保存失败",
     },
     modelTab: {
-      description: "控制 Claude Code 每个回合使用的推理强度。留空则使用 Claude 的默认值。",
+      description: "设置 Claude Code 每个回合使用的模型和推理强度。留空则沿用 Claude 自身的解析结果。",
+      modelLabel: "模型",
+      modelUnset: "(未设置 — 沿用 ~/.claude/settings.json)",
+      modelHelperText:
+        "未设置时模型来自 ~/.claude/settings.json。VS Code、Cursor 的 Claude Code 扩展也会把 /model 的选择写入该文件,因此在那里切换会连带改变 MulmoClaude。别名会自动跟随各系列的最新一代。",
+      modelConfigured: "模型:{model}",
+      modelNotConfigured: "未设置(共享)",
       effortLabel: "推理强度",
       effortUnset: "(未设置 — 使用 Claude 的默认值)",
       helperText: "更高的等级会带来更多思考时间,但也会增加延迟和 token 消耗。",

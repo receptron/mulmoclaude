@@ -348,7 +348,14 @@ const frMessages = {
       saveError: "Échec de l'enregistrement",
     },
     modelTab: {
-      description: "Contrôle l'effort de raisonnement utilisé par Claude Code à chaque tour. Laissez vide pour utiliser la valeur par défaut de Claude.",
+      description:
+        "Choisissez le modèle et l'effort de raisonnement utilisés par Claude Code à chaque tour. Laissez l'un ou l'autre vide pour conserver la résolution propre à Claude.",
+      modelLabel: "Modèle",
+      modelUnset: "(non défini — suivre ~/.claude/settings.json)",
+      modelHelperText:
+        "Non défini, le modèle provient de ~/.claude/settings.json, le fichier où les autres clients Claude Code (VS Code, Cursor) enregistrent aussi leur choix de /model : un changement là-bas modifie donc aussi MulmoClaude. Les alias suivent la dernière génération de chaque famille.",
+      modelConfigured: "Modèle : {model}",
+      modelNotConfigured: "Non défini (partagé)",
       effortLabel: "Effort de raisonnement",
       effortUnset: "(non défini — utiliser la valeur par défaut de Claude)",
       helperText: "Les niveaux plus élevés autorisent plus de temps de réflexion mais augmentent la latence et la consommation de tokens.",
