@@ -778,6 +778,16 @@ describe("control flow, ranges and functions", () => {
     withMesh("define f(a) { cube { size a } }\nf(2)", (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
     assert.throws(() => objectsOf("define f(a) { minkowski { cube } }\nf(1)"), /minkowski/);
   });
+  it("evaluates a custom shape's call options in the caller's scope", () => {
+    // `depth depth - 1` names the CALLER's `depth`. Read in the body's scope it
+    // was the default instead, so a recursive shape never counted down.
+    const tree = "define branch {\n option depth 1\n cube\n if depth > 0 {\n  branch { depth depth - 1 }\n }\n}\nbranch { depth 3 }";
+    assert.equal(objectsOf(tree).filter((object) => (object as THREE.Mesh).isMesh).length, 4);
+    // A default that names an outer symbol still sees it.
+    withMesh("define w 3\ndefine box {\n option width w\n cube { size width 1 1 }\n}\nbox", (mesh) => near(extent(mesh).toArray(), [3, 1, 1]));
+    // And one with no way out is a script error, not a JavaScript stack overflow.
+    assert.throws(() => objectsOf("define forever {\n cube\n forever\n}\nforever"), /Custom shape `forever` recursed more than 256 levels/);
+  });
   it("collects `print` output and stops on a failed `assert`", () => {
     assert.deepEqual(infoOf('print "size" 1 (2 3)\nprint 1 to 3\ncube').logs, ["size 1 (2 3)", "1 to 3 step 1"]);
     assert.equal(objectsOf("assert 1 = 1\ncube").length, 1);
