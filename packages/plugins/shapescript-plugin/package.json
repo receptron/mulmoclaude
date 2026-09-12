@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/shapescript-plugin",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "description": "presentShapeScript — interactive 3D visualizations authored in the ShapeScript language (parser + Three.js renderer). Core (tool definition + execute) on `.`, Vue View/Preview on `./vue`.",
   "type": "module",
   "main": "./dist/index.js",

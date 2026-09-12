@@ -23,6 +23,10 @@ export interface MeshValue {
    *  in the order the script (or Euclid) produced them. */
   polygons?: PolygonValue[];
   name?: string;
+  /** Set when every mesh the value was built from stands in for a `path`
+   *  (a `path` block, a flat primitive, `text`), so a `define`d or returned
+   *  profile is still a path where a builder such as `loft` demands one. */
+  path?: true;
 }
 
 /** `shape.bounds` / `polygon.bounds`. */
