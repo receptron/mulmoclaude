@@ -33,9 +33,22 @@ describe("parseExportedNames", () => {
     assert.equal(drift.parseExportedNames(source).names.size, 6);
   });
 
-  it("ignores type-only exports and `default`", () => {
-    const source = "export type Foo = string;\nexport interface Bar {}\nexport { type Baz } from './b.js';\nexport default thing;\n";
+  it("ignores type-only exports", () => {
+    const source = "export type Foo = string;\nexport interface Bar {}\nexport { type Baz } from './b.js';\n";
     assert.deepEqual([...drift.parseExportedNames(source).names], []);
+  });
+
+  // `default` is a runtime export: a default-import consumer breaks the same way
+  // when the published tarball lacks it. Raised by Codex as a P1.
+  it("counts `default` in every shape that exports it", () => {
+    const shapes = ["export default thing;\n", "export default function f() {}\n", "export { a as default };\n", 'export { default } from "./x.js";\n'];
+    shapes.forEach((source) => {
+      assert.deepEqual([...drift.parseExportedNames(source).names], ["default"], source);
+    });
+  });
+
+  it("`default as thing` exports `thing`, not `default`", () => {
+    assert.deepEqual([...drift.parseExportedNames('export { default as thing } from "./x.js";\n').names], ["thing"]);
   });
 
   it("marks `export * from` opaque — the set cannot be enumerated from this file alone", () => {
@@ -46,6 +59,76 @@ describe("parseExportedNames", () => {
 
   it("ignores indented exports (only module-level counts)", () => {
     assert.equal(drift.parseExportedNames("  export const inner = 1;\n").names.size, 0);
+  });
+
+  // Parsing per LINE returned zero names for both shapes below, and zero names
+  // reads as "nothing exported" — so a package whose build emits either one
+  // would have reported clean no matter what it exported. Found by Claude while
+  // reviewing this PR, not flagged by Codex.
+  it("reads a brace list wrapped across lines", () => {
+    const source = 'export {\n  mimeFromExtension,\n  isImageMime,\n} from "./mime.js";\n';
+    assert.deepEqual([...drift.parseExportedNames(source).names].sort(), ["isImageMime", "mimeFromExtension"]);
+  });
+
+  it("reads several statements sharing one line, as a minified bundle emits them", () => {
+    assert.deepEqual([...drift.parseExportedNames("export{a,b};export{c};\n").names].sort(), ["a", "b", "c"]);
+  });
+
+  // The rule is inverted: the four shapes above are what the parser claims to
+  // model, and EVERYTHING else is opaque. Three findings in one review were each
+  // "it silently drops one more shape", so the ban-list became a permit-list. The
+  // cases below are the near-misses — each one must come back opaque rather than
+  // as an empty name set, because empty reads as "nothing exported" = "no drift".
+  it("treats every unmodelled export statement as opaque, not as empty", () => {
+    const nearMisses = [
+      "export/*c*/{a};\n", // a comment where the brace should start
+      "export {\n  a, // keep\n  b\n};\n", // a line comment inside the brace
+      "export { a, /* x */ b };\n", // a block comment inside the brace
+      "export { a,\n", // a brace that never closes
+      "export enum Colour { Red }\n", // a form this parser does not model
+      'export * from "./chunk.js";\n', // enumerable only with the published tarball
+    ];
+    nearMisses.forEach((source) => {
+      const { names, opaque } = drift.parseExportedNames(source);
+      assert.equal(opaque, true, `expected opaque for ${JSON.stringify(source)}`);
+      assert.deepEqual([...names], [], `expected no invented names for ${JSON.stringify(source)}`);
+    });
+  });
+
+  it("still does not treat an identifier starting with `export` as an export", () => {
+    const { names, opaque } = drift.parseExportedNames("exported = 1;\nexportable();\n");
+    assert.deepEqual([...names], []);
+    assert.equal(opaque, false, "a lookalike must not push the whole entry into the coarse comparison");
+  });
+
+  it("marks an export form it does not model opaque — fails CLOSED, never silently empty", () => {
+    const { names, opaque } = drift.parseExportedNames("export enum Colour { Red }\n");
+    assert.equal(opaque, true);
+    assert.deepEqual([...names], []);
+  });
+
+  it("marks a brace that never closes opaque rather than guessing", () => {
+    assert.equal(drift.parseExportedNames("export { a,\n").opaque, true);
+  });
+});
+
+describe("exportStatements", () => {
+  it("flattens a brace group so a wrapped statement stays one statement", () => {
+    const statements = drift.exportStatements("export {\n a,\n b\n}\n");
+    assert.equal(statements.length, 1);
+    assert.match(statements[0] ?? "", /^export \{\s+a,\s+b\s*\}$/);
+  });
+
+  it("keeps ignoring an indented export — it is text, not a module-level export", () => {
+    assert.deepEqual(drift.exportStatements("  export const inner = 1;\n"), []);
+  });
+
+  it("splits statements that share a line", () => {
+    assert.deepEqual(drift.exportStatements("export{a};export{b}"), ["export{a}", "export{b}"]);
+  });
+
+  it("keeps out identifiers that merely start with `export`", () => {
+    assert.deepEqual(drift.exportStatements("exported = 1\nexportable()\n"), []);
   });
 });
 
@@ -210,6 +293,40 @@ describe("checkPackageDrift — against a fake workspace and a stubbed registry"
     });
     assert.equal(result.status, "ok");
     assert.match(result.partialReason ?? "", /wildcard subpath/);
+  });
+
+  // Raised by Codex as a P1: adding `{ "./new": "./dist/new.js" }` at an unchanged
+  // version is a consumer-visible addition — `import "pkg/new"` fails after a plain
+  // install — and the published file 404s, so treating that as a skip let the whole
+  // package report `ok` as long as `.` compared cleanly.
+  it("counts a concrete subpath the published package does not serve as DRIFT", async () => {
+    writeWorkspace(
+      "@scope/h",
+      "packages/h",
+      "1.0.0",
+      { "dist/index.js": "export { root };\n", "dist/new.js": "export { fresh };\n" },
+      { ".": "./dist/index.js", "./new": "./dist/new.js" },
+    );
+    const result = await drift.checkPackageDrift({
+      root,
+      name: "@scope/h",
+      dir: "packages/h",
+      ...published("1.0.0", { "dist/index.js": "export { root };\n" }),
+    });
+    assert.equal(result.status, "drifted");
+    assert.match(result.added?.join(" ") ?? "", /ENTIRE SUBPATH absent/);
+  });
+
+  it("still SKIPS a transport failure — a 500 says nothing about the package", async () => {
+    writeWorkspace("@scope/i", "packages/i", "1.0.0", { "dist/index.js": "export { root };\n" });
+    const result = await drift.checkPackageDrift({
+      root,
+      name: "@scope/i",
+      dir: "packages/i",
+      fetchPublishedVersion: async () => ({ version: "1.0.0", reason: null }),
+      fetchPublishedEntry: async () => ({ source: null, reason: "unpkg 500" }),
+    });
+    assert.equal(result.status, "skipped");
   });
 
   it("skips when the package is not on the registry", async () => {

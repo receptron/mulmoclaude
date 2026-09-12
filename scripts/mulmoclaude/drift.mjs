@@ -43,16 +43,48 @@ const REGISTRY_BASE = "https://registry.npmjs.org";
 const UNPKG_BASE = "https://unpkg.com";
 const REGISTRY_TIMEOUT_MS = 15_000;
 
-// Names a module exports, or `opaque: true` when the file re-exports a whole
-// module (`export * from "./chunk.js"`) and the set cannot be enumerated without
-// resolving that file — which is not possible for the published side without
-// downloading the whole tarball. An opaque entry falls back to line counting,
-// which is weaker but still catches a new re-export line.
+/** Statements that begin with `export`, with newlines inside a brace group
+ *  flattened so a wrapped list is one statement, and `;`-separated statements on
+ *  one line split apart. Parsing per LINE instead of per statement silently
+ *  returned zero names for both shapes, which reads as "nothing exported" and so
+ *  as "no drift" — the exact failure this gate exists to prevent. */
+export function exportStatements(source) {
+  const flattened = [];
+  let depth = 0;
+  for (const char of source) {
+    if (char === "{") depth += 1;
+    else if (char === "}") depth = depth > 0 ? depth - 1 : 0;
+    flattened.push(depth > 0 && (char === "\n" || char === "\r") ? " " : char);
+  }
+  const statements = [];
+  for (const line of flattened.join("").split("\n")) {
+    // Column 0 only. An indented `export` is not a module-level export in a built
+    // file — it is text inside a template literal, a comment, or a namespace — and
+    // counting it would invent names the package does not have.
+    if (!line.startsWith("export")) continue;
+    for (const piece of line.split(";")) {
+      const chunk = piece.trim();
+      // `export` must be a complete token — `exported = 1` is not an export — but
+      // anything else that IS one is kept even when it looks unparseable
+      // (`export/*c*/{a}`), because the parser marks what it cannot model opaque.
+      // Dropping it here instead would be a silent miss, which reads as "clean".
+      if (chunk.startsWith("export") && !/^export[\w$]/.test(chunk)) statements.push(chunk);
+    }
+  }
+  return statements;
+}
+
+// Names a module exports, or `opaque: true` when a statement re-exports a whole
+// module (`export * from "./chunk.js"`) or cannot be parsed at all. Opaque falls
+// back to line counting — weaker, but it FAILS CLOSED: an export shape nobody
+// anticipated shows up as a coarser comparison, never as an empty name set that
+// would pass as clean.
 export function parseExportedNames(source) {
   const names = new Set();
   let opaque = false;
   const IDENT = /^[A-Za-z_$][\w$]*/;
   const DECLARERS = new Set(["function", "function*", "class", "const", "let", "var"]);
+  const NO_NAME_FORMS = new Set(["type", "interface"]);
   const firstWord = (text) => {
     const cut = text.search(/[^\w$*]/);
     return cut === -1 ? text : text.slice(0, cut === 0 ? 1 : cut);
@@ -63,22 +95,34 @@ export function parseExportedNames(source) {
     if (spec === "" || spec.startsWith("type ")) return null;
     const parts = spec.split(/\s+/);
     const picked = parts.length >= 3 && parts[parts.length - 2] === "as" ? parts[parts.length - 1] : parts[0];
+    // `default` counts: a default-import consumer breaks the same way when the
+    // published tarball lacks it, which is the failure this gate exists for.
     const match = IDENT.exec(picked);
-    return match === null || match[0] === "default" ? null : match[0];
+    return match === null ? null : match[0];
   };
 
-  for (const line of source.split(/\r?\n/)) {
-    if (!line.startsWith("export")) continue;
-    let rest = line.slice("export".length);
-    if (rest !== "" && !/^[\s{*]/.test(rest)) continue; // `exported` etc., not a keyword
-    rest = rest.trim();
+  // The rule is INVERTED on purpose: these four shapes are what this parser claims
+  // to understand, and every other `export` statement is opaque. Three separate
+  // findings in one review were each "it silently drops <one more shape>" — a
+  // language always has one more way to say a thing than a ban-list will name, and
+  // a dropped statement reads as "nothing exported", i.e. as "no drift". This
+  // direction rejects some perfectly safe code into the coarser line-count
+  // comparison, which is the trade worth making for a release gate.
+  for (const statement of exportStatements(source)) {
+    let rest = statement.slice("export".length).trim();
     if (rest.startsWith("*")) {
       opaque = true;
       continue;
     }
     if (rest.startsWith("{")) {
       const close = rest.indexOf("}");
-      const body = close === -1 ? rest.slice(1) : rest.slice(1, close);
+      const body = close === -1 ? null : rest.slice(1, close);
+      // A brace that never closes, or one carrying a comment (whose text could hide
+      // or invent a name once newlines are flattened), is not a shape this models.
+      if (body === null || body.includes("//") || body.includes("/*")) {
+        opaque = true;
+        continue;
+      }
       for (const piece of body.split(",")) {
         const name = specifierName(piece);
         if (name !== null) names.add(name);
@@ -92,11 +136,19 @@ export function parseExportedNames(source) {
       rest = rest.slice(head.length).trim();
       head = firstWord(rest);
     }
-    if (head === "default" || head === "type" || head === "interface") continue;
-    if (!DECLARERS.has(head) && !(head === "function" || head === "function*")) continue;
-    const after = rest.slice(head.length).trim();
-    const match = IDENT.exec(after);
-    if (match !== null) names.add(match[0]);
+    if (head === "default") {
+      names.add("default");
+      continue;
+    }
+    if (NO_NAME_FORMS.has(head)) continue;
+    if (!DECLARERS.has(head)) {
+      // `export <something we do not model>` — fail closed rather than drop it.
+      opaque = true;
+      continue;
+    }
+    const match = IDENT.exec(rest.slice(head.length).trim());
+    if (match === null) opaque = true;
+    else names.add(match[0]);
   }
   return { names, opaque };
 }
@@ -318,6 +370,17 @@ export async function checkPackageDrift({
     }
     const remote = await fetchPublishedEntry({ name, version: published.version, entryPath });
     if (remote.source === null) {
+      // A 404 on a CONCRETE target means the published package does not serve this
+      // path at all — `import "pkg/new"` fails after a plain install. That is the
+      // drift, not a gap in the check, so it counts rather than being skipped.
+      // Transport failures (5xx, 429, timeouts) stay skipped: they say nothing
+      // about the package.
+      if ((remote.reason ?? "").includes("404")) {
+        added.push(`${subpath}:ENTIRE SUBPATH absent from the published package (${entryPath})`);
+        compared += 1;
+        localCount += parseExportedNames(localSource).names.size;
+        continue;
+      }
       skipped.push(`${subpath} (published ${entryPath}: ${remote.reason ?? "unavailable"})`);
       continue;
     }
