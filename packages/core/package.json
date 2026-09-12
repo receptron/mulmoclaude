@@ -224,7 +224,7 @@
     "lint": "eslint src test"
   },
   "dependencies": {
-    "@duckdb/node-api": "^1.5.5-r.2",
+    "@duckdb/node-api": "^1.5.5-r.4",
     "@mulmoclaude/common": "^1.2.0",
     "@mulmoclaude/markdown-utils": "^2.2.0",
     "dompurify": "^3.4.15",
