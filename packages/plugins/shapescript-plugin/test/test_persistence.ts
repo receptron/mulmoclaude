@@ -248,6 +248,29 @@ describe("conversion budgets", () => {
     disposeObject3D(group);
   });
 
+  // A tree is a cylinder wrapped in about ten statements — transform, colour,
+  // `if`, `for`, `group`, the recursive call — so charging every statement
+  // refused a 10k-cylinder tree at ~0.5M vertices, a tenth of the vertex
+  // budget. Only objects count now.
+  it("charges the object budget per object, not per statement", () => {
+    const tree = (depth: number) =>
+      "detail 8\ndefine branch {\n option depth 1\n cylinder {\n  size 0.1 1 0.1\n  position 0 0.5 0\n }\n if depth > 0 {\n  translate 0 1 0\n  for i in 1 to 3 {\n   rotate 0 i/3 0\n   group {\n    rotate 0.15 0 0\n    scale 0.7\n    color 0.4 0.3 0.2\n    branch { depth depth - 1 }\n   }\n  }\n }\n}\nbranch { depth " +
+      depth +
+      " }";
+    // Depth 3 is 40 cylinders. A budget of 40 admits it and 39 refuses it, so
+    // the count is exactly the cylinders and nothing else.
+    disposeObject3D(astToThreeJS(parseShapeScript(tree(3)), { maxNodes: 40 }));
+    assert.throws(() => astToThreeJS(parseShapeScript(tree(3)), { maxNodes: 39 }), /more than 39 objects/);
+    // Depth 8: 9,841 cylinders, ~512k vertices. Inside every ceiling now.
+    const group = astToThreeJS(parseShapeScript(tree(8)));
+    let meshes = 0;
+    group.traverse((object) => {
+      if ((object as { isMesh?: boolean }).isMesh) meshes += 1;
+    });
+    assert.equal(meshes, 9841);
+    disposeObject3D(group);
+  });
+
   // Pinned rather than asserted loosely: these are the numbers a script author
   // and the tool's error messages both reason about, so a change to them should
   // be a decision, not a side effect.
