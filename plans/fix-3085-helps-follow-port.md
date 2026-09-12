@@ -57,3 +57,42 @@ publish はこの PR では行わない。
 - `telegram.md` の L44 は**サーバが実際に出すログ行**（`log.info("server", "listening",
   { port })` → `[server] listening port=<N>`）と突き合わせる。
 - `drift.mjs` / `launcherSync.mjs` / `check:changelog-ships` / `check:doc-links`。
+
+## レビュー中に広がった範囲（round 5〜8）
+
+当初は「同梱ヘルプ」だけの想定でしたが、cross-review が **同じクラスの主張がリポジトリ側の
+ドキュメントにも住んでいる**ことを毎ラウンド 1〜2 件見つけたため、そちらも掃きました。
+**広げた判断の根拠**: ヘルプが当てにする診断・ヘルプが否定する助言が、別のドキュメントに
+元のまま残っていると、読者は「どちらが本当か」を判定できません。同じ主張は一緒に正しいか
+一緒に間違っているかしかないので、同じ PR に属します。
+
+| 対象 | 直した主張 |
+|---|---|
+| `docs/message_apps/{telegram,line}/README{,.ja}.md` | `[server] listening port=3001` を待て / Telegram の期待出力に `Connecting to …` が無い |
+| `docs/troubleshooting.md` | token 固定は「long-running bridge 用」→ workspace を読めないクライアント用 |
+| `docs/developer.md` | process map の `localhost:3001` / Vite プロキシの追従 / 「two instances」の失敗モード（#2995 で解消済み）/ walk のログは warn ではなく info / Auth 節の pinning 根拠と scope（CLI ブリッジのみ・`fetch` ヘッダ） |
+| `docs/migrating-from-claude-code.md` | サーバのアドレス / 「ポートで衝突する」（衝突するのは workspace） |
+
+### 診断そのものをテストで固定した
+
+`error-recovery.md` の手順は `Connecting to …` という診断行に依存します。ところが
+`Connecting to` を `test/` `e2e/` `scripts/` と全 `src/` に grep すると、ヒットは
+`console.error` 自身だけ = **ガードが 1 件も無い**状態でした。この行を消しても全ゲートは緑、
+出荷されるヘルプだけが嘘になる — **この PR が直しているバグそのもの**です。
+
+`test/bridges/test_bridgeFollowsRestart.ts` に、ブリッジを別プロセスで起動して**子の stderr**
+を読むケースを追加しました（ストリームも主張の一部: ヘルプは端末出力として引用しており、
+ブリッジの stdout は会話のトランスクリプト）。起動時に publish されたポートを名乗ること、
+**再起動追従後は新しいポートを名乗ること**の 2 つを主張します。
+break-verify: ビルド済みクライアントから該当行を削除するとこのケースだけ赤、同ファイルの
+他 11 件は緑。
+
+## この PR に入れなかったもの（別 PR 候補）
+
+`docs/developer.md` の「Notifications (PoC scaffold)」節（約 50 行）とその Manual testing
+サブ節は、`f522dc101` で削除された機能を今も「stable」として説明しています
+（`server/api/routes/notifications.ts` / `src/components/NotificationToast.vue` /
+`src/utils/notification/dispatch.ts` / `scripts/dev/fire-sample-notifications.sh` がいずれも不在、
+`POST /api/notifications/test` ルートも存在しない）。同じ「ドキュメントが嘘をついている」
+クラスですが**原因が別**（dead-code trim）で**単独で revert でき**、`developer.md` の別 3 節を
+触るため、この PR には入れません。
