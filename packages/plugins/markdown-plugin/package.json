@@ -36,7 +36,6 @@
   },
   "dependencies": {
     "@marp-team/marp-core": "^4.4.0",
-    "@mulmoclaude/common": "^1.3.0",
     "@mulmoclaude/markdown-utils": "^2.2.0",
     "js-yaml": "^5.4.1",
     "marked": "^18.0.12",
@@ -44,12 +43,14 @@
     "mermaid": "^11.16.1"
   },
   "peerDependencies": {
+    "@mulmoclaude/common": "^1.3.0",
     "@mulmoclaude/core": "^4.9.1",
     "gui-chat-protocol": "^2.0.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@mulmoclaude/common": "^1.3.0",
     "@mulmoclaude/core": "^4.9.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
