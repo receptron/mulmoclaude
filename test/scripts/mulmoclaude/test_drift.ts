@@ -212,8 +212,10 @@ describe("formatLine", () => {
     localVersion: "1.1.0",
     publishedVersion: "1.0.2",
     status,
-    localCount: 9,
-    distCount: 8,
+    // Asymmetric, and neither digit appears in the versions above — so a regex can tie
+    // each count to its own side of the line without matching "v1.1.0" by accident.
+    localCount: 17,
+    distCount: 4,
     ...extra,
   });
 
@@ -225,10 +227,13 @@ describe("formatLine", () => {
     });
   });
 
-  it("shows BOTH counts for pending-publish — the published side is the missing half", () => {
+  it("attaches each count to its OWN side — both numbers present is not enough", () => {
     const line = drift.formatLine(result("pending-publish"));
-    assert.match(line, /\b9\b/, "the local count");
-    assert.match(line, /\b8\b/, "the published count");
+    // Swapping the two labels keeps both numbers on the line and tells the operator the
+    // opposite story — published ahead of src. Asserting mere presence passes that
+    // implementation, so pin the association instead (#3101 round 1, found by both reviewers).
+    assert.match(line, /src\D*17/, "the local count sits with `src`");
+    assert.match(line, /dist\D*4/, "the published count sits with `dist`");
   });
 
   it("never claims a pending-publish package matches what is published", () => {
