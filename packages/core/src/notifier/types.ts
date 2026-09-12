@@ -6,7 +6,9 @@
 /** Two notification shapes, distinguished by who fires the close call:
  *
  *    `fyi`    — informational. The host (bell panel) clears it when the
- *               user dismisses the row. No deep-link target.
+ *               user dismisses the row. MAY carry a `navigateTarget`
+ *               (the legacy wrapper publishes fyi entries with one);
+ *               the row then navigates and clears.
  *    `action` — pending obligation. The plugin clears it when the
  *               underlying domain state changes (the user paid the tax,
  *               viewed the digest, etc.). The bell row navigates to
@@ -22,8 +24,9 @@
  *       is incoherent — fyi if it's a ping, `nudge`/`urgent` if it's a
  *       real obligation worth a landing page.
  *
- *  Both rules are mirrored in the HTTP layer so plugin-runtime callers
- *  and HTTP callers hit the same wall. */
+ *  Both rules live in `validate.ts`, which `publish` and
+ *  `updateForPlugin` share — there is no HTTP publish path for them to
+ *  be mirrored into (see `server/api/routes/notifier.ts`). */
 export const NOTIFIER_LIFECYCLES = ["fyi", "action"] as const;
 export type NotifierLifecycle = (typeof NOTIFIER_LIFECYCLES)[number];
 

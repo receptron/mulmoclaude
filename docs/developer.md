@@ -337,9 +337,9 @@ optional `navigateTarget`, and opaque `pluginData` the engine never inspects.
 
 `lifecycle` is the field that changes behaviour, and it says **who closes the entry**:
 
-| `lifecycle` | Who clears it | Deep link |
-| ----------- | ------------- | --------- |
-| `fyi` (default) | the user, by dismissing the row | none |
+| `lifecycle` | Who clears it | `navigateTarget` |
+| ----------- | ------------- | ---------------- |
+| `fyi` (default) | the user, by dismissing the row | optional — and the legacy wrapper always sets one when the old typed action had a destination |
 | `action` | the plugin, when the underlying state changes (the tax got paid, the digest got read) | required |
 
 The engine enforces exactly two rules at publish time, and they both follow from that: an
@@ -364,8 +364,11 @@ namespace. Publishers are in-process:
   (`server/plugins/runtime.ts`) binds to the calling plugin's own `pluginPkg` — a plugin
   literally cannot publish under another's namespace.
 - **Most host code** calls `publishNotification()` in `server/events/notifications.ts`, the
-  legacy wrapper below — `server/agent/mcp-tools/notify.ts`, `server/plugins/diagnostics.ts`,
-  `server/agent/mcpFailureMonitor.ts`, `server/system/announceOptionalDeps.ts`.
+  legacy wrapper below — nine call sites at the time of writing, among them
+  `server/agent/mcp-tools/notify.ts`, `server/plugins/diagnostics.ts`,
+  `server/agent/mcpFailureMonitor.ts`, `server/system/shadowedEnv.ts` and
+  `server/workspace/billing-migration.ts`. `grep -rl publishNotification server/` is the current
+  list; this one will rot.
 - **A few call `engine.publish` directly**, with every namespace-bearing field fixed at the call
   site rather than taken from a request: `server/api/routes/collectionAgentActions.ts` publishes
   an action-failure notice as `pluginPkg: "host"`.
@@ -388,9 +391,16 @@ sees every plugin's entries, and must be able to dismiss any of them. Per-plugin
 `cancelled` — and the composable rebuilds each payload field by field, because pub-sub JSON is
 untrusted. `src/components/NotificationBell.vue` renders the active list plus a read-only
 History section — five entries at first, the rest behind "Show more", so a cap's worth of
-repetitive terminations cannot swamp the panel. Clicking a row routes to `navigateTarget` with `notificationId=<id>` spliced
-in, so the landing page knows which entry to clear — `?` or `&` depending on what the target
-already has, and always before any `#fragment` rather than after it.
+repetitive terminations cannot swamp the panel.
+
+Activating an active row does what its lifecycle implies: a `fyi` row navigates if it has a
+target and then clears itself, an `action` row navigates only (the plugin owns the clear), and
+an `action` row with no target does neither — so it is not rendered as a button at all, rather
+than advertising an activation that does nothing. Mouse handling is two-tier (body click versus
+row padding) and history rows expand before they offer their own navigate control; the component
+is the place to read that. Whenever a row does navigate, `notificationId=<id>` is spliced into
+the target — `?` or `&` depending on what it already carries, and before any `#fragment` rather
+than after it — so the landing page knows which entry to clear.
 
 ### Persistence
 
