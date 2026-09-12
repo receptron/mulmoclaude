@@ -164,7 +164,7 @@ You never set these by hand; the server constructs them when spawning Claude ins
 
 | Script                            | What it does                                                                                                                                                                                            |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `yarn dev`                        | Server (`:3001`) + Vite client (`:5173`) concurrently. The default.                                                                                                                                     |
+| `yarn dev`                        | Server (`:3001` by default, see `PORT`) + Vite client (`:5173`) concurrently. The default.                                                                                                                                     |
 | `yarn dev:debug`                  | Same as `dev` but spawns the server with `--debug` (Node inspector ready).                                                                                                                              |
 | `yarn dev:full-build`             | Same as `dev` but rebuilds every workspace package unconditionally first. Use when a plugin's `dist/` is stale or half-written — `dev`'s mtime gate treats a partial `dist/` as fresh and skips it.      |
 | `yarn dev:client`                 | Vite client only — useful when you've already started the server elsewhere.                                                                                                                             |
@@ -211,8 +211,8 @@ You never set these by hand; the server constructs them when spawning Claude ins
 
 Three independent Node processes cooperate at runtime:
 
-1. **Express server** (`server/index.ts`) — listens on `localhost:3001`. Hosts every `/api/*` endpoint, the SSE stream for `POST /api/agent`, the pub-sub bus, and the cron-like [task manager](task-manager.md). Spawns the Claude CLI per agent invocation.
-2. **Vite dev client** — listens on `localhost:5173`, proxies `/api/*` to the backend port (`PORT`, default `3001`). Production builds skip Vite and let Express serve the static `dist/client`.
+1. **Express server** (`server/index.ts`) — listens on `127.0.0.1` at the port it resolves: `PORT` when set — and it exits rather than moving if that one is busy — otherwise `3001`, walking forward when *that* is busy. The bound port is published to `<workspace>/.server-port`, which is how everything outside the process finds it (#2650, #2981). IPv4 loopback only — `localhost` resolves to `::1` first on a dual-stack host, where nothing answers. Hosts every `/api/*` endpoint, the SSE stream for `POST /api/agent`, the pub-sub bus, and the cron-like [task manager](task-manager.md). Spawns the Claude CLI per agent invocation.
+2. **Vite dev client** — listens on `localhost:5173`, proxies `/api/*` to the port the backend published, re-aiming itself when that file changes after startup (#2995). Following is gated on `MULMOCLAUDE_DEV_FOLLOW_PORT=1`, which only `yarn dev` sets: `yarn dev:client` starts no backend, so a `.server-port` it found would be a leftover, and it targets what `PORT` implies instead. Production builds skip Vite and let Express serve the static `dist/client`.
 3. **MCP stdio bridge** (`server/agent/mcp-server.ts`) — spawned by the Claude CLI subprocess via `--mcp-config`. No HTTP listener: speaks JSON-RPC over stdin/stdout, forwards Claude's tool calls back to the Express server (`MCP_HOST:PORT/api/*`).
 
 ### Running two instances
@@ -225,7 +225,7 @@ MULMOCLAUDE_WORKSPACE_PATH=~/mulmoclaude-scratch PORT=3100 yarn dev
 
 Vite's own port needs no flag: `strictPort` is off, so the second client takes 5174 when 5173 is busy and proxies to `:3100`.
 
-**`yarn dev` twice with no `PORT` is the case that still bites.** The server walks forward when its port is busy (3001 → 3002), but Vite resolved its proxy target before that walk happened, in another process — so the second client talks to the *first* server and nothing errors. The server warns when it walks for exactly this reason; set `PORT` rather than relying on the walk.
+**`yarn dev` twice with no `PORT` still wants care, for a different reason than it used to.** The proxy no longer resolves its target once: it follows `<workspace>/.server-port` and re-aims from the next request (#2995), so the old failure — the second client silently talking to the *first* server — is gone. What remains is the workspace: two stacks sharing one overwrite each other's `.server-port` AND `.session-token`, and neither file can describe two servers. Set `PORT` and `MULMOCLAUDE_WORKSPACE_PATH` rather than relying on the walk. The server says which port it took when it walks — at info level, deliberately, since the client follows it now.
 
 The workspace is a separate axis: without `MULMOCLAUDE_WORKSPACE_PATH` both instances share `~/mulmoclaude`, so they would run on different ports over the same chats, artifacts and scheduler state.
 

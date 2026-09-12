@@ -54,6 +54,17 @@ bridge needs — it is what a client that cannot read `<workspace>/.session-toke
 a different set. The Telegram guides' quoted startup output also gained the `Connecting to …`
 line the shared client now prints, so what the guide shows is what the operator sees.
 
+`docs/developer.md` and `docs/migrating-from-claude-code.md` were the last of it, and both were
+stale about the server rather than about a bridge. The process map said Express "listens on
+`localhost:3001`" — wrong port and wrong host, since the bind is IPv4 loopback and the number is
+resolved. Its "running two instances" note still described the #2650 failure — a second client
+silently talking to the first server — which #2995 removed by having the proxy follow
+`.server-port` and re-aim itself; what actually remains is that two stacks sharing a workspace
+overwrite each other's sidecars. And `developer.md`'s Auth section sold `MULMOCLAUDE_AUTH_TOKEN`
+as the fix for "long-running bridges", which #3078 made false, while naming the CLI bridge as
+the whole bridge scope and claiming the token rides a `fetch` header — it rides the socket.io
+handshake, and there is no `Authorization` header anywhere in `packages/client/src`.
+
 The version bump is not ceremony. `@mulmoclaude/core@2.0.1` exists because 2.0.0 shipped
 without 32 lines of this same file, and the note on it puts the reason better than a rule
 would: a section that never reaches npm is a section the agent never has. 4.8.0 is what npm

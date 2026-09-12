@@ -121,7 +121,10 @@ cp .env.example .env
 yarn dev
 ```
 
-- ブラウザは `http://localhost:5173` (client) を開く。サーバは `http://localhost:3001`
+- ブラウザは `http://localhost:5173` (client) を開く。サーバは `127.0.0.1` の解決されたポート
+  (`PORT` 指定時はそのポート — 塞がっていれば先へ進まず終了する。未指定なら既定 `3001` から
+  空きへ進む) で listen し、実際のポートは起動ログの
+  `[server] listening port=…` と `<workspace>/.server-port` に出る
 - 起動中もホットリロード — `src/` を編集すれば即反映
 - `~/mulmoclaude/` ワークスペースは A と共有 (= 並行運用しないこと、後述)
 
@@ -156,7 +159,9 @@ echo 'VITE_LOCALE=ja' >> .env    # ja / en / zh / ko / es / pt-BR / fr / de
 #### A と B の使い分け / 切替時の注意
 
 - **同じワークスペース (`~/mulmoclaude/`)** を共有するので、どちらで起動しても chat 履歴 / wiki / skill / 設定はそのまま見える
-- **同時起動はしない** — どちらも server をデフォルト port 3001 で立てるので衝突する
+- **同時起動はしない** — 衝突するのはポートではなく **workspace** です。塞がっていれば
+  サーバは先のポートへ進みますが、`<workspace>/.server-port` は 1 つしか無く、2 台のサーバを
+  同時には書けません。2 スタック動かすなら `PORT` と `MULMOCLAUDE_WORKSPACE_PATH` を明示すること
 - B (dev) では plugin の `@mulmoclaude/*` が yarn workspace の symlink で解決される (= ローカル `packages/*-plugin/src/` がそのまま動く)
 - リリース版 A に戻したい時は `cd ~/path/to/mulmoclaude && (server プロセス停止)` してから `npx mulmoclaude@latest` を別ディレクトリで叩けば OK
 
