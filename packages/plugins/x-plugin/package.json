@@ -27,7 +27,7 @@
     "lint": "eslint src test"
   },
   "dependencies": {
-    "@mulmoclaude/common": "^1.2.0"
+    "@mulmoclaude/common": "^1.3.0"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

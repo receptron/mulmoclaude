@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/common",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "General-purpose pure utilities (type guards, etc.) shared across the MulmoClaude host, bridges, and plugins",
   "type": "module",
   "main": "./dist/index.js",
