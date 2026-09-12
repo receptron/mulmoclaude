@@ -61,6 +61,39 @@ with nothing on 3001 it retries forever against nothing, and with a
 DIFFERENT instance on 3001 it connects to that one — cleanly
 authenticated, no error — and answers the wrong server's users.
 
+### The published port is only good while the server is running
+
+Both sidecars are removed when the server shuts down cleanly, and
+`.server-port` is also cleared at startup before the new token is
+written (#3082). So a port you can read belongs to a server that was
+alive when it wrote it.
+
+What that does NOT give you is proof about the process now answering
+there. A bridge presents its bearer token in the socket.io handshake
+before it has learned anything about the peer, so if the server died
+without running its shutdown path — a crash, a `kill -9` — and some
+other local process then took that port, the token goes to whatever is
+listening.
+
+**This is a known, accepted exposure, not an oversight.** The reasoning,
+so it can be revisited rather than rediscovered:
+
+- On a single-user machine it buys an attacker nothing. `.session-token`
+  is mode 0600, and any process running as that user can simply read it
+  — squatting a port is the harder way to get something already
+  readable.
+- It differs only where a *different* local user holds the port, since
+  binding loopback is not restricted per-user. That is a multi-user host,
+  which is not the shape MulmoClaude is deployed in.
+- Closing it means verifying the peer before presenting the token: a new
+  unauthenticated identity endpoint, or a challenge-response handshake.
+  Both are protocol changes carried by all 25 bridges, for a threat that
+  is equivalent to file access in the deployment that actually exists.
+
+If you are writing a bridge for a shared host, set
+`MULMOCLAUDE_API_URL` explicitly rather than following the sidecar, and
+give the server a `PORT` it will not have to walk away from.
+
 ---
 
 ## Authentication
