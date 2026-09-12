@@ -27,7 +27,7 @@ import crypto from "crypto";
 import { readFileSync } from "fs";
 import type { Request, Response as ExpressResponse } from "express";
 import { createBridgeClient, chunkText } from "@mulmobridge/client";
-import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature } from "@mulmobridge/webhook-runtime";
+import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "line-works";
@@ -35,7 +35,6 @@ const MAX_TEXT = 1_000;
 const FETCH_TIMEOUT_MS = 15_000;
 const JWT_TTL_SEC = 3_600;
 const TOKEN_REFRESH_MARGIN_SEC = 60;
-const PORT = Number(process.env.LINEWORKS_WEBHOOK_PORT) || 3013;
 
 function readRequiredEnv(): { clientId: string; clientSecret: string; serviceAccount: string; botId: string; botSecret: string; privateKeyPem: string } {
   const clientId = process.env.LINEWORKS_CLIENT_ID;
@@ -241,9 +240,9 @@ app.post("/callback", callbackRateLimit, async (req: Request, res: ExpressRespon
   }
 });
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "LINEWORKS_WEBHOOK_PORT", fallback: 3013 }, (port) => {
   console.log("MulmoClaude LINE Works bridge");
-  console.log(`Webhook listening on http://localhost:${PORT}/callback`);
+  console.log(`Webhook listening on http://localhost:${port}/callback`);
   console.log(`Bot ID: ${botId}`);
   console.log(`Allowlist: ${allowAll ? "(all)" : [...allowedUsers].join(", ")}`);
 });

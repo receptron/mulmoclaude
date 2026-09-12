@@ -168,7 +168,7 @@ export async function announcePluginMetaDiagnostics(): Promise<readonly PluginMe
       id: diag.id,
       kind: "system",
       // English `title` / `body` are kept as fallbacks for the log
-      // line, the macOS Reminder push, and the bridge message; the
+      // line and the macOS Reminder push; the
       // UI prefers `i18n` below (8 locales in lockstep, Codex iter-8
       // #1125).
       title: "Plugin configuration issue",

@@ -289,19 +289,44 @@ export function formatLine(result) {
   return `  ✓ @mulmobridge/${packageBaseName} ${local} ${published}: ${result.localCount} value-export lines (src == published)${fallback}`;
 }
 
+/**
+ * Which statuses fail the run.
+ *
+ * `pending-publish` is deliberately non-fatal on an ordinary PR — the version bump is the
+ * developer's acknowledgement, and blocking would stop a PR that adds exports and bumps
+ * correctly while the cascade publish is still pending (see the note on `isBumped` above).
+ *
+ * At RELEASE time the same state is the blocker itself: a package bumped but not published
+ * is a dependency range whose lower bound does not exist on the registry, so
+ * `npx mulmoclaude@<next>` fails with ETARGET. That happened on 1.16.0 and was caught by a
+ * hand-run loop rather than by this gate (#3099).
+ */
+/** `name@version`, as its own function so the list can be built without nesting one
+ *  template literal inside another. */
+const nameAndVersion = (result) => `${result.packageBaseName}@${result.localVersion}`;
+
+export const failingStatuses = (release) => (release ? ["drifted", "pending-publish"] : ["drifted"]);
+
 // CLI: exits 1 if any package drifted, 0 otherwise. "skipped"
 // results don't fail the check but are printed so the operator can
 // decide if they should retry after `yarn install`.
-export async function main() {
+export async function main({ release = false } = {}) {
   const results = await checkWorkspaceDrift();
   for (const result of results) console.log(formatLine(result));
-  const drifted = results.filter((result) => result.status === "drifted");
-  if (drifted.length === 0) {
-    console.log("[mulmoclaude:drift] OK — no workspace drift detected.");
+  const fails = failingStatuses(release);
+  const blocking = results.filter((result) => fails.includes(result.status));
+  if (blocking.length === 0) {
+    console.log(`[mulmoclaude:drift] OK — no workspace drift detected${release ? ", and nothing is waiting to be published" : ""}.`);
     return 0;
   }
+  const pending = blocking.filter((result) => result.status === "pending-publish");
+  const named = pending.map(nameAndVersion).join(", ");
   console.error("");
-  console.error(`[mulmoclaude:drift] ${drifted.length} package(s) drifted — bump + republish before publishing mulmoclaude.`);
+  console.error(`[mulmoclaude:drift] ${blocking.length} package(s) block publishing — bump + republish before publishing mulmoclaude.`);
+  if (pending.length > 0) {
+    console.error(`  ${pending.length} of them are bumped but NOT published: ${named}`);
+    console.error("  That is fine on an ordinary PR and fatal here — the declared range's lower bound is not on the registry.");
+  }
   console.error("See .claude/skills/publish-mulmoclaude/SKILL.md §2 for the cascade-publish flow.");
   return 1;
 }
@@ -309,6 +334,6 @@ export async function main() {
 // CLI entry point — same direct-run guard as deps.mjs so this file
 // can be both imported and executed.
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  const code = await main();
+  const code = await main({ release: process.argv.includes("--release") });
   process.exit(code);
 }

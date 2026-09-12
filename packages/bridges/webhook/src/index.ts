@@ -27,10 +27,10 @@ import "dotenv/config";
 import crypto from "crypto";
 import express, { type Request, type Response } from "express";
 import { createBridgeClient } from "@mulmobridge/client";
+import { listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "webhook";
-const PORT = Number(process.env.WEBHOOK_PORT) || 3009;
 const ENDPOINT = process.env.WEBHOOK_PATH ?? "/webhook";
 const secret = process.env.WEBHOOK_SECRET ?? "";
 const allowOpen = process.env.WEBHOOK_ALLOW_OPEN === "1";
@@ -126,8 +126,8 @@ app.post(ENDPOINT, async (req: Request, res: Response) => {
   }
 });
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "WEBHOOK_PORT", fallback: 3009 }, (port) => {
   console.log("MulmoClaude Webhook bridge");
-  console.log(`Listening on http://localhost:${PORT}${ENDPOINT}`);
+  console.log(`Listening on http://localhost:${port}${ENDPOINT}`);
   console.log(`Secret: ${secret ? "(set — x-webhook-secret required)" : "(none — open endpoint)"}`);
 });

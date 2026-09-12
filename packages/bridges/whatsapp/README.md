@@ -21,6 +21,7 @@ ngrok http 3003
 ### 3. Configure webhook
 
 In Meta Dashboard → WhatsApp → Configuration:
+
 - **Callback URL**: `https://xxxx.ngrok-free.app/webhook`
 - **Verify token**: any string you choose (set as `WHATSAPP_VERIFY_TOKEN`)
 - Subscribe to: `messages`
@@ -45,17 +46,21 @@ npx @mulmobridge/whatsapp
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `WHATSAPP_ACCESS_TOKEN` | Yes | Permanent access token from Meta dashboard |
-| `WHATSAPP_PHONE_NUMBER_ID` | Yes | Phone number ID |
-| `WHATSAPP_VERIFY_TOKEN` | Yes | Arbitrary string for webhook verification |
-| `WHATSAPP_BRIDGE_PORT` | No | Webhook port (default: 3003) |
-| `WHATSAPP_ALLOWED_NUMBERS` | No | CSV of phone numbers (empty = all) |
-| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`; waits if nothing is published) |
-| `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
-| `WHATSAPP_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a whatsapp session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
-| `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `WHATSAPP_BRIDGE_DEFAULT_ROLE` wins when both are set. |
+| Variable                       | Required | Description                                                                                                                                                                                                                                                                     |
+| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WHATSAPP_ACCESS_TOKEN`        | Yes      | Permanent access token from Meta dashboard                                                                                                                                                                                                                                      |
+| `WHATSAPP_PHONE_NUMBER_ID`     | Yes      | Phone number ID                                                                                                                                                                                                                                                                 |
+| `WHATSAPP_VERIFY_TOKEN`        | Yes      | Arbitrary string for webhook verification                                                                                                                                                                                                                                       |
+| `WHATSAPP_BRIDGE_PORT`         | No       | Webhook port (default: 3003; `0` asks the OS for a free port)                                                                                                                                                                                                                   |
+| `WHATSAPP_ALLOWED_NUMBERS`     | No       | CSV of phone numbers (empty = all)                                                                                                                                                                                                                                              |
+| `MULMOCLAUDE_API_URL`          | No       | Default: auto (`.server-port`; waits if nothing is published)                                                                                                                                                                                                                   |
+| `MULMOCLAUDE_AUTH_TOKEN`       | No       | Bearer token                                                                                                                                                                                                                                                                    |
+| `WHATSAPP_BRIDGE_DEFAULT_ROLE` | No       | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a whatsapp session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
+| `BRIDGE_DEFAULT_ROLE`          | No       | Same as above but shared across every bridge. Transport-specific `WHATSAPP_BRIDGE_DEFAULT_ROLE` wins when both are set.                                                                                                                                                         |
+
+An unusable value (a typo, a number outside 0-65535) stops the bridge with a message naming
+the variable, rather than silently starting on the default. A port already in use is reported
+the same way (#3084).
 
 ### Auth token persistence across server restarts
 
@@ -118,7 +123,7 @@ Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package famil
 - [`@mulmobridge/twilio-sms`](https://www.npmjs.com/package/@mulmobridge/twilio-sms) — SMS via Twilio Programmable Messaging
 - [`@mulmobridge/viber`](https://www.npmjs.com/package/@mulmobridge/viber) — Viber Public Account bots
 - [`@mulmobridge/webhook`](https://www.npmjs.com/package/@mulmobridge/webhook) — generic HTTP webhook bridge
-- [`@mulmobridge/whatsapp`](https://www.npmjs.com/package/@mulmobridge/whatsapp) — WhatsApp Cloud API via MulmoBridge relay  ← **this package**
+- [`@mulmobridge/whatsapp`](https://www.npmjs.com/package/@mulmobridge/whatsapp) — WhatsApp Cloud API via MulmoBridge relay ← **this package**
 - [`@mulmobridge/xmpp`](https://www.npmjs.com/package/@mulmobridge/xmpp) — XMPP / Jabber
 - [`@mulmobridge/zulip`](https://www.npmjs.com/package/@mulmobridge/zulip) — Zulip
 

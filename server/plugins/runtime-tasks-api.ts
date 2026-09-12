@@ -4,12 +4,13 @@
 // per plugin — the registry id is `plugin:<pkg>`, derived from the
 // caller's pkg name; the plugin doesn't supply one.
 //
-// Plugin authors access this surface via the `MulmoclaudeRuntime`
-// cast, identical to the notifier extension:
+// Plugin authors mirror the shape and narrow to it, identical to the
+// notifier extension — they cannot import this type, since a plugin
+// may not reach uphill into `server/`:
 //
 //   import type { PluginRuntime } from "gui-chat-protocol";
-//   import type { MulmoclaudeRuntime } from "<mulmoclaude>/notifier/runtime-api";
-//   export default definePlugin((runtime: PluginRuntime) => {
+//   type MulmoclaudeRuntime = PluginRuntime & { tasks: … };
+//   export default definePlugin((runtime) => {
 //     const { tasks } = runtime as MulmoclaudeRuntime;
 //     tasks.register({ schedule: { ... }, run: async () => { ... } });
 //   });

@@ -27,11 +27,13 @@
   "license": "MIT",
   "author": "Receptron Team",
   "dependencies": {
+    "@mulmoclaude/common": "^1.2.0",
     "express": "^5.1.0",
     "express-rate-limit": "^8.7.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/node": "^26.4.1",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3"
   },

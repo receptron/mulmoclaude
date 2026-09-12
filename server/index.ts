@@ -807,14 +807,12 @@ const chatService = createChatService({
 });
 app.use(chatService.router);
 
-// Notifications router. The route file needs the pub-sub publisher
-// (only created inside `startRuntimeServices` after `app.listen`) and
-// the chat-service push handle (available at module scope). We mount
-// the router now so it sits behind the same bearer middleware as
-// every other /api route, and back-fill the pub-sub dep once
-// `startRuntimeServices` has it. Calls that arrive before fill-in
-// (impossible in practice — the HTTP server isn't listening yet)
-// would no-op on publish but still queue the bridge push.
+// Notifier router — mounted here so it sits behind the same bearer
+// middleware as every other /api route. It takes no dependencies: the
+// four actions it exposes (list / listHistory / clear / cancel) call
+// the engine directly, and the engine is opened for writes by
+// `initNotifier` further down. Publishing is deliberately not one of
+// those actions; the route file says why.
 app.use(notifierRoutes);
 app.use(createJournalRouter());
 app.use(createTranslationRouter());

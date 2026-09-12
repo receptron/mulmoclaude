@@ -30,6 +30,47 @@ walks forward exactly as before.
 `MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1` opts back in, with the token stomping that implies
 (`--allow-multiple-instances` is the equivalent flag on `npx mulmoclaude` and `yarn server`; `yarn
 dev` is a compound script and drops trailing args, so the env var is the only form that works there).
+#### A webhook bridge read its port with `Number(env) || N`, and a busy port killed it unexplained (#3084)
+
+The nine bridges that receive events over an inbound webhook (`line`, `line-works`, `google-chat`,
+`messenger`, `teams`, `twilio-sms`, `viber`, `webhook`, `whatsapp`) each resolved their listen port
+as `Number(process.env.X) || <default>` and then called a bare `app.listen`. Three consequences, all
+silent: a typo (`302a` → `NaN` → falsy) started the bridge **on the default without a word**, so it
+answered somewhere other than where it was told to; `X=0` was impossible for the same falsy reason,
+even though that is the documented way to ask the OS for a free port and the server itself supports
+it; and a busy port arrived as an unhandled `EADDRINUSE` naming no env var — which is routine rather
+than rare, since the server's walk-forward band (3002-3021) covers the whole bridge band
+(3002-3013).
+
+The bind now goes through one `listenWebhook` in `@mulmobridge/webhook-runtime`, where six of the
+nine already got their Express setup — `teams`, `twilio-sms` and `webhook` hand-rolled theirs and
+declare the dependency as part of this change. Each bridge names its env var once, and the rule has
+a single home. An unusable value stops the bridge with the value, the range and the env var
+in the message, instead of quietly taking the default (issue decision D-3). `EADDRINUSE` and `EACCES`
+each say which env var to change. The coercion itself is the server's own `asInt` / `PORT_RANGE`,
+moved from `server/utils/envCoerce.ts` into `@mulmoclaude/common` so there is still exactly one copy —
+`server/utils/envCoerce.ts` stays as the door `vite.config.ts` reaches it through, and `DEFAULT_PORT`
+(the host's own 3001) stays behind. The move was verified against a verbatim copy of the pre-move
+function over 620k generated (value, fallback, range) triples: 0 differences.
+
+Two behaviours needed guarding rather than describing. `PORT=0` only helps if you can find out what
+you got, so the startup banner now names the port actually bound — and the banner is printed only
+when `server.address()` confirms a bind, because **Express 5 runs `app.listen`'s callback even when
+the bind failed** (verified on express@5.1: `address()` is `null`, `listening` is `false`, and the
+`error` event lands on the next tick). Without that check a collided bridge printed
+`Webhook listening on http://localhost:3002/webhook` and then the error — the same silence, one step
+later. `packages/webhook-runtime/test/test_port.ts` pins both, including a real `EADDRINUSE` against
+an occupied port.
+
+The matching operator-facing section — both messages, why "already in use" is usually the server, and
+the `=0` way out — is in `packages/core/assets/helps/error-recovery.md`, which the agent reads before
+asking the user anything on a tool failure. It reaches npm users with the next `@mulmoclaude/core`.
+
+Out of scope, deliberately: `email` (`EMAIL_IMAP_PORT`, `EMAIL_SMTP_PORT`) and `irc` (`IRC_PORT`) use
+the same expression, but those are outbound ports where `PORT_RANGE`'s `min: 0` has no meaning. The
+process-level gaps the issue's comment counts (no `unhandledRejection` handler in any of the 25
+bridges, `SIGINT` in only two) are a separate change.
+
 #### `@mulmoclaude/core@4.9.0` — the bundled help stopped telling the agent that the server is on 3001 (#3085)
 
 `assets/helps/*` still described a server pinned to `localhost:3001` after #3081 and #3092 had
@@ -125,6 +166,24 @@ back as the account the user had just signed out of. An ambiguous target is drop
 the restore finds no user and the client is asked to sign in once, which is what happened
 before re-keying existed.
 
+#### `@mulmoclaude/shapescript-plugin@2.6.0` — the object budget counts objects, and a custom shape can recurse (PR #3112)
+
+Building a tree failed with "ShapeScript produced more than 100000 objects" at about 10k
+cylinders. The 100k `maxNodes` ceiling was charged on every statement the converter visited — a
+`rotate`, a `color`, an `if`, a `group` — not on objects, and a tree branch is one cylinder wrapped
+in about ten of those. Measured, the refused tree was at ~0.5M vertices, a tenth of the vertex
+budget, and built in under 200ms. Only nodes that put an object in the scene are charged now:
+shapes, builders, meshes, paths, and a shape value placed by name (`define ico icosphere { … }`
+then `ico`), each once. The ceiling stays 100k and the two ceilings agree — 100k cylinders at
+`detail 8` is ~5M vertices, the vertex cap — while the loop-iteration and duration caps still stop
+a runaway loop of nothing.
+
+A recursive custom shape written the natural way, `branch { depth depth - 1 }`, overflowed the
+JavaScript stack: the call's option expressions were evaluated inside the body's scope after its
+`option` defaults were set, so `depth` named the default and never counted down. They are
+evaluated in the caller's scope now, and a shape that invokes itself with no way out stops at 256
+levels with a script error, the same ceiling the evaluator gives functions.
+
 #### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)
 
 Two mismatches with the upstream app, both in `loft`. A `fill { path … }` as a section rendered
@@ -137,7 +196,7 @@ did not repeat its first was dropped as an open stroke, so a two-section loft fa
 at least two cross-sections"; upstream closes such a section implicitly and so does this builder
 now. Sections keep their written order when open and closed ones mix.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.9.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.9.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.6.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 #### A bridge no longer has to be restarted every time the server is (#3078)
 

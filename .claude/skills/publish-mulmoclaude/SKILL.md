@@ -51,8 +51,15 @@ If local `packages/<name>/src/` has more value-exports than the already-publishe
 CI runs this on every PR. Reproduce locally:
 
 ```bash
-node scripts/mulmoclaude/drift.mjs
+node scripts/mulmoclaude/drift.mjs            # PR mode — pending-publish is a note
+node scripts/mulmoclaude/drift.mjs --release  # release mode — pending-publish FAILS
 ```
+
+**Use `--release` when you are actually publishing.** A package bumped but not yet
+published is fine on an ordinary PR — the bump is the acknowledgement, and blocking would
+stop a PR that did the right thing while the cascade publish is pending. At publish time
+it is the blocker itself: the launcher declares `^<that version>`, whose lower bound is
+not on the registry, so `npx mulmoclaude@<next>` fails with ETARGET (#3099).
 
 The script fetches each `@mulmobridge/<name>`'s `latest` dist-tag from `registry.npmjs.org`, pulls the entry file from `unpkg`, and compares its value-export line count against `packages/<name>/src/index.ts`. **Comparing against `node_modules/@mulmobridge/<name>/dist/` would miss the problem** — that path is a yarn workspace symlink into `packages/<name>/`, so `yarn build:packages` rebuilds it from the current src and `src == dist` always.
 
@@ -168,36 +175,20 @@ npx --yes --registry=https://registry.npmjs.org/ mulmoclaude@<X.Y.Z> --version
 §2's drift check compares source against published `dist/` for four `@mulmobridge/*` packages only — it says nothing about whether a dep's *version* was ever published at all, in either scope. That gap is what this step covers: before publishing the launcher, verify every internal dep in `packages/mulmoclaude/package.json`'s `dependencies` (both `@mulmoclaude/*` and `@mulmobridge/*`) resolves on the public registry:
 
 ```bash
-# Local vs npm — a mismatch means a prior chore(release) bumped local
-# without publishing. Publish the missing one from its package dir
-# BEFORE republishing the launcher, or `npx mulmoclaude@X.Y.Z` fails
-# with ETARGET on the first install.
-#
-# Resolve each dep's directory by READING the workspace `name` fields.
-# Do NOT derive the path from the package name: the workspace is not
-# flat — `@mulmoclaude/core` is `packages/core`, `common` is
-# `packages/common`, `markdown-utils` is `packages/markdown-utils`, and
-# only the plugins live under `packages/plugins/`. A name→path guess
-# leaves `local=` empty for the ones it gets wrong, which prints as a ⚠
-# with no version; an operator who learns to wave those away will wave
-# away a real one too.
-#
-# The `git ls-files` pathspec is explicit for a reason: a bare
-# `git ls-files packages` also matches
-# `test/scripts/mulmoclaude/fixtures/*/packages/*/package.json`, whose
-# deliberately-stale fixture versions then overwrite the real entries and
-# invent drift that isn't there.
-for f in $(git ls-files -- 'packages/*/package.json' 'packages/*/*/package.json'); do
-  echo "$(jq -r .name "$f") $(jq -r .version "$f")"
-done > /tmp/mc-workspace-versions.txt
-
-for pkg in $(jq -r '.dependencies | keys[] | select(startswith("@mulmoclaude/") or startswith("@mulmobridge/"))' packages/mulmoclaude/package.json); do
-  local=$(awk -v n="$pkg" '$1==n {print $2}' /tmp/mc-workspace-versions.txt)
-  npmv=$(npm view "$pkg" version --registry https://registry.npmjs.org/ 2>/dev/null)
-  [ "$local" = "$npmv" ] || echo "  ⚠ $pkg local=${local:-NOT-IN-WORKSPACE} npm=${npmv:-NOT-ON-NPM}"
-done
-echo "  (no ⚠ lines above = every launcher dep resolves to a published version)"
+yarn check:published-deps   # node scripts/mulmoclaude/publishedDeps.mjs
 ```
+
+It reads every `@mulmoclaude/*` / `@mulmobridge/*` the launcher declares — in
+`dependencies`, `optionalDependencies` and `peerDependencies` alike — finds each one's
+workspace manifest by READING the `name` fields rather than guessing a path from the
+package name (the workspace is not flat: `@mulmoclaude/core` is `packages/core`, only the
+plugins live under `packages/plugins/`), and asks the registry whether that exact version
+is published. Exit 1 on anything unpublished; an unreachable registry is reported and does
+NOT block, because a flaky network is not evidence of an unpublished version.
+
+This replaces the hand-run shell loop that used to live here — the one that caught the
+`@mulmobridge/client` 1.1.0-vs-1.0.2 blocker on 1.16.0, which every automated gate had
+passed (#3099).
 
 ### 7. Tag + GitHub release for cascade-bumped @mulmobridge/* / @mulmoclaude/* packages
 

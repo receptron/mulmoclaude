@@ -18,13 +18,12 @@
 import "dotenv/config";
 import type { Request, Response as ExpressResponse } from "express";
 import { createBridgeClient, chunkText } from "@mulmobridge/client";
-import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature } from "@mulmobridge/webhook-runtime";
+import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "viber";
 const MAX_VIBER_TEXT = 7_000;
 const FETCH_TIMEOUT_MS = 15_000;
-const PORT = Number(process.env.VIBER_WEBHOOK_PORT) || 3012;
 const VIBER_API = "https://chatapi.viber.com/pa";
 
 function readRequiredEnv(): { authToken: string } {
@@ -174,9 +173,9 @@ app.post("/viber", webhookRateLimit, async (req: Request, res: ExpressResponse) 
   }
 });
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "VIBER_WEBHOOK_PORT", fallback: 3012 }, (port) => {
   console.log("MulmoClaude Viber bridge");
-  console.log(`Webhook listening on http://localhost:${PORT}/viber`);
+  console.log(`Webhook listening on http://localhost:${port}/viber`);
   console.log(`Sender: ${senderName}`);
   console.log(`Allowlist: ${allowAll ? "(all)" : [...allowedUsers].join(", ")}`);
 });

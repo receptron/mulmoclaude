@@ -26,6 +26,7 @@ ngrok http 3002
 ### 3. Configure the webhook
 
 In the LINE Developers Console → Messaging API tab:
+
 - **Webhook URL**: `https://xxxx.ngrok-free.app/webhook` — the trailing `/webhook` is **required** (without it you get 404)
 - **Use webhook**: enabled
 - **Auto-reply messages**: disabled (LINE Official Account settings → Auto-reply messages → OFF, otherwise you get double replies)
@@ -52,15 +53,19 @@ Scan the QR code in the LINE Developers Console → Messaging API tab. Send a me
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `LINE_CHANNEL_SECRET` | Yes | Channel secret for signature verification |
-| `LINE_CHANNEL_ACCESS_TOKEN` | Yes | Long-lived channel access token |
-| `LINE_BRIDGE_PORT` | No | Webhook port (default: 3002) |
-| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`; waits if nothing is published) |
-| `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
-| `LINE_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a line session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
-| `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `LINE_BRIDGE_DEFAULT_ROLE` wins when both are set. |
+| Variable                    | Required | Description                                                                                                                                                                                                                                                                 |
+| --------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LINE_CHANNEL_SECRET`       | Yes      | Channel secret for signature verification                                                                                                                                                                                                                                   |
+| `LINE_CHANNEL_ACCESS_TOKEN` | Yes      | Long-lived channel access token                                                                                                                                                                                                                                             |
+| `LINE_BRIDGE_PORT`          | No       | Webhook port (default: 3002; `0` asks the OS for a free port)                                                                                                                                                                                                               |
+| `MULMOCLAUDE_API_URL`       | No       | Default: auto (`.server-port`; waits if nothing is published)                                                                                                                                                                                                               |
+| `MULMOCLAUDE_AUTH_TOKEN`    | No       | Bearer token                                                                                                                                                                                                                                                                |
+| `LINE_BRIDGE_DEFAULT_ROLE`  | No       | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a line session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
+| `BRIDGE_DEFAULT_ROLE`       | No       | Same as above but shared across every bridge. Transport-specific `LINE_BRIDGE_DEFAULT_ROLE` wins when both are set.                                                                                                                                                         |
+
+An unusable value (a typo, a number outside 0-65535) stops the bridge with a message naming
+the variable, rather than silently starting on the default. A port already in use is reported
+the same way (#3084).
 
 ### Auth token persistence across server restarts
 
@@ -116,7 +121,7 @@ Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package famil
 - [`@mulmobridge/email`](https://www.npmjs.com/package/@mulmobridge/email) — IMAP poll + SMTP reply, threading preserved
 - [`@mulmobridge/google-chat`](https://www.npmjs.com/package/@mulmobridge/google-chat) — Google Chat via MulmoBridge relay
 - [`@mulmobridge/irc`](https://www.npmjs.com/package/@mulmobridge/irc) — IRC (Libera, Freenode, custom)
-- [`@mulmobridge/line`](https://www.npmjs.com/package/@mulmobridge/line) — LINE Messaging API via MulmoBridge relay  ← **this package**
+- [`@mulmobridge/line`](https://www.npmjs.com/package/@mulmobridge/line) — LINE Messaging API via MulmoBridge relay ← **this package**
 - [`@mulmobridge/line-works`](https://www.npmjs.com/package/@mulmobridge/line-works) — LINE Works (enterprise LINE)
 - [`@mulmobridge/mastodon`](https://www.npmjs.com/package/@mulmobridge/mastodon) — Mastodon DMs + mentions
 - [`@mulmobridge/matrix`](https://www.npmjs.com/package/@mulmobridge/matrix) — Matrix / Element

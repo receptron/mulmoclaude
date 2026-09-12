@@ -74,8 +74,9 @@ export type NotificationAction =
  *  client should localize. The server publishes vue-i18n keys + the
  *  variable substitutions; clients resolve via `t(key, params)`.
  *  `title` / `body` stay set to the rendered English so logs and
- *  non-i18n consumers (e.g. macOS Reminder push, bridge messages)
- *  still get a readable string.
+ *  non-i18n consumers (the macOS Reminder push) still get a readable
+ *  string. Bridge messages used to be on that list; the notifier's
+ *  bridge fan-out was removed as dead code in f522dc101.
  *
  *  Used by the plugin META diagnostics (#1125) to keep all 8 locales
  *  in lockstep without the server having to know which locale each

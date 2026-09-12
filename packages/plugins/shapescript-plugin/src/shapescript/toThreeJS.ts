@@ -161,6 +161,14 @@ export interface ConversionOptions {
 // hit, and it hit it early — a 150x150 array of cubes was refused at ~540k
 // vertices, barely a quarter of the vertex budget, so the two ceilings
 // disagreed about how big a model is allowed to be.
+//
+// Charged per OBJECT, not per statement (see `GEOMETRY_NODE_TYPES`). It used to
+// be the latter, and a tree-shaped model showed the difference: every branch is
+// a cylinder wrapped in `rotate` / `translate` / `scale` / `color` / `if` /
+// `for` / `group`, about ten statements per visible object, so a 10k-cylinder
+// tree at ~0.5M vertices was refused as "more than 100000 objects" — a tenth
+// of the vertex budget, built in under 200ms. Counting objects lines the two
+// ceilings up: 100k cylinders at `detail 8` is ~5M vertices, the vertex cap.
 export const DEFAULT_MAX_NODES = 100_000;
 export const DEFAULT_MAX_LOOP_ITERATIONS = 100_000;
 
@@ -328,6 +336,9 @@ export class Converter {
   private readonly logs: string[] = [];
   private background: RGBA | undefined;
   private sceneDepth = 0;
+  /** Custom shape bodies currently being converted, checked against
+   *  `MAX_CUSTOM_SHAPE_DEPTH` on every call. */
+  private customShapeDepth = 0;
   /** While set, polygons and shape values produced by statements are
    *  collected here instead of entering the scene: the body of `mesh { }`,
    *  and a function body whose result is what it built. */
@@ -434,11 +445,10 @@ export class Converter {
 
   private convertNode(node: SceneNode): THREE.Object3D | null {
     // Counted on the way IN, so a runaway loop stops at the limit rather than
-    // after building everything it asked for.
-    this.nodeCount += 1;
-    if (this.nodeCount > this.maxNodes) {
-      throw new ShapeScriptLimitError(`ShapeScript produced more than ${this.maxNodes} objects — reduce the loop counts or the nesting`);
-    }
+    // after building everything it asked for. Only nodes that put an object
+    // in the scene are charged: a transform, a colour or a block costs nothing
+    // to keep, and a loop of nothing is the iteration and duration caps' job.
+    if (GEOMETRY_NODE_TYPES.has(node.type)) this.chargeNode();
     if (Date.now() - this.startedAt > this.maxDurationMs) {
       throw new ShapeScriptLimitError(`ShapeScript took longer than ${this.maxDurationMs}ms to build — simplify the model or use fewer boolean operations`);
     }
@@ -629,6 +639,13 @@ export class Converter {
     }
   }
 
+  private chargeNode(): void {
+    this.nodeCount += 1;
+    if (this.nodeCount > this.maxNodes) {
+      throw new ShapeScriptLimitError(`ShapeScript produced more than ${this.maxNodes} objects — reduce the loop counts or the nesting`);
+    }
+  }
+
   /** Convert each child and add whatever it produced to `group`. Every block
    *  form ends up doing exactly this, and jscpd was right that six copies of
    *  the loop is five too many. */
@@ -697,7 +714,8 @@ export class Converter {
   }
 
   private convertShape(node: ShapeNode): THREE.Mesh | null {
-    if (node.points !== undefined) return this.placeValue(this.polygonValue(node));
+    // Charged already, as a `shape` node in `convertNode`.
+    if (node.points !== undefined) return this.placeValue(this.polygonValue(node), { charged: true });
     return this.withShapeOptions(node.properties, () => {
       const mesh = this.finishMesh(this.createGeometry(node), node, false);
       return FLAT_PRIMITIVES.has(node.primitive) ? markPathValue(mesh) : mesh;
@@ -717,8 +735,14 @@ export class Converter {
 
   /** A value a statement produced: collected when a sink is open, otherwise
    *  a shape is placed in the scene and anything else is an error, as
-   *  upstream's "unused value" is. */
-  private placeValue(value: Value): THREE.Mesh | null {
+   *  upstream's "unused value" is.
+   *
+   *  A value placed here is usually an object the statement list did not
+   *  charge for — a defined shape used by name (`define ico icosphere { … }`
+   *  then `ico`), a function's result, a bare symbol — so it costs the same
+   *  as a primitive statement. `charged` is for the one caller that is a
+   *  `shape` node itself, which `convertNode` charged on the way in. */
+  private placeValue(value: Value, { charged = false } = {}): THREE.Mesh | null {
     if (this.valueSink) {
       // Captured in the current frame, as a placed shape would be: a
       // `translate` before a polygon inside `mesh { }` moves that polygon.
@@ -726,6 +750,7 @@ export class Converter {
       this.valueSink.push(this.transformedForCapture(value));
       return null;
     }
+    if (!charged && isShapeLikeValue(value)) this.chargeNode();
     if (isObjectValue(value) && value.kind === "mesh") return this.placeMesh(value);
     if (isObjectValue(value) && value.kind === "polygon") return this.placePolygons([value]);
     if (Array.isArray(value) && value.length > 0 && value.every((item) => isObjectValue(item) && (item.kind === "mesh" || item.kind === "polygon"))) {
@@ -1429,30 +1454,43 @@ export class Converter {
     // Same scope handling as every other group builder: a body node that throws
     // must not strand the group (a custom shape can be a CSG operand, where
     // nothing downstream ever sees it) or leave the frames behind.
+    if (this.customShapeDepth >= MAX_CUSTOM_SHAPE_DEPTH) {
+      throw new Error(`Custom shape \`${node.name}\` recursed more than ${MAX_CUSTOM_SHAPE_DEPTH} levels deep`);
+    }
     const group = new THREE.Group();
     const body = defineNode.body;
     const { position, orientation, rotation, size, name, ...rest } = node.properties as ShapeProperties & Record<string, unknown>;
-    return this.inScope(group, () => {
-      // The standard options place the block's output, as on any shape; the
-      // material ones set the scope its body runs in.
-      this.applyPlacement(this.currentTransform().matrix, { position, orientation, rotation, size } as ShapeProperties);
-      this.currentTransform().material = this.materialFor(rest as MaterialProperties, this.currentTransform().material);
+    // The call's option values are the CALLER's expressions, evaluated in the
+    // caller's scope before the body's own options exist. Evaluated inside, a
+    // recursive `branch { depth depth - 1 }` read the body's default `depth`,
+    // never counted down, and overflowed the stack.
+    const overrides = this.evaluateOptionOverrides(rest);
+    this.customShapeDepth++;
+    try {
+      return this.inScope(group, () => {
+        // The standard options place the block's output, as on any shape; the
+        // material ones set the scope its body runs in.
+        this.applyPlacement(this.currentTransform().matrix, { position, orientation, rotation, size } as ShapeProperties);
+        this.currentTransform().material = this.materialFor(rest as MaterialProperties, this.currentTransform().material);
+        for (const option of defineNode.options ?? []) {
+          this.symbols.set(option.name, this.evaluator.evaluate(option.defaultValue));
+        }
+        for (const [key, value] of overrides) this.symbols.set(key, value);
+        if (name !== undefined) group.name = String(this.evaluator.evaluate(name as Expression));
+        // Convert the body, under the call's own `detail` / `smoothing`.
+        this.withShapeOptions(rest as ShapeProperties, () => this.addChildren(group, body));
+      });
+    } finally {
+      this.customShapeDepth--;
+    }
+  }
 
-      // Set default values from options
-      for (const option of defineNode.options ?? []) {
-        this.symbols.set(option.name, this.evaluator.evaluate(option.defaultValue));
-      }
-
-      // Override with provided properties
-      for (const [key, value] of Object.entries(rest)) {
-        if (!(key in STANDARD_KEYS)) this.symbols.set(key, this.evaluator.evaluate(value as Expression));
-      }
-
-      if (name !== undefined) group.name = String(this.evaluator.evaluate(name as Expression));
-
-      // Convert the body, under the call's own `detail` / `smoothing`.
-      this.withShapeOptions(rest as ShapeProperties, () => this.addChildren(group, body));
-    });
+  /** The non-standard options of a custom shape call, evaluated where the
+   *  call is written. */
+  private evaluateOptionOverrides(rest: Record<string, unknown>): [string, Value][] {
+    return Object.entries(rest)
+      .filter(([key]) => !(key in STANDARD_KEYS))
+      .map(([key, value]) => [key, this.evaluator.evaluate(value as Expression)]);
   }
 
   /** Post-multiply a shape's `position` / `orientation` / `size` into a frame. */
@@ -2279,6 +2317,32 @@ export class Converter {
 
 /** The keys a custom block call places or colours with, rather than passing
  *  to the block as option values. */
+/** The statements that put an object in the scene, and so count against
+ *  `maxNodes`. A builder is one object however many operands it merges; each
+ *  operand is charged on its own as it is visited, as is each node collected
+ *  by `mesh { }` — the geometry exists until the merge, so the work is real.
+ *  `customShape` and `group` are containers whose contents are charged, a
+ *  shape VALUE placed by name is charged in `placeValue`, and everything else
+ *  is state. */
+const GEOMETRY_NODE_TYPES: ReadonlySet<SceneNode["type"]> = new Set<SceneNode["type"]>([
+  "shape",
+  "csg",
+  "extrude",
+  "loft",
+  "lathe",
+  "fill",
+  "hull",
+  "minkowski",
+  "text",
+  "mesh",
+  "path",
+]);
+
+/** A custom shape whose body invokes itself with no way out would otherwise
+ *  overflow the JavaScript stack, which surfaces as a RangeError with no script
+ *  context. Same ceiling as the evaluator's for functions. */
+const MAX_CUSTOM_SHAPE_DEPTH = 256;
+
 const STANDARD_KEYS: Record<string, true> = {
   position: true,
   orientation: true,
@@ -2303,6 +2367,11 @@ function flattenShapeValues(values: readonly Value[]): (MeshValue | PolygonValue
     else if (isShapeValue(value)) shapes.push(value);
   }
   return shapes;
+}
+
+/** A shape value, or a tuple of them: what `placeValue` puts in the scene. */
+function isShapeLikeValue(value: Value): boolean {
+  return isShapeValue(value) || (Array.isArray(value) && value.length > 0 && value.every(isShapeValue));
 }
 
 function isShapeValue(value: Value): value is MeshValue | PolygonValue {
