@@ -65,6 +65,15 @@ as the fix for "long-running bridges", which #3078 made false, while naming the 
 the whole bridge scope and claiming the token rides a `fetch` header — it rides the socket.io
 handshake, and there is no `Authorization` header anywhere in `packages/client/src`.
 
+`@mulmobridge/mock-server`'s README told operators to stop the mock before starting MulmoClaude
+"or the real server will fail to bind, or your bridge will keep talking to the mock". Neither
+happens now: the real server walks off the busy default and publishes what it bound, and the
+bridge reads that. The hazard the note was reaching for is real but is the TOKEN — leave
+`mock-test-token` exported and the bridge presents the mock's credential to MulmoClaude and is
+rejected, retrying forever with the wrong one. A pinned token is also the one case where a
+bridge still falls back to `localhost:3001` while no port has been published, which is exactly
+where the mock is listening. The note now says that instead.
+
 The version bump is not ceremony. `@mulmoclaude/core@2.0.1` exists because 2.0.0 shipped
 without 32 lines of this same file, and the note on it puts the reason better than a rule
 would: a section that never reaches npm is a section the agent never has. 4.8.0 is what npm
