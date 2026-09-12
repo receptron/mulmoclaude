@@ -50,12 +50,17 @@ Resolve in this order:
    decimal digits only and range-check `1..65535`; anything else
    means "nothing published", not a port.
 
-**With neither, wait — do not fall back to `http://localhost:3001`.**
-Presenting a bearer token at an address the workspace never named is
-the thing to avoid, and the window is not narrow: the server writes
-`.session-token` before it binds its port, with sandbox setup (a
-Docker image build on a cold start) in between, so "token readable,
-port absent" can last minutes (#3078).
+With neither, what to do depends on **where your token came from**:
+
+- **Read from `<workspace>/.session-token`** → WAIT, do not fall back.
+  The workspace owns both halves, so a token with no port is half a
+  generation: the server is mid-startup. The window is not narrow —
+  it writes the token before it binds, with sandbox setup in between,
+  so it can last minutes (#3078). Presenting a freshly minted token
+  at an address the workspace never named is the thing to avoid.
+- **Supplied by the operator** (`MULMOCLAUDE_AUTH_TOKEN`) →
+  `http://localhost:3001` is a reasonable last resort. They pinned the
+  credential and are pointing you somewhere on purpose.
 
 Address `127.0.0.1`, not `localhost`: the server binds the IPv4
 loopback explicitly, while `localhost` resolves to `::1` first on a

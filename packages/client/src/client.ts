@@ -143,10 +143,25 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
 
   const pending: Pending = new Set();
   const published = resolvePublishedApiUrl(opts.apiUrl);
-  // `DEFAULT_API_URL` is a placeholder when nothing is published, never a
-  // destination: the idle socket is built with `autoConnect: false` and is
-  // replaced before it ever handshakes, so the token cannot reach it.
-  const startedAt: Credentials = { apiUrl: published ?? DEFAULT_API_URL, token };
+  // Who supplied the token decides whether the startup default is usable.
+  //
+  // From the WORKSPACE: the workspace is the source of truth for both halves, so
+  // a token without a port is half a generation — the server is mid-startup and
+  // has not bound yet. Connecting to the default there hands a freshly minted
+  // credential to whoever holds 3001, and that window is minutes wide on a cold
+  // start (#3078). Wait instead.
+  //
+  // From `MULMOCLAUDE_AUTH_TOKEN`: the caller pinned a credential themselves and
+  // is pointing this bridge somewhere deliberately — a container without the
+  // workspace mounted, a server too old to publish. There is no fresh secret to
+  // strand, and refusing the default would break a setup that worked (Codex,
+  // round-5 checkpoint). They keep the documented fallback.
+  const tokenIsPinned = typeof process.env.MULMOCLAUDE_AUTH_TOKEN === "string" && process.env.MULMOCLAUDE_AUTH_TOKEN.length > 0;
+  const startAddress = published ?? (tokenIsPinned ? DEFAULT_API_URL : null);
+  // `DEFAULT_API_URL` is a placeholder when we are waiting, never a destination:
+  // the idle socket is built with `autoConnect: false` and is replaced before it
+  // ever handshakes, so the token cannot reach it.
+  const startedAt: Credentials = { apiUrl: startAddress ?? DEFAULT_API_URL, token };
 
   /** The pair as the workspace has it NOW, or null while the server is mid-restart.
    *
@@ -195,14 +210,14 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
    *  Built after `open` / `openIdle` because it holds the socket they make;
    *  they only READ it from callbacks, which cannot fire before it exists. */
   const live: SupervisorState = {
-    socket: published === null ? openIdle() : open(startedAt),
+    socket: startAddress === null ? openIdle() : open(startedAt),
     current: startedAt,
     attempt: 0,
     retry: null,
     closed: false,
   };
 
-  if (published === null) {
+  if (startAddress === null) {
     console.error("\nThe server has not published a port yet — waiting for it rather than guessing.\n");
     scheduleReresolve();
   }

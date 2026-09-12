@@ -12,7 +12,7 @@
 //
 // Servers bind port 0, so nothing here races a fixed port.
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
@@ -38,8 +38,9 @@ interface Generation {
 const closeIo = (server: IOServer): Promise<void> => new Promise((resolve) => server.close(() => resolve()));
 const closeHttp = (server: Server): Promise<void> => new Promise((resolve) => server.close(() => resolve()));
 
-/** One server generation: its own token, its own port, and it says its own name. */
-async function startGeneration(label: string, token: string): Promise<Generation> {
+/** One server generation: its own token, its own name, and by default a port
+ *  the OS picks — `port` is only passed by the case that must sit on 3001. */
+async function startGeneration(label: string, token: string, port = 0): Promise<Generation> {
   const httpServer = createServer();
   const wsServer = new IOServer(httpServer, { path: CHAT_SOCKET_PATH, transports: ["websocket"] });
   wsServer.use((socket, next) => {
@@ -52,7 +53,7 @@ async function startGeneration(label: string, token: string): Promise<Generation
     });
   });
   await new Promise<void>((resolve) => {
-    httpServer.listen(0, "127.0.0.1", resolve);
+    httpServer.listen(port, "127.0.0.1", resolve);
   });
   const address = httpServer.address();
   assert.ok(isAddressInfo(address), "the fake server did not bind a TCP port");
@@ -105,6 +106,12 @@ function unpublish(): void {
     if (existsSync(target)) unlinkSync(target);
   });
 }
+
+// Every case shares one workspace, so each starts from "nothing published".
+// Without this a case that wants an EMPTY workspace inherits the port a previous
+// case published — which is how the pinned-token case passed alone and failed in
+// the combined run, reaching a dead port instead of the default.
+beforeEach(unpublish);
 
 const sleep = (delayMs: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, delayMs));
 
@@ -257,6 +264,25 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
       }
     } finally {
       client.close();
+    }
+  });
+
+  // The other half of that rule (Codex, round-5 checkpoint): a caller who pinned
+  // MULMOCLAUDE_AUTH_TOKEN is pointing this bridge somewhere deliberately — a
+  // container without the workspace mounted, say — so there is no fresh secret
+  // to strand and refusing the documented default would break a setup that
+  // worked. They keep it.
+  it("still uses the default when the CALLER pinned the token", async () => {
+    // No `.session-token` on disk at all: the only credential is the env one.
+    const onDefaultPort = await startGeneration("gen-default", "pinned-token", 3001);
+    process.env.MULMOCLAUDE_AUTH_TOKEN = "pinned-token";
+    const client = createBridgeClient({ transportId: "cli", options: {} });
+    try {
+      assert.equal(await waitForGeneration(client, "gen-default"), "gen-default", "a pinned token keeps the documented fallback");
+    } finally {
+      client.close();
+      delete process.env.MULMOCLAUDE_AUTH_TOKEN;
+      await onDefaultPort.stop();
     }
   });
 

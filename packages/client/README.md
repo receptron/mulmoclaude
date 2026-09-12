@@ -61,13 +61,19 @@ instead`). Whatever it ends up binding, it publishes to `<workspace>/.server-por
 2. `$MULMOCLAUDE_API_URL`
 3. `http://127.0.0.1:<port>` from `<workspace>/.server-port`
 
-**There is no fourth step, on purpose.** With none of those, the client does not
-fall back to `http://localhost:3001` — it waits for the server to publish a port
-and joins it then. The default would be a destination for a bearer token the
-workspace never pointed at that address, and the window where the token is
-readable and the port is not can be minutes wide: the server writes
-`.session-token` before it binds, with sandbox setup (a Docker image build on a
-cold start) in between (#3078).
+The fourth step — `http://localhost:3001` — depends on **who supplied the
+token**, and that is a security boundary rather than a quirk:
+
+- **Token from the workspace** (`.session-token`): no fallback. The workspace
+  owns both halves, so a token without a port is HALF a generation — the server
+  is mid-startup and has not bound yet. The client waits and joins when the port
+  appears. The window is not narrow: the server writes `.session-token` before
+  it binds, with sandbox setup (a Docker image build on a cold start) in
+  between, so it can last minutes (#3078).
+- **Token pinned by you** (`MULMOCLAUDE_AUTH_TOKEN`): the default still applies.
+  You supplied the credential and are pointing the bridge somewhere deliberately
+  — a container without the workspace mounted, say — so there is no freshly
+  minted secret to strand.
 
 `resolveApiUrl()` still returns `http://localhost:3001` as its last step, and
 `DEFAULT_API_URL` is still exported — they are for naming a default, not for
