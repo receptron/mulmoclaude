@@ -82,6 +82,23 @@ describe("instanceGuardMessage", () => {
     assert.match(message, /MULMOCLAUDE_WORKSPACE_PATH/);
     assert.match(message, /--allow-multiple-instances/);
   });
+
+  // The message is printed from three callers, and one of them is the
+  // `yarn wait:backend --reset` step of `yarn dev`. `yarn dev` is a compound
+  // `a && b && c` script and yarn appends trailing args to the LAST command only,
+  // where `concurrently` silently swallows them — so `yarn dev
+  // --allow-multiple-instances` never reaches that guard. Measured, not assumed
+  // (Codex review, PR #3107). Leading with the env var is what keeps the advice
+  // true from every caller; a message that offered only the flag would be telling
+  // `yarn dev` users to run something that does nothing.
+  it("leads with the env var, the only opt-in that works from every caller", () => {
+    const message = instanceGuardMessage(3001);
+    assert.match(message, /MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1/);
+    const envAt = message.indexOf("MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1");
+    const flagAt = message.indexOf("--allow-multiple-instances");
+    assert.ok(envAt < flagAt, "the env var must be offered before the flag");
+    assert.match(message, /NOT `yarn dev`/, "the message must say where the flag does not work");
+  });
 });
 
 describe("serverPortPathIn", () => {

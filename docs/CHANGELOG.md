@@ -27,8 +27,9 @@ now is. A stale sidecar left by a killed instance does not stop anything: the po
 probed, and only a MulmoClaude-shaped answer counts. A busy port held by some other program still
 walks forward exactly as before.
 
-`--allow-multiple-instances` (or `MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1`) opts back in, with the
-token stomping that implies.
+`MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1` opts back in, with the token stomping that implies
+(`--allow-multiple-instances` is the equivalent flag on `npx mulmoclaude` and `yarn server`; `yarn
+dev` is a compound script and drops trailing args, so the env var is the only form that works there).
 #### `@mulmoclaude/core@4.9.0` — the bundled help stopped telling the agent that the server is on 3001 (#3085)
 
 `assets/helps/*` still described a server pinned to `localhost:3001` after #3081 and #3092 had

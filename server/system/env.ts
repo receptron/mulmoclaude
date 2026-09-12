@@ -34,8 +34,10 @@ function asFlag(value: string | undefined): boolean {
 // Env vars also switched on by a CLI flag on this process's argv.
 // The npx launcher injects the env var into the spawned server, so
 // its path doesn't rely on this; this covers a direct
-// `tsx server/index.ts` / `yarn dev --<flag>` run. Computed once at
-// module load — same lifetime as the env snapshot below. (#1089.)
+// `tsx server/index.ts` / `yarn server --<flag>` run — NOT `yarn dev`, whose
+// compound script hands trailing args to `concurrently`, which drops them
+// (measured, PR #3107). Computed once at module load — same lifetime as the
+// env snapshot below. (#1089.)
 const argvEnabledEnv = new Set<string>(CLI_FLAGS.filter(({ flag }) => process.argv.includes(flag)).map(({ env: envName }) => envName));
 
 function flagOf(envName: string): boolean {
