@@ -130,7 +130,19 @@ jobs:
       if: steps.pkg-dist-cache.outputs.cache-hit != 'true'
       run: yarn build:packages
     - run: yarn run typecheck
+    # One eslint process covers the whole repo with type-aware rules, which hold
+    # the TypeScript program in memory: measured peak RSS 3.86 GB. Node picks its
+    # default heap from machine RAM, so the ubuntu runners (16 GB → ~4 GB heap)
+    # cleared it by a hair while the macOS arm64 runners (7 GB → ~2 GB) did not —
+    # same command, half the budget, `exit 134` on macOS only (#3093).
+    #
+    # Reproduced locally by capping the heap to the macOS value: 2048 aborts with
+    # the identical FATAL, 4096 and 6144 complete. 4096 is what ubuntu already
+    # had and it was only just enough, so this is 6144 — headroom rather than the
+    # next tipping point. The lint scope only grows.
     - run: yarn run lint
+      env:
+        NODE_OPTIONS: --max-old-space-size=6144
     # Plugin barrel codegen must be in sync — fail the build if a
     # developer added a plugin dir without re-running the codegen.
     # `yarn run build` regenerates them via prebuild, but we want a
