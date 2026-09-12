@@ -1314,7 +1314,8 @@ new port, or both — is handled without touching the bridge.
 
 ### The bridge tells you where it went — start there
 
-Every bridge prints its target as it starts:
+Every bridge prints its target as it starts — the shared client emits it, so
+this holds for all of them, not only the ones with a banner:
 
 ```text
 Connecting to http://127.0.0.1:3099
