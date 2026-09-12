@@ -23,7 +23,7 @@ import {
 } from "@mulmoclaude/shapescript-plugin";
 import { renderShapeThumbnail, RENDER_TOOL_TIMEOUT_MS } from "@mulmoclaude/shapescript-plugin/render";
 import { doc, serverTimestamp, setDoc, type Firestore } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, type FirebaseStorage } from "firebase/storage";
+import { deleteObject, ref as storageRef, uploadBytes, type FirebaseStorage } from "firebase/storage";
 import { currentDisplayName, currentFirestoreSession, currentStorage } from "../../remoteHost/session.js";
 import { log } from "../../system/logger/index.js";
 import { shapeFiles } from "./exportShapeScriptUsdz.js";
@@ -44,29 +44,29 @@ export function shapeObjectPath(uid: string, shapeId: string, objectId: string):
   return `${SHAPES}/${uid}/${shapeId}/${objectId}`;
 }
 
-/** The writer over one signed-in session. */
-export function galleryWriterFrom(session: { firestore: Firestore; uid: string; authorName: string; storage?: FirebaseStorage }): ShapeGalleryWriter {
-  const writer: ShapeGalleryWriter = {
+/** The writer over one signed-in session: the Firestore document, and the
+ *  Storage object the card shows — under `shapes/{uid}/{id}/…`, the path the
+ *  Storage rule lets the owner write. */
+export function galleryWriterFrom(session: { firestore: Firestore; storage: FirebaseStorage; uid: string; authorName: string }): ShapeGalleryWriter {
+  const objectRef = (shapeId: string, objectId: string) => storageRef(session.storage, shapeObjectPath(session.uid, shapeId, objectId));
+  return {
     uid: session.uid,
     authorName: session.authorName,
     createPost: (shapeId, post) => setDoc(doc(session.firestore, SHAPES, shapeId), postDocumentOf(post)),
-  };
-  const { storage } = session;
-  if (storage) {
-    writer.uploadThumbnail = async (shapeId, png) => {
+    uploadThumbnail: async (shapeId, png) => {
       const objectId = crypto.randomUUID();
-      await uploadBytes(storageRef(storage, shapeObjectPath(session.uid, shapeId, objectId)), png, { contentType: THUMBNAIL_TYPE });
+      await uploadBytes(objectRef(shapeId, objectId), png, { contentType: THUMBNAIL_TYPE });
       return objectId;
-    };
-  }
-  return writer;
+    },
+    deleteObject: (shapeId, objectId) => deleteObject(objectRef(shapeId, objectId)),
+  };
 }
 
 /** The live session as a writer, or null when Remote Host is not connected. */
 function currentGallery(): ShapeGalleryWriter | null {
   const session = currentFirestoreSession();
   if (!session) return null;
-  return galleryWriterFrom({ firestore: session.firestore, uid: session.uid, authorName: currentDisplayName() ?? "", storage: currentStorage() });
+  return galleryWriterFrom({ firestore: session.firestore, storage: currentStorage(), uid: session.uid, authorName: currentDisplayName() ?? "" });
 }
 
 export const publishShapeScript: McpTool = {

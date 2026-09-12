@@ -1,7 +1,8 @@
 // The `publishShapeScript` tool, against a fake gallery writer. What is pinned
 // here is the CONTRACT with mulmoserver: the document's key set (its rules
-// refuse any other), the keyword normalisation both sides share, and that
-// nothing is written when the host has no session.
+// refuse any other), the keyword normalisation both sides share, that nothing
+// is written when the host has no session, and that a refusal leaves no
+// object behind.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { FileOps } from "gui-chat-protocol";
@@ -15,6 +16,7 @@ import {
   PUBLISH_TOOL_NAME,
   SHAPE_POST_KEYS,
   SHAPE_POST_LIMITS,
+  type PublishShapeScriptContext,
   type ShapeGalleryWriter,
   type ShapePostDoc,
 } from "../src/core/index";
@@ -43,22 +45,37 @@ function memoryFiles(seed: Record<string, string> = {}): FileOps {
   } as unknown as FileOps;
 }
 
-function fakeGallery(overrides: Partial<ShapeGalleryWriter> = {}) {
+/** A writer that records what it was asked to do. `createPost` may be replaced
+ *  to simulate a refused write. */
+function fakeGallery(createPost?: ShapeGalleryWriter["createPost"], siteUrl?: string) {
   const posts = new Map<string, ShapePostDoc>();
   const uploads: Array<{ id: string; bytes: number }> = [];
+  const deleted: Array<{ id: string; objectId: string }> = [];
   const writer: ShapeGalleryWriter = {
     uid: "u-alice",
     authorName: "Alice",
-    createPost: async (id, doc) => {
-      posts.set(id, doc);
-    },
+    ...(siteUrl === undefined ? {} : { siteUrl }),
+    createPost:
+      createPost ??
+      (async (id, doc) => {
+        posts.set(id, doc);
+      }),
     uploadThumbnail: async (id, png) => {
       uploads.push({ id, bytes: png.byteLength });
       return `obj-${uploads.length}`;
     },
-    ...overrides,
+    deleteObject: async (id, objectId) => {
+      deleted.push({ id, objectId });
+    },
   };
-  return { writer, posts, uploads };
+  return { writer, posts, uploads, deleted };
+}
+
+const noThumbnail = async (): Promise<Uint8Array | null> => null;
+const onePixel = async (): Promise<Uint8Array | null> => new Uint8Array([1, 2, 3]);
+
+function contextFor(gallery: ShapeGalleryWriter | null, renderThumbnail = noThumbnail, files: FileOps = memoryFiles()): PublishShapeScriptContext {
+  return { files: { artifacts: files }, gallery, renderThumbnail };
 }
 
 describe("publishShapeScript tool", () => {
@@ -108,18 +125,18 @@ describe("publishShapeScript tool", () => {
   });
 
   it("posts nothing without a session, and says how to get one", async () => {
-    await assert.rejects(
-      executePublishShapeScript({ files: { artifacts: memoryFiles() }, gallery: null }, { title: "Lamp", script: CUBE }),
-      new RegExp(NOT_CONNECTED_MESSAGE.slice(0, 30)),
-    );
+    await assert.rejects(executePublishShapeScript(contextFor(null), { title: "Lamp", script: CUBE }), new RegExp(NOT_CONNECTED_MESSAGE.slice(0, 30)));
   });
 
   it("publishes an inline script with its thumbnail and answers the model's URL", async () => {
     const { writer, posts, uploads } = fakeGallery();
-    const result = await executePublishShapeScript(
-      { files: { artifacts: memoryFiles() }, gallery: writer, renderThumbnail: async () => new Uint8Array([1, 2, 3]) },
-      { title: "Tiny Cube", script: CUBE, description: "A cube", keywords: ["Cube", "test"], prompt: "make a cube" },
-    );
+    const result = await executePublishShapeScript(contextFor(writer, onePixel), {
+      title: "Tiny Cube",
+      script: CUBE,
+      description: "A cube",
+      keywords: ["Cube", "test"],
+      prompt: "make a cube",
+    });
     assert.equal(posts.size, 1);
     const [id, doc] = [...posts.entries()][0]!;
     assert.equal(result.id, id);
@@ -135,13 +152,14 @@ describe("publishShapeScript tool", () => {
     assert.doesNotMatch(result.message, /No thumbnail/);
   });
 
-  it("publishes an existing artifact by path, as a draft, without a renderer", async () => {
-    const { writer, posts } = fakeGallery({ siteUrl: "https://staging.example/" });
+  it("publishes an existing artifact by path, as a draft, where no browser can render", async () => {
+    const { writer, posts } = fakeGallery(undefined, "https://staging.example/");
     const artifacts = memoryFiles({ "shapes/lamp-1-aaaaaaaa.shape": CUBE });
-    const result = await executePublishShapeScript(
-      { files: { artifacts }, gallery: writer },
-      { title: "Lamp", path: "artifacts/shapes/lamp-1-aaaaaaaa.shape", published: false },
-    );
+    const result = await executePublishShapeScript(contextFor(writer, noThumbnail, artifacts), {
+      title: "Lamp",
+      path: "artifacts/shapes/lamp-1-aaaaaaaa.shape",
+      published: false,
+    });
     const doc = [...posts.values()][0]!;
     assert.equal(doc.script, CUBE);
     assert.equal(doc.published, false);
@@ -154,33 +172,32 @@ describe("publishShapeScript tool", () => {
   it("posts without a picture when the thumbnail fails, and says so as a warning", async () => {
     const { writer, posts } = fakeGallery();
     const warnings: string[] = [];
-    const result = await executePublishShapeScript(
-      {
-        files: { artifacts: memoryFiles() },
-        gallery: writer,
-        renderThumbnail: async () => {
-          throw new Error("no GPU");
-        },
-        onWarning: (m) => warnings.push(m),
-      },
-      { title: "Lamp", script: CUBE },
-    );
+    const failing = async (): Promise<Uint8Array | null> => {
+      throw new Error("no GPU");
+    };
+    const result = await executePublishShapeScript({ ...contextFor(writer, failing), onWarning: (m) => warnings.push(m) }, { title: "Lamp", script: CUBE });
     assert.equal(posts.size, 1);
     assert.equal(result.thumbnail, false);
     assert.deepEqual(warnings, ["thumbnail skipped: no GPU"]);
   });
 
-  it("refuses a script that will not build, before anything is written", async () => {
-    const { writer, posts } = fakeGallery();
-    await assert.rejects(
-      executePublishShapeScript({ files: { artifacts: memoryFiles() }, gallery: writer }, { title: "Bad", script: "loft { square }" }),
-      /cross-sections/,
-    );
+  it("refuses a script that will not build, or a post over a limit, before anything is uploaded or written", async () => {
+    const { writer, posts, uploads } = fakeGallery();
+    const context = contextFor(writer, onePixel);
+    await assert.rejects(executePublishShapeScript(context, { title: "Bad", script: "loft { square }" }), /cross-sections/);
+    await assert.rejects(executePublishShapeScript(context, { title: "x".repeat(121), script: CUBE }), /`title` is too long/);
+    await assert.rejects(executePublishShapeScript(context, { script: CUBE }), /`title` is required/);
+    await assert.rejects(executePublishShapeScript(context, { title: "t", script: CUBE, path: "artifacts/shapes/x.shape" }), /not both/);
     assert.equal(posts.size, 0);
-    await assert.rejects(executePublishShapeScript({ files: { artifacts: memoryFiles() }, gallery: writer }, { script: CUBE }), /`title` is required/);
-    await assert.rejects(
-      executePublishShapeScript({ files: { artifacts: memoryFiles() }, gallery: writer }, { title: "t", script: CUBE, path: "artifacts/shapes/x.shape" }),
-      /not both/,
-    );
+    assert.deepEqual(uploads, []);
+  });
+
+  it("takes the thumbnail back out when the post itself is refused", async () => {
+    const { writer, uploads, deleted } = fakeGallery(async () => {
+      throw new Error("permission-denied");
+    });
+    await assert.rejects(executePublishShapeScript(contextFor(writer, onePixel), { title: "Lamp", script: CUBE }), /permission-denied/);
+    assert.equal(uploads.length, 1);
+    assert.deepEqual(deleted, [{ id: uploads[0]!.id, objectId: "obj-1" }]);
   });
 });

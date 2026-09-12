@@ -117,9 +117,9 @@ export const SHAPE_POST_KEYS = [
   "published",
 ] as const;
 
-/** What a host supplies: who is posting, and the two writes, over its own
- *  signed-in session. `uploadThumbnail` is optional — a host without Storage
- *  access posts without a picture. */
+/** What a host supplies: who is posting, and the writes, over its own
+ *  signed-in session — the Firestore document and the Storage object the
+ *  gallery card shows. */
 export interface ShapeGalleryWriter {
   /** The signed-in user's Firebase uid — the post's owner. */
   uid: string;
@@ -130,15 +130,21 @@ export interface ShapeGalleryWriter {
   /** Create `shapes/{id}` from `doc` plus the server timestamps. */
   createPost: (id: string, doc: ShapePostDoc) => Promise<void>;
   /** Store a PNG under the post and return the object id the document carries. */
-  uploadThumbnail?: (id: string, png: Uint8Array) => Promise<string>;
+  uploadThumbnail: (id: string, png: Uint8Array) => Promise<string>;
+  /** Remove an object under the post — the thumbnail of a post that was never written. */
+  deleteObject: (id: string, objectId: string) => Promise<void>;
 }
 
 export interface PublishShapeScriptContext extends ShapeScriptDispatchContext {
   /** null when the host has no signed-in session — the tool then says how to get one. */
   gallery: ShapeGalleryWriter | null;
-  /** Rasterise one view of `script` to a PNG, or null when this host cannot
-   *  (no browser). Supplied from `@mulmoclaude/shapescript-plugin/render`. */
-  renderThumbnail?: (script: string) => Promise<Uint8Array | null>;
+  /** Rasterise one view of `script` to a PNG, or null where this host cannot
+   *  (no headless browser — a Docker image, an install that skipped the
+   *  Chromium download). Supplied from `@mulmoclaude/shapescript-plugin/render`.
+   *  The picture is best effort because the gallery tolerates its absence: a
+   *  card without one shows the model icon, and the post's owner can add one
+   *  from the web editor. */
+  renderThumbnail: (script: string) => Promise<Uint8Array | null>;
   /** A fault that did not stop the post — a thumbnail that could not be made. */
   onWarning?: (message: string) => void;
 }
@@ -210,7 +216,8 @@ export function shapePostFrom(
 
 /** The gallery's address for one post. */
 export function shapePostUrl(id: string, siteUrl = SHAPE_GALLERY_URL): string {
-  return `${siteUrl.replace(/\/+$/, "")}/shapes/${id}`;
+  const base = siteUrl.endsWith("/") ? siteUrl.slice(0, -1) : siteUrl;
+  return `${base}/shapes/${id}`;
 }
 
 /** Build and drop the model, so a script the viewer cannot show is refused
@@ -219,14 +226,31 @@ function requireBuildable(script: string): void {
   disposeObject3D(astToThreeJS(parseShapeScript(script)));
 }
 
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+/** The thumbnail's object id, or "" when none could be made — a warning, not a
+ *  failure, since the post is what the user asked for. */
 async function thumbnailFor(context: PublishShapeScriptContext, gallery: ShapeGalleryWriter, id: string, script: string): Promise<string> {
-  if (!context.renderThumbnail || !gallery.uploadThumbnail) return "";
   try {
     const png = await context.renderThumbnail(script);
     return png ? await gallery.uploadThumbnail(id, png) : "";
   } catch (error) {
-    context.onWarning?.(`thumbnail skipped: ${error instanceof Error ? error.message : String(error)}`);
+    context.onWarning?.(`thumbnail skipped: ${messageOf(error)}`);
     return "";
+  }
+}
+
+/** Write the post; if that fails, take the thumbnail back out so a refused
+ *  write does not leave an object nothing references. */
+async function writePost(context: PublishShapeScriptContext, gallery: ShapeGalleryWriter, id: string, doc: ShapePostDoc): Promise<void> {
+  try {
+    await gallery.createPost(id, doc);
+  } catch (error) {
+    if (doc.thumbnailId)
+      await gallery
+        .deleteObject(id, doc.thumbnailId)
+        .catch((cause: unknown) => context.onWarning?.(`orphaned thumbnail ${doc.thumbnailId}: ${messageOf(cause)}`));
+    throw error;
   }
 }
 
@@ -236,7 +260,8 @@ const newPostId = (): string => globalThis.crypto.randomUUID();
  * Run one `publishShapeScript` call. Throws on a missing session, a missing or
  * invalid source, a limit the gallery would refuse, and on ShapeScript errors
  * — the host's error path reports those to the model as it does for
- * `renderShapeScript`.
+ * `renderShapeScript`. Everything that can be refused is checked BEFORE the
+ * thumbnail is uploaded, so a refusal writes nothing.
  */
 export async function executePublishShapeScript(context: PublishShapeScriptContext, args: Record<string, unknown>): Promise<PublishShapeResult> {
   const gallery = context.gallery;
@@ -245,18 +270,18 @@ export async function executePublishShapeScript(context: PublishShapeScriptConte
   if (!title) throw new Error("`title` is required");
   const { script } = await resolveShapeSource(context, args);
   requireBuildable(script);
-  const id = newPostId();
-  const thumbnailId = await thumbnailFor(context, gallery, id, script);
-  const doc = shapePostFrom(gallery, {
+  const post = shapePostFrom(gallery, {
     title,
     script,
     description: optionalString(args.description),
     prompt: optionalString(args.prompt),
     keywords: args.keywords,
     published: args.published !== false,
-    thumbnailId,
   });
-  await gallery.createPost(id, doc);
+  const id = newPostId();
+  const thumbnailId = await thumbnailFor(context, gallery, id, script);
+  const doc: ShapePostDoc = { ...post, thumbnailId };
+  await writePost(context, gallery, id, doc);
   const url = shapePostUrl(id, gallery.siteUrl);
   const state = doc.published ? "Published" : "Saved as a draft (only the user can see it, under My models)";
   const picture = thumbnailId ? "" : " No thumbnail could be attached; the gallery shows a placeholder until the user edits the post.";
