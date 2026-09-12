@@ -10,6 +10,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### A phone-link session parked under a later Firebase app survives a host restart (#3089)
+
+Firebase Auth namespaces every persistence key with the app that wrote it
+(`firebase:<key>:<apiKey>:<appName>`), and `createRemoteHostSession` opens a fresh
+`remote-host-${appSeq}` app on each connect, counting from zero in every new process. So a
+session the browser parked while `remote-host-2` was live was invisible to the `remote-host-1`
+app a restarted host opens first: the SDK looked up its own key, missed, and settled with no
+user. The host answered 401, the browser dropped the parked session, and the user signed in
+through the Google popup again — and because the failed restore had already advanced the
+counter, the new session was saved under `remote-host-2` too, so it came back on the next
+restart. The same mismatch broke in-process reconnect, where the app name always moves on.
+
+Seeding now re-keys the blob to the app about to be opened, so a parked session no longer
+depends on the sequence number it happened to be saved under. Sessions already parked under a
+later name restore without a new sign-in.
+
+The re-key refuses to guess. A blob can carry two app names — `open` keeps the previous app
+alive until the fresh one has validated, and both share one store, so a token refresh in that
+window writes the old name back beside the new one. Collapsing both onto one target would pick
+a winner by JSON order, and the stale app is the one that writes last, so a restart could come
+back as the account the user had just signed out of. An ambiguous target is dropped instead:
+the restore finds no user and the client is asked to sign in once, which is what happened
+before re-keying existed.
+
 #### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)
 
 Two mismatches with the upstream app, both in `loft`. A `fill { path … }` as a section rendered

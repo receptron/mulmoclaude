@@ -2,8 +2,9 @@
 // but can be seeded from — and exported back to — an opaque blob, so a host's
 // Firebase session survives a process restart by being parked in the browser's
 // localStorage (mulmoserver#50, "case A'"). The blob is whatever the SDK wrote
-// into persistence, round-tripped through JSON; we NEVER interpret its fields,
-// so we don't couple to the SDK's serialized-user format across versions.
+// into persistence, round-tripped through JSON; we never interpret its VALUES,
+// so we don't couple to the SDK's serialized-user format across versions. Key
+// NAMES we do read, but only their app-name segment — see `seed`.
 //
 // **Persistence is a CLASS, not an instance.** `initializeAuth(app, { persistence })`
 // hands the value to the SDK's `_getInstance(cls)`, which asserts `cls instanceof
@@ -46,8 +47,13 @@ export interface HostAuthPersistenceClass extends Persistence {
 export interface HostSessionPersistence {
   /** Pass to `initializeAuth(app, { persistence })`. It's a class the SDK `new`s. */
   persistence: HostAuthPersistenceClass;
-  /** Load a previously exported blob. Call BEFORE `initializeAuth`. */
-  seed: (blob: string) => void;
+  /**
+   * Load a previously exported blob. Call BEFORE `initializeAuth`. `appName`
+   * re-keys the blob for the app about to be opened (see `rekeyForApp`); omit
+   * it to restore keys verbatim, which is what a rollback to a still-live app
+   * needs.
+   */
+  seed: (blob: string, appName?: string) => void;
   /** Serialize the current contents, or `null` when empty (no session). */
   exportBlob: () => string | null;
   /** Notified with the fresh blob (or `null`) whenever the SDK writes/removes. */
@@ -70,6 +76,44 @@ export const isSeedableBlob = (blob: string): boolean => {
   } catch {
     return false;
   }
+};
+
+// Firebase Auth namespaces every persistence key with the app that wrote it:
+// `firebase:<key>:<apiKey>:<appName>` (@firebase/auth's `_persistenceKeyName`).
+// A host opens a fresh app per connect, so a blob parked while `remote-host-2`
+// was live is invisible to the `remote-host-1` app a restarted host opens first
+// — the SDK looks up its own key, misses, and settles with no user (#3089).
+// Rewriting the app-name segment as the blob is seeded makes a parked session
+// independent of the sequence number it happened to be saved under. Only the key
+// is touched: the serialized user stays opaque, and its own `appName` field is
+// never read back by the SDK (`UserImpl._fromJSON`, @firebase/auth 1.13.3).
+// A key of any other shape is passed through untouched.
+const FIREBASE_KEY_NAMESPACE = "firebase";
+const FIREBASE_KEY_SEGMENTS = 4;
+
+const rekeyForApp = (key: string, appName: string): string => {
+  const segments = key.split(":");
+  if (segments.length !== FIREBASE_KEY_SEGMENTS || segments[0] !== FIREBASE_KEY_NAMESPACE) return key;
+  return [...segments.slice(0, FIREBASE_KEY_SEGMENTS - 1), appName].join(":");
+};
+
+// Re-keying is only safe while it is unambiguous, and a blob CAN carry two app
+// names: `open` keeps the previous app alive until the fresh one has validated,
+// and that app shares this store, so a token refresh in the meantime writes its
+// own key back beside the new one. Collapsing both onto one target would pick a
+// winner by JSON order — the stale app writes last — and a host would come back
+// as the account the user had just signed out of. So an ambiguous target is
+// dropped: the restore finds no user, the client is told to sign in again, and
+// that is what happened before re-keying existed.
+const resolveKeys = (keys: string[], appName: string | undefined): Map<string, string> => {
+  if (!appName) return new Map(keys.map((key) => [key, key]));
+  const targets = keys.map((key) => rekeyForApp(key, appName));
+  const contested = new Set(targets.filter((target, index) => targets.indexOf(target) !== index));
+  return keys.reduce((resolved, key, index) => {
+    const target = targets[index];
+    if (target !== undefined && !contested.has(target)) resolved.set(key, target);
+    return resolved;
+  }, new Map<string, string>());
 };
 
 // A class (constructor) so the SDK's `_getInstance` accepts it (it asserts
@@ -123,12 +167,14 @@ export const createHostSessionPersistence = (): HostSessionPersistence => {
 
   const persistence = makeHostPersistenceClass(store, notify);
 
-  const seed = (blob: string): void => {
+  const seed = (blob: string, appName?: string): void => {
     const parsed: unknown = JSON.parse(blob);
     if (!isRecord(parsed)) throw new Error("host session blob must be a JSON object");
     store.clear();
+    const resolved = resolveKeys(Object.keys(parsed), appName);
     for (const [key, value] of Object.entries(parsed)) {
-      if (isPersistenceValue(value)) store.set(key, value);
+      const target = resolved.get(key);
+      if (target !== undefined && isPersistenceValue(value)) store.set(target, value);
     }
   };
 

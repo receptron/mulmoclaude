@@ -88,6 +88,65 @@ describe("createHostSessionPersistence", () => {
     assert.deepEqual(JSON.parse(exportBlob() ?? "null"), { [AUTH_KEY]: userValue });
   });
 
+  it("seed re-keys a blob to the app about to be opened (#3089 regression)", async () => {
+    // A blob parked while `remote-host-2` was live must restore into the
+    // `remote-host-1` app a restarted host opens first: the SDK only ever looks
+    // up the key built from ITS OWN app name.
+    const { persistence, seed, exportBlob } = createHostSessionPersistence();
+    seed(JSON.stringify({ "firebase:authUser:apiKey:remote-host-2": userValue }), "remote-host-1");
+
+    assert.deepEqual(await new persistence()._get(AUTH_KEY), userValue);
+    assert.deepEqual(JSON.parse(exportBlob() ?? "null"), { [AUTH_KEY]: userValue });
+  });
+
+  it("seed re-keys every Firebase-shaped key and leaves other keys alone", () => {
+    const { seed, exportBlob } = createHostSessionPersistence();
+    seed(
+      JSON.stringify({
+        "firebase:authUser:apiKey:remote-host-9": userValue,
+        "firebase:persistence:apiKey:remote-host-9": "LOCAL",
+        "not-a-firebase-key": "keep",
+        "firebase:authUser:api:Key:with:colons": "keep", // too many segments to read safely
+      }),
+      "remote-host-1",
+    );
+
+    assert.deepEqual(JSON.parse(exportBlob() ?? "null"), {
+      "firebase:authUser:apiKey:remote-host-1": userValue,
+      "firebase:persistence:apiKey:remote-host-1": "LOCAL",
+      "not-a-firebase-key": "keep",
+      "firebase:authUser:api:Key:with:colons": "keep",
+    });
+  });
+
+  it("seed drops a re-key target that two source keys claim, rather than picking one", () => {
+    // A blob can carry two app names: `open` keeps the previous app alive until
+    // the fresh one validates, and that app shares this store. Collapsing both
+    // onto one target would pick a winner by JSON order — the stale app writes
+    // last — so the host would come back as the account the user just left.
+    const { seed, exportBlob } = createHostSessionPersistence();
+    seed(
+      JSON.stringify({
+        "firebase:authUser:apiKey:remote-host-3": { uid: "current" },
+        "firebase:authUser:apiKey:remote-host-2": { uid: "stale" },
+        "firebase:persistence:apiKey:remote-host-2": "LOCAL",
+      }),
+      "remote-host-1",
+    );
+
+    // The contested authUser target is dropped; the uncontested one still re-keys.
+    assert.deepEqual(JSON.parse(exportBlob() ?? "null"), { "firebase:persistence:apiKey:remote-host-1": "LOCAL" });
+  });
+
+  it("seed without an app name restores keys verbatim (the rollback path)", () => {
+    // `open` rolls back to a still-live app, which reads the keys its own blob
+    // already carries — re-keying there would hide its session from it.
+    const { seed, exportBlob } = createHostSessionPersistence();
+    const parked = JSON.stringify({ "firebase:authUser:apiKey:remote-host-2": userValue });
+    seed(parked);
+    assert.equal(exportBlob(), parked);
+  });
+
   it("seed rejects a non-object blob", () => {
     const { seed } = createHostSessionPersistence();
     assert.throws(() => seed("[1,2,3]"), /must be a JSON object/);
