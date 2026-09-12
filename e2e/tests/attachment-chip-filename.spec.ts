@@ -54,7 +54,7 @@ test.describe("attachment chip filename (#2308)", () => {
 
   test("a turn recorded with an original filename shows it instead of the stored hex id", async ({ page }) => {
     await page.goto(`/chat/${SESSION_ID}`);
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(page.getByTestId("tool-results-scroll").getByText("now this one")).toBeVisible();
 
     await expect(page.getByTestId("sent-attachment-chip").filter({ hasText: ORIGINAL_CSV }).first()).toBeVisible();

@@ -69,7 +69,7 @@ test.beforeEach(async ({ page }) => {
 test.describe("file explorer path in URL", () => {
   test("selecting a file pushes /files/<path> onto the URL", async ({ page }) => {
     await page.goto("/files");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Wait for the root dir's shallow listing to land — with lazy
     // expand (#200 phase 2), the tree only renders children after
@@ -93,7 +93,7 @@ test.describe("file explorer path in URL", () => {
 
   test("direct URL /files/<path> opens the file", async ({ page }) => {
     await page.goto("/files/wiki/hello.md");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // The file content should be visible
     await expect(page.getByText("This is a test.")).toBeVisible({
@@ -120,7 +120,7 @@ test.describe("file explorer path in URL", () => {
     // survives the browser and is decoded by the router, which is
     // when our `.includes("..")` check fires.
     await page.goto("/files/..%2F..%2Fetc%2Fpasswd");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Guard redirects to /files (empty pathMatch).
     await expect(async () => {
@@ -132,7 +132,7 @@ test.describe("file explorer path in URL", () => {
 
   test("legacy ?path= with traversal is stripped by guard", async ({ page }) => {
     await page.goto("/files?path=../../../etc/passwd");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(async () => {
       const url = new URL(page.url());
       expect(url.pathname).toMatch(/^\/files\/?$/);
@@ -142,7 +142,7 @@ test.describe("file explorer path in URL", () => {
 
   test("absolute path attempt is stripped by guard", async ({ page }) => {
     await page.goto("/files//etc/passwd");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(async () => {
       const url = new URL(page.url());
       expect(url.pathname).toMatch(/^\/files\/?$/);

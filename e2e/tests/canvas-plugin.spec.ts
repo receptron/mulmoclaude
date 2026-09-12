@@ -57,7 +57,7 @@ test.describe("canvas plugin", () => {
       { uuid: "canvas-b", imageData: "images/canvas-b.png" },
     ]);
     await page.goto("/chat/canvas-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const canvases = page.locator("canvas[id^='vdc-']");
     await expect(canvases).toHaveCount(2);
@@ -77,7 +77,7 @@ test.describe("canvas plugin", () => {
       (route) => route.fulfill({ status: 500, json: { error: "disk full" } }),
     );
     await page.goto("/chat/canvas-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const canvas = page.locator("canvas[id^='vdc-']").first();
     await expect(canvas).toBeVisible();
@@ -98,7 +98,7 @@ test.describe("canvas plugin", () => {
       },
     );
     await page.goto("/chat/canvas-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const idBefore = await page.locator("canvas[id^='vdc-']").first().getAttribute("id");
     // Clear is the red delete-icon button in the toolbar.

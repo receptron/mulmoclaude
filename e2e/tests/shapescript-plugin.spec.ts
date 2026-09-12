@@ -58,7 +58,7 @@ test.describe("shapescript plugin rendering", () => {
 
   test("opens the 3D view from the sidebar preview", async ({ page }) => {
     await page.goto("/chat/shapescript-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     await expect(page.locator('[data-testid="shapescript-preview"]')).toBeVisible();
     await page.getByText("Cube Row").first().click();

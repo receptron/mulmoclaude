@@ -35,7 +35,7 @@ test.describe("queries panel (useQueriesPanel)", () => {
 
   test("Suggestions button toggles the query list", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const toggle = page.getByTestId("suggestions-btn");
     await expect(toggle).toBeVisible();
@@ -56,7 +56,7 @@ test.describe("queries panel (useQueriesPanel)", () => {
   test("plain click on a query sends it as a message", async ({ page }) => {
     const captured = await captureAgentPost(page);
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     await page.getByTestId("suggestions-btn").click();
     const query = page.getByRole("button", {
@@ -77,7 +77,7 @@ test.describe("queries panel (useQueriesPanel)", () => {
   test("Shift+click on a query fills the input without sending", async ({ page }) => {
     const captured = await captureAgentPost(page);
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     await page.getByTestId("suggestions-btn").click();
     const query = page.getByRole("button", {
