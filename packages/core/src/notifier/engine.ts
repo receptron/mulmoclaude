@@ -307,8 +307,9 @@ function optionalPublishFields<TPluginData>(input: PublishInput<TPluginData>): P
 }
 
 export async function publish<TPluginData = unknown>(input: PublishInput<TPluginData>): Promise<{ id: string }> {
-  // Validate at the engine boundary so plugin-runtime callers and
-  // HTTP callers hit the same wall.
+  // Validate at the engine boundary, so every caller shares one wall —
+  // plugin runtime, legacy wrapper, host module. Publish has no HTTP
+  // surface to validate separately (`server/api/routes/notifier.ts`).
   const validationError = validatePublishInput(input);
   if (validationError) {
     throw new Error(`notifier.publish: ${validationError}`);

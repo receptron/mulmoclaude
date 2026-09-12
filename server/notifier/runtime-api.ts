@@ -4,17 +4,21 @@
 // `pluginPkg` is auto-bound to the calling plugin's pkg name so
 // plugins cannot publish under another plugin's namespace.
 //
-// Plugin authors access this surface via type assertion:
+// Plugin authors cannot IMPORT this type: a plugin sits below the host
+// in the dependency direction and may not reach into `server/`. They
+// mirror the shape they use and narrow to it, which is what
+// `packages/plugins/debug-plugin` does:
 //
 //   import type { PluginRuntime } from "gui-chat-protocol";
-//   import type { MulmoclaudeRuntime } from "<mulmoclaude>/notifier/runtime-api";
-//   export default definePlugin((runtime: PluginRuntime) => {
+//   type MulmoclaudeRuntime = PluginRuntime & { notifier: … };
+//   export default definePlugin((runtime) => {
 //     const { notifier } = runtime as MulmoclaudeRuntime;
 //     // notifier.publish(...) / notifier.clear(...)
 //   });
 //
-// Once the API stabilises, this is a candidate for upstreaming
-// into gui-chat-protocol so the cast goes away.
+// That duplication is the cost of the surface living here. Once the
+// API stabilises it is a candidate for upstreaming into
+// gui-chat-protocol, which removes both the copy and the narrowing.
 
 import type { PluginRuntime } from "gui-chat-protocol";
 import type { NotifierEntry, NotifierLifecycle, NotifierSeverity } from "./types.js";
@@ -29,7 +33,8 @@ export type { ChatRuntimeApi, ChatStartInput, ChatStartResult } from "../plugins
  *  automatically from the calling plugin's pkg name.
  *
  *  Two publish-time rules apply to `action` lifecycle, enforced by the
- *  engine (and also by the HTTP layer for parity):
+ *  engine — the only place they can be, since publish has no HTTP
+ *  surface (see `server/api/routes/notifier.ts`):
  *
  *    - `navigateTarget` MUST be a non-empty string.
  *    - `severity` MUST NOT be `"info"`.
