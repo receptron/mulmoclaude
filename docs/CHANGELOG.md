@@ -12,51 +12,43 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 #### `@mulmoclaude/common@1.3.0`, `@mulmobridge/webhook-runtime@1.2.0`, `@mulmoclaude/core@4.9.1` — the versions catch up with #3084
 
-#3084 added exports to two shared packages and changed a bundled help asset, all at unchanged
-versions. That is the state `scripts/mulmoclaude/drift.mjs` exists to refuse: npm keeps serving the
-old tarball, so a consumer resolving `^1.2.0` gets a `@mulmoclaude/common` with no `asInt`, and one
-resolving `^1.1.0` gets a `@mulmobridge/webhook-runtime` with no `listenWebhook` — a runtime
-"does not provide an export named …", invisible to lint, typecheck and local dev because a
-yarn-workspace symlink always points at the freshly built local dist.
+#3084 left shared packages carrying new exports at unchanged versions. That is the state
+`scripts/mulmoclaude/drift.mjs` exists to refuse: npm keeps serving the old tarball, so a consumer
+resolving `^1.2.0` gets a `@mulmoclaude/common` with no `asInt` and one resolving `^1.1.0` gets a
+`@mulmobridge/webhook-runtime` with no `listenWebhook` — a runtime "does not provide an export
+named …", invisible to lint, typecheck and local dev because a yarn-workspace symlink always points
+at the freshly built local dist.
 
-The drift gate only catches part of it: it scans the `@mulmobridge/*` packages the launcher depends
-on, which is why `@mulmobridge/client` (bumped in the PR that added its export) failed the check
-while `@mulmobridge/webhook-runtime` — not a launcher dependency — and `@mulmoclaude/common` — wrong
-scope — passed. `yarn audit:releases --code-only` is what names those, and it is the reason this
-bump is not left to the next accidental discovery.
+Every number below is one a command produces, next to the thing it counts — three rounds of this
+PR's review went to prose that miscounted its own sweep, so the counts now sit in the table instead
+of in sentences:
 
-- **`@mulmoclaude/common` 1.3.0** (minor) — `asInt`, `PORT_RANGE` and the `IntRange` type moved here
-  from `server/utils/envCoerce.ts` so the host, the dev proxy and the bridges bound a port with one
-  rule. `PORT_RANGE` is typed `Required<IntRange>` so a caller can compare against its bounds
-  without a non-null assertion.
-- **`@mulmobridge/webhook-runtime` 1.2.0** (minor) — `listenWebhook`, the single bind path for the
-  nine webhook bridges: it resolves the port, refuses an unusable value with the env var named,
-  explains `EADDRINUSE` / `EACCES`, and reports the port actually bound.
-- **`@mulmoclaude/core` 4.9.1** (patch) — no behaviour change. It carries the new
-  `assets/helps/error-recovery.md` sections (the agent reads that file before asking the user
-  anything on a tool failure, so the content only reaches npm users through a core publish) plus the
-  comment corrections from #3106 in `src/notifier/`, and its declared range on
-  `@mulmoclaude/common` moves to `^1.3.0`.
+| package                        | version           | bump  | gained since its tag                                                                                                                                                                                                                                                             | ranges swept (declarations / files)                                                                                                            |
+| ------------------------------ | ----------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@mulmoclaude/common`          | 1.2.0 → **1.3.0** | minor | `asInt`, `PORT_RANGE`, type `IntRange`, moved from `server/utils/envCoerce.ts`; `PORT_RANGE` typed `Required<IntRange>` so a caller compares against its bounds without a non-null assertion                                                                                     | **34** / 33 — 33 `dependencies` + one plugin's `devDependencies`                                                                               |
+| `@mulmobridge/webhook-runtime` | 1.1.0 → **1.2.0** | minor | `listenWebhook` — the single bind path for the nine webhook bridges: resolves the port, refuses an unusable value with the env var named, explains `EADDRINUSE` / `EACCES`, reports the port actually bound                                                                      | **9** / 9 — all `dependencies`                                                                                                                 |
+| `@mulmoclaude/core`            | 4.9.0 → **4.9.1** | patch | no export and no behaviour change: the new `assets/helps/error-recovery.md` sections (which reach npm users only through a core publish, since the agent reads that file before asking the user anything on a tool failure) and #3106's comment-only edits under `src/notifier/` | **17** / 9 — the launcher's `dependencies` plus eight plugins' `devDependencies` AND `peerDependencies`; the same 17 the `4.9.0` release swept |
+| `@mulmobridge/client`          | already 1.2.0     | —     | `installProcessGuards` — bumped in #3110, the PR that added it, so nothing to do here                                                                                                                                                                                            | —                                                                                                                                              |
 
-Every declared range on the three is swept in the same change, counted per declaration rather than
-per file because a manifest can declare the same package twice: **34 on `@mulmoclaude/common`** (33
-`dependencies` + one plugin's `devDependencies`, across 33 files), **9 on
-`@mulmobridge/webhook-runtime`** (all `dependencies`), and **17 on `@mulmoclaude/core`** (the
-launcher's `dependencies` plus eight plugins' `devDependencies` AND `peerDependencies`, across 9
-files — the same 17 the `4.9.0` release commit swept). A caret range on an internal package does not
-float a consumer forward on its own, so a range left behind pins that consumer to the old line. The launcher's OWN version is untouched; that field belongs to `/publish-mulmoclaude`.
+A caret range on an internal package does not float a consumer forward on its own, so a range left
+behind pins that consumer to the old line. **The launcher's OWN `version` is untouched** (still
+1.16.0); that field belongs to `/publish-mulmoclaude`.
 
-Publish order is bottom-up, and which edges are STRICT is worth being exact about, because a strict
-edge published backwards ships code calling an export npm does not serve yet:
+The drift gate caught one of the four and could not have caught the others: it scans the
+`@mulmobridge/*` packages the launcher depends on, so `@mulmobridge/client` failed the check while
+`@mulmobridge/webhook-runtime` (not a launcher dependency) and `@mulmoclaude/common` (wrong scope)
+passed. `yarn audit:releases --code-only` names them, and widening the gate is #3116.
 
-- **`common@1.3.0` before `webhook-runtime@1.2.0`** — strict. `webhook-runtime/src/port.ts` imports
-  `asInt` and `PORT_RANGE`, neither of which exists in the published `common@1.2.0`.
-- **`webhook-runtime@1.2.0` before the nine webhook bridges** — strict; all nine call `listenWebhook`.
-- **`client@1.2.0` before all 24 resident bridges** — strict; all 24 call `installProcessGuards`.
-- **`client@1.2.0` relative to common** — NOT strict. `client` takes only `isRecord`,
-  `scanEnvOptions` and `errorMessage` from common, all of which `1.2.0` already serves.
-- **`core@4.9.1`** — not strict either: it uses none of common's new exports, and its range moves for
-  consistency rather than need.
+Publish order is bottom-up, and which edges are STRICT matters, because a strict edge published
+backwards ships code calling an export npm does not serve yet:
+
+| edge                                            | strict? | what forces it                                                                                            |
+| ----------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------- |
+| `common@1.3.0` → `webhook-runtime@1.2.0`        | **yes** | `webhook-runtime/src/port.ts` imports `asInt` and `PORT_RANGE`; published `common@1.2.0` has neither      |
+| `webhook-runtime@1.2.0` → the 9 webhook bridges | **yes** | all nine call `listenWebhook`                                                                             |
+| `client@1.2.0` → all 24 resident bridges        | **yes** | all 24 call `installProcessGuards`                                                                        |
+| `common` → `client@1.2.0`                       | no      | `client` takes only `isRecord`, `scanEnvOptions`, `errorMessage` from common — all in the published 1.2.0 |
+| anything → `core@4.9.1`                         | no      | it uses none of common's new exports; its range moves for consistency                                     |
 
 #### A bridge that crashed said nothing about which bridge it was, and Ctrl-C dropped work in flight (#3084)
 
