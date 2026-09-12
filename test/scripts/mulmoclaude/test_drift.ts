@@ -95,6 +95,42 @@ describe("parseExportedNames", () => {
     });
   });
 
+  // The remaining hole class after the inversion is "a WRONG name set while opaque
+  // stays false". Both shapes below did exactly that: the first exports the name
+  // `string name` (ES2022 arbitrary module namespace names) and the parser reported
+  // `a`; the second exports `café` and an ASCII-only identifier pattern reported
+  // `caf`. A name the package does not export is worse than a coarse comparison.
+  it("goes opaque rather than guessing when it cannot name the export exactly", () => {
+    const unnameable = [
+      'export { a as "string name" };\n',
+      'export { "string name" as a } from "./x.js";\n',
+      "export { café };\n",
+      "export const café = 1;\n",
+      "export function café() {}\n",
+    ];
+    unnameable.forEach((source) => {
+      const { names, opaque } = drift.parseExportedNames(source);
+      assert.equal(opaque, true, `expected opaque for ${JSON.stringify(source)}`);
+      assert.deepEqual([...names], [], `expected no guessed name for ${JSON.stringify(source)}`);
+    });
+  });
+
+  it("still names every ASCII declaration shape exactly", () => {
+    const shapes: [string, string][] = [
+      ["export const a = 1;\n", "a"],
+      ["export let x;\n", "x"],
+      ["export var v = 1;\n", "v"],
+      ["export function f() {}\n", "f"],
+      ["export class C {}\n", "C"],
+      ["export const $d = 1;\n", "$d"],
+      ["export const _u = 1;\n", "_u"],
+      ["export async function g() {}\n", "g"],
+    ];
+    shapes.forEach(([source, name]) => {
+      assert.deepEqual([...drift.parseExportedNames(source).names], [name], source);
+    });
+  });
+
   it("still does not treat an identifier starting with `export` as an export", () => {
     const { names, opaque } = drift.parseExportedNames("exported = 1;\nexportable();\n");
     assert.deepEqual([...names], []);

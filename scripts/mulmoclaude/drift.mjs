@@ -89,16 +89,27 @@ export function parseExportedNames(source) {
     const cut = text.search(/[^\w$*]/);
     return cut === -1 ? text : text.slice(0, cut === 0 ? 1 : cut);
   };
-  // One name from a brace specifier: `a` -> a, `a as b` -> b, `type T` -> none.
-  const specifierName = (raw) => {
+  // One brace specifier. Three outcomes, because "no name" and "I cannot model
+  // this" must not look alike: `{ kind: "name" }`, `{ kind: "type" }` (skip, the
+  // set is still exact), `{ kind: "unmodelled" }` (the whole entry goes opaque).
+  //
+  // `default` counts as a name: a default-import consumer breaks the same way when
+  // the published tarball lacks it, which is the failure this gate exists for.
+  const specifierKind = (raw) => {
     const spec = raw.trim();
-    if (spec === "" || spec.startsWith("type ")) return null;
+    if (spec === "") return { kind: "type" };
+    if (spec.startsWith("type ")) return { kind: "type" };
+    // An arbitrary module namespace name (`a as "string name"`, ES2022) is a real
+    // export this parser cannot name, and a truncated guess would be worse than a
+    // coarse comparison.
+    if (spec.includes('"') || spec.includes("'")) return { kind: "unmodelled" };
     const parts = spec.split(/\s+/);
     const picked = parts.length >= 3 && parts[parts.length - 2] === "as" ? parts[parts.length - 1] : parts[0];
-    // `default` counts: a default-import consumer breaks the same way when the
-    // published tarball lacks it, which is the failure this gate exists for.
     const match = IDENT.exec(picked);
-    return match === null ? null : match[0];
+    // The identifier must be the WHOLE token. `café` matched `caf` under an
+    // ASCII-only pattern and reported a name the package does not export.
+    if (match === null || match[0] !== picked) return { kind: "unmodelled" };
+    return { kind: "name", name: match[0] };
   };
 
   // The rule is INVERTED on purpose: these four shapes are what this parser claims
@@ -124,8 +135,9 @@ export function parseExportedNames(source) {
         continue;
       }
       for (const piece of body.split(",")) {
-        const name = specifierName(piece);
-        if (name !== null) names.add(name);
+        const spec = specifierKind(piece);
+        if (spec.kind === "name") names.add(spec.name);
+        else if (spec.kind === "unmodelled") opaque = true;
       }
       continue;
     }
@@ -146,8 +158,15 @@ export function parseExportedNames(source) {
       opaque = true;
       continue;
     }
-    const match = IDENT.exec(rest.slice(head.length).trim());
-    if (match === null) opaque = true;
+    const declared = rest.slice(head.length).trim();
+    const match = IDENT.exec(declared);
+    // The identifier must END where a declaration's name legitimately can — the
+    // boundary is a permit-list for the same reason the statement shapes are. An
+    // ASCII-only pattern truncated `café` to `caf` and reported a name the package
+    // does not export; anything but one of these characters means "not a shape this
+    // models", so the entry goes opaque rather than carrying a guess.
+    const after = match === null ? "" : declared.slice(match[0].length);
+    if (match === null || !(after === "" || /^[\s=(;:,<{)]/.test(after))) opaque = true;
     else names.add(match[0]);
   }
   return { names, opaque };
