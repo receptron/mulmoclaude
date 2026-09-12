@@ -105,6 +105,24 @@ back as the account the user had just signed out of. An ambiguous target is drop
 the restore finds no user and the client is asked to sign in once, which is what happened
 before re-keying existed.
 
+#### `@mulmoclaude/shapescript-plugin@2.6.0` — the object budget counts objects, and a custom shape can recurse (PR #3112)
+
+Building a tree failed with "ShapeScript produced more than 100000 objects" at about 10k
+cylinders. The 100k `maxNodes` ceiling was charged on every statement the converter visited — a
+`rotate`, a `color`, an `if`, a `group` — not on objects, and a tree branch is one cylinder wrapped
+in about ten of those. Measured, the refused tree was at ~0.5M vertices, a tenth of the vertex
+budget, and built in under 200ms. Only nodes that put an object in the scene are charged now:
+shapes, builders, meshes, paths, and a shape value placed by name (`define ico icosphere { … }`
+then `ico`), each once. The ceiling stays 100k and the two ceilings agree — 100k cylinders at
+`detail 8` is ~5M vertices, the vertex cap — while the loop-iteration and duration caps still stop
+a runaway loop of nothing.
+
+A recursive custom shape written the natural way, `branch { depth depth - 1 }`, overflowed the
+JavaScript stack: the call's option expressions were evaluated inside the body's scope after its
+`option` defaults were set, so `depth` named the default and never counted down. They are
+evaluated in the caller's scope now, and a shape that invokes itself with no way out stops at 256
+levels with a script error, the same ceiling the evaluator gives functions.
+
 #### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)
 
 Two mismatches with the upstream app, both in `loft`. A `fill { path … }` as a section rendered
@@ -117,7 +135,7 @@ did not repeat its first was dropped as an open stroke, so a two-section loft fa
 at least two cross-sections"; upstream closes such a section implicitly and so does this builder
 now. Sections keep their written order when open and closed ones mix.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.9.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.9.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.6.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 #### A bridge no longer has to be restarted every time the server is (#3078)
 
