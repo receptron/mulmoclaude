@@ -366,12 +366,16 @@ namespace. Publishers are in-process:
 - **Most host code** calls `publishNotification()` in `server/events/notifications.ts`, the
   legacy wrapper below — `server/agent/mcp-tools/notify.ts`, `server/plugins/diagnostics.ts`,
   `server/agent/mcpFailureMonitor.ts`, `server/system/shadowedEnv.ts` and
-  `server/workspace/billing-migration.ts` among them. Do not trust that list to stay complete;
-  the callers are whatever this prints:
+  `server/workspace/billing-migration.ts` among them. Do not trust that list to stay complete —
+  and do not expect a grep to give you a clean count either, because two of the callers
+  (`mcp-tools/notify.ts`, `mcpFailureMonitor.ts`) take it as an injected `publish` dependency so
+  tests can mock it, and at least one file names it only in a comment:
 
   ```bash
-  grep -rl publishNotification server/ | grep -v events/notifications.ts | grep -v server/build/
+  grep -rn publishNotification server/ --exclude-dir=build | grep -v events/notifications.ts
   ```
+
+  Read those hits rather than counting them.
 - **A few call `engine.publish` directly**, with every namespace-bearing field fixed at the call
   site rather than taken from a request: `server/api/routes/collectionAgentActions.ts` publishes
   an action-failure notice as `pluginPkg: "host"`.
