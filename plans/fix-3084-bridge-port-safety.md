@@ -25,8 +25,9 @@ issue の D-4 の選択肢 (b) を採る — 触るファイルも revert 単位
   `vite.config.ts` → `scripts/lib/devServerPort.ts:23` と `tsconfig.node.json:18` が
   このパスを直接指しており、動かすと dev プロキシの解決経路を巻き込む。
   `DEFAULT_PORT`（バックエンドのポート）は共有ルールではないので server 側に残す。
-- **各ブリッジは `asInt` を直接呼ばない**。9 個とも既に `@mulmobridge/webhook-runtime` の
-  `createWebhookApp` を使っているので、そこに `listenWebhook` を 1 つ置く。
+- **各ブリッジは `asInt` を直接呼ばない**。9 個のうち 6 個は既に `@mulmobridge/webhook-runtime` の
+  `createWebhookApp` を使っており（`teams` / `twilio-sms` / `webhook` は Express を手組みしていたので
+  依存を追加する）、そこに `listenWebhook` を 1 つ置く。
   D-1/D-2/D-3 が 1 箇所に収まり、各ブリッジは環境変数名を 1 回だけ書く。
 - **D-2** `server.on("error")` で `EADDRINUSE` / `EACCES` を環境変数名入りで説明して `exit(1)`。
 - **D-3 打ち間違いは `exit(1)`**（ユーザー判断）。`asInt` の契約は変えない —

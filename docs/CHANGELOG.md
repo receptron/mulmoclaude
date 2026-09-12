@@ -22,9 +22,10 @@ it; and a busy port arrived as an unhandled `EADDRINUSE` naming no env var — w
 than rare, since the server's walk-forward band (3002-3021) covers the whole bridge band
 (3002-3013).
 
-The bind now goes through one `listenWebhook` in `@mulmobridge/webhook-runtime`, which every one of
-the nine already depended on for its Express setup, so each bridge names its env var once and the
-rule has a single home. An unusable value stops the bridge with the value, the range and the env var
+The bind now goes through one `listenWebhook` in `@mulmobridge/webhook-runtime`, where six of the
+nine already got their Express setup — `teams`, `twilio-sms` and `webhook` hand-rolled theirs and
+declare the dependency as part of this change. Each bridge names its env var once, and the rule has
+a single home. An unusable value stops the bridge with the value, the range and the env var
 in the message, instead of quietly taking the default (issue decision D-3). `EADDRINUSE` and `EACCES`
 each say which env var to change. The coercion itself is the server's own `asInt` / `PORT_RANGE`,
 moved from `server/utils/envCoerce.ts` into `@mulmoclaude/common` so there is still exactly one copy —
