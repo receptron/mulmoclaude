@@ -430,7 +430,6 @@ Historical plan docs: `plans/done/feat-notification-push-scaffold.md` and
 the typed `action.target` dispatcher they specify no longer exists, and `navigateTarget` (a plain
 relative URL) took its place.
 
-
 ---
 
 ## Dynamic favicon (#470)
