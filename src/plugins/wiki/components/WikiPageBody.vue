@@ -17,6 +17,7 @@ import { renderWikiPageHtml } from "../helpers";
 import { handleExternalLinkClick } from "@mulmoclaude/markdown-utils/dom/externalLink";
 import { classifyWorkspacePath, resolveWikiHref } from "../../../utils/path/workspaceLinkRouter";
 import { useMermaidRenderer } from "../../../utils/markdown/useMermaid";
+import { useCodeCopyButtons } from "../../../utils/markdown/useCodeCopyButtons";
 
 const props = defineProps<{
   body: string;
@@ -34,6 +35,7 @@ const rootRef = ref<HTMLElement | null>(null);
 const renderedHtml = computed(() => renderWikiPageHtml(props.body, props.baseDir));
 
 useMermaidRenderer(rootRef, renderedHtml);
+useCodeCopyButtons(rootRef, renderedHtml);
 
 defineExpose({ rootRef });
 

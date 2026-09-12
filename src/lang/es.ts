@@ -1025,6 +1025,10 @@ const esMessages = {
     loadFailed: "⚠ Error al cargar Mermaid: {error}",
     renderFailed: "⚠ Error al renderizar Mermaid: {error}",
   },
+  markdownCodeCopy: {
+    copyLabel: "Copiar código",
+    copiedLabel: "¡Copiado!",
+  },
   pluginTextResponse: {
     pdf: "PDF",
     pdfFailed: "⚠ Error de PDF",

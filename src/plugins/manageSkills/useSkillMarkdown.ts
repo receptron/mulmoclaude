@@ -7,6 +7,7 @@
 import { computed, ref, type ComputedRef, type Ref } from "vue";
 import { renderMarkdownToSafeHtml } from "../../utils/markdown/renderMarkdown";
 import { useMermaidRenderer } from "../../utils/markdown/useMermaid";
+import { useCodeCopyButtons } from "../../utils/markdown/useCodeCopyButtons";
 
 export interface SkillMarkdown {
   /** Bind to the `v-html` container so mermaid can post-process it. */
@@ -19,5 +20,6 @@ export function useSkillMarkdown(source: () => string | null | undefined): Skill
   const markdownRef = ref<HTMLElement | null>(null);
   const renderedBody = computed(() => renderMarkdownToSafeHtml(source()));
   useMermaidRenderer(markdownRef, renderedBody);
+  useCodeCopyButtons(markdownRef, renderedBody);
   return { markdownRef, renderedBody };
 }

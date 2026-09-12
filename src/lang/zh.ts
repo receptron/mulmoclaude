@@ -995,6 +995,10 @@ const zhMessages = {
     loadFailed: "⚠ Mermaid 加载失败: {error}",
     renderFailed: "⚠ Mermaid 渲染失败: {error}",
   },
+  markdownCodeCopy: {
+    copyLabel: "复制代码",
+    copiedLabel: "已复制!",
+  },
   pluginTextResponse: {
     pdf: "PDF",
     pdfFailed: "⚠ PDF 失败",

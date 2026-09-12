@@ -53,6 +53,7 @@ import type { SkillData } from "./types";
 import { handleExternalLinkClick } from "@mulmoclaude/markdown-utils/dom/externalLink";
 import { renderMarkdownToSafeHtml } from "../../utils/markdown/renderMarkdown";
 import { useMermaidRenderer } from "../../utils/markdown/useMermaid";
+import { useCodeCopyButtons } from "../../utils/markdown/useCodeCopyButtons";
 
 const { t } = useI18n();
 
@@ -70,6 +71,7 @@ const renderedHtml = computed(() => renderMarkdownToSafeHtml(body.value, { break
 
 const markdownContainerRef = ref<HTMLElement | null>(null);
 useMermaidRenderer(markdownContainerRef, renderedHtml);
+useCodeCopyButtons(markdownContainerRef, renderedHtml);
 </script>
 
 <style scoped>

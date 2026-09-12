@@ -1027,6 +1027,10 @@ const deMessages = {
     loadFailed: "⚠ Mermaid konnte nicht geladen werden: {error}",
     renderFailed: "⚠ Mermaid-Rendering fehlgeschlagen: {error}",
   },
+  markdownCodeCopy: {
+    copyLabel: "Code kopieren",
+    copiedLabel: "Kopiert!",
+  },
   pluginTextResponse: {
     pdf: "PDF",
     pdfFailed: "⚠ PDF fehlgeschlagen",

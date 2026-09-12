@@ -1013,6 +1013,10 @@ const ptBRMessages = {
     loadFailed: "⚠ Falha ao carregar o Mermaid: {error}",
     renderFailed: "⚠ Falha ao renderizar o Mermaid: {error}",
   },
+  markdownCodeCopy: {
+    copyLabel: "Copiar código",
+    copiedLabel: "Copiado!",
+  },
   pluginTextResponse: {
     pdf: "PDF",
     pdfFailed: "⚠ Falha no PDF",

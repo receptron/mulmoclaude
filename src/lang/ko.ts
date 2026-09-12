@@ -1009,6 +1009,10 @@ const koMessages = {
     loadFailed: "⚠ Mermaid 로드 실패: {error}",
     renderFailed: "⚠ Mermaid 렌더링 실패: {error}",
   },
+  markdownCodeCopy: {
+    copyLabel: "코드 복사",
+    copiedLabel: "복사됨!",
+  },
   pluginTextResponse: {
     pdf: "PDF",
     pdfFailed: "⚠ PDF 실패",

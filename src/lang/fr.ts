@@ -1016,6 +1016,10 @@ const frMessages = {
     loadFailed: "⚠ Échec du chargement de Mermaid : {error}",
     renderFailed: "⚠ Échec du rendu Mermaid : {error}",
   },
+  markdownCodeCopy: {
+    copyLabel: "Copier le code",
+    copiedLabel: "Copié !",
+  },
   pluginTextResponse: {
     pdf: "PDF",
     pdfFailed: "⚠ Échec PDF",

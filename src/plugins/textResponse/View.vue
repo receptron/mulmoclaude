@@ -137,6 +137,7 @@ import SentAttachmentChip from "../../components/SentAttachmentChip.vue";
 import { handleExternalLinkClick } from "@mulmoclaude/markdown-utils/dom/externalLink";
 import { classifyWorkspacePath } from "../../utils/path/workspaceLinkRouter";
 import { useMermaidRenderer } from "../../utils/markdown/useMermaid";
+import { useCodeCopyButtons } from "../../utils/markdown/useCodeCopyButtons";
 import { useAppApi } from "../../composables/useAppApi";
 import { usePdfDownload } from "../../composables/usePdfDownload";
 import { useMarkdownZip } from "../../composables/useMarkdownZip";
@@ -252,6 +253,7 @@ const detailsEl = ref<HTMLDetailsElement>();
 // mermaid post-render pass.
 const markdownContainerRef = ref<HTMLElement | null>(null);
 useMermaidRenderer(markdownContainerRef, renderedHtml);
+useCodeCopyButtons(markdownContainerRef, renderedHtml);
 
 function applyChanges() {
   if (!hasChanges.value) return;
