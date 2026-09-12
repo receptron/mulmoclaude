@@ -90,15 +90,19 @@ async function defaultManifestPaths(root) {
   return walk("packages");
 }
 
-/** The versions the registry lists for `name`, plus its `latest` dist-tag. `versions` is
+/** The versions the registry lists for `name`, plus its `latest` dist-tag. Exported and
+ *  given an injectable `fetchImpl` because every other test stubs this function out, which
+ *  left the URL it builds and the statuses it maps the only unverified part of the check
+ *  (#3105 round 2, Codex).
+ *   `versions` is
  *  null when the registry could not be asked, and empty when the package is not on npm.
  *  `latest` comes from the dist-tag rather than the last key of `versions`: key order is
  *  not a documented guarantee, and "newest" is exactly what the tag means. */
-async function defaultFetchPublishedVersions({ name, timeoutMs = REGISTRY_TIMEOUT_MS } = {}) {
+export async function defaultFetchPublishedVersions({ name, timeoutMs = REGISTRY_TIMEOUT_MS, fetchImpl = fetch } = {}) {
   const controller = new AbortController();
   const killer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${REGISTRY_BASE}/${encodeURIComponent(name)}`, { signal: controller.signal });
+    const response = await fetchImpl(`${REGISTRY_BASE}/${encodeURIComponent(name)}`, { signal: controller.signal });
     if (response.status === 404) return { versions: [], latest: null, reason: null };
     if (!response.ok) return { versions: null, latest: null, reason: `registry ${response.status}` };
     const meta = await response.json();
@@ -154,6 +158,16 @@ export async function checkPublishedDeps({ root = process.cwd(), fetchPublishedV
  */
 export const BLOCKING = ["unpublished", "not-on-npm", "not-a-workspace"];
 
+/**
+ * Whether one verdict stops a publish.
+ *
+ * A blocking STATUS is not enough on its own: npm skips an optional dependency it cannot
+ * resolve rather than failing the install, so an unpublished optional dep cannot produce
+ * the ETARGET this gate exists to prevent. Blocking on it would stop a safe release
+ * (#3105 round 2, Codex). It is still printed — unexpected either way — just not fatal.
+ */
+export const isBlocking = (result) => BLOCKING.includes(result.status) && result.field !== "optionalDependencies";
+
 function formatLine(result) {
   const { name, range, workspaceVersion, status, reason } = result;
   if (status === "unpublished")
@@ -168,11 +182,16 @@ function formatLine(result) {
 export async function main() {
   const results = await checkPublishedDeps();
   results.forEach((result) => console.log(formatLine(result)));
-  const blocking = results.filter((result) => BLOCKING.includes(result.status));
+  const blocking = results.filter(isBlocking);
+  const optional = results.filter((result) => BLOCKING.includes(result.status) && !isBlocking(result));
   const unchecked = results.filter((result) => result.status === "unknown");
   if (blocking.length === 0) {
-    const caveat = unchecked.length > 0 ? ` (${unchecked.length} could not be checked — the registry was unreachable)` : "";
-    console.log(`[mulmoclaude:published-deps] OK — every launcher dep resolves to a published version${caveat}.`);
+    const notes = [
+      unchecked.length > 0 ? `${unchecked.length} could not be checked — the registry was unreachable` : null,
+      optional.length > 0 ? `${optional.length} optional dep(s) do not resolve, which npm skips rather than failing` : null,
+    ].filter((note) => note !== null);
+    const caveat = notes.length > 0 ? ` (${notes.join("; ")})` : "";
+    console.log(`[mulmoclaude:published-deps] OK — every required launcher dep resolves to a published version${caveat}.`);
     return 0;
   }
   console.error("");

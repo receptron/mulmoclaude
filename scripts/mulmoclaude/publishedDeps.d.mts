@@ -48,8 +48,18 @@ export function declaredInternalDeps(options?: { root?: string }): Promise<Decla
 export function workspaceVersions(options?: { root?: string; manifestPaths?: string[] }): Promise<Map<string, string>>;
 export function checkPublishedDeps(options?: CheckOptions): Promise<PublishedDepResult[]>;
 
-/** Statuses that stop a launcher publish. */
+/** Statuses that can stop a launcher publish. Consult `isBlocking` rather than this set
+ *  directly — the field matters too. */
 export const BLOCKING: PublishedDepResult["status"][];
+
+/** Whether one verdict stops a publish. A blocking status in `optionalDependencies` does
+ *  not: npm skips an optional dep it cannot resolve instead of failing the install, so it
+ *  cannot produce the ETARGET this gate prevents. */
+export function isBlocking(result: PublishedDepResult): boolean;
+
+/** The real registry reader. `fetchImpl` is injectable so the URL it builds and the
+ *  statuses it maps are testable — every other test stubs this function out entirely. */
+export function defaultFetchPublishedVersions(args: { name: string; timeoutMs?: number; fetchImpl?: typeof fetch }): Promise<PublishedVersions>;
 
 /** CLI entry point. Returns 0 when every dep resolves, 1 otherwise. */
 export function main(): Promise<number>;

@@ -139,6 +139,105 @@ describe("checkPublishedDeps", () => {
   });
 });
 
+describe("isBlocking", () => {
+  const verdict = (status: published.PublishedDepResult["status"], field: published.DeclaredDep["field"]): published.PublishedDepResult => ({
+    name: "@mulmoclaude/x",
+    range: "^1.0.0",
+    field,
+    workspaceVersion: "1.0.0",
+    status,
+  });
+  const fields: published.DeclaredDep["field"][] = ["dependencies", "optionalDependencies", "peerDependencies"];
+
+  it("stops a publish for a required dep that does not resolve", () => {
+    fields
+      .filter((field) => field !== "optionalDependencies")
+      .forEach((field) => {
+        published.BLOCKING.forEach((status) => assert.equal(published.isBlocking(verdict(status, field)), true, `${status} in ${field}`));
+      });
+  });
+
+  it("does NOT stop a publish for an optional one — npm skips what it cannot resolve", () => {
+    // An unresolved optional dependency is not an install failure, so blocking on it would
+    // stop a safe release (#3105 round 2, Codex). Still printed, just not fatal.
+    published.BLOCKING.forEach((status) => assert.equal(published.isBlocking(verdict(status, "optionalDependencies")), false, status));
+  });
+
+  it("never blocks on a verdict that is not in BLOCKING, whatever the field", () => {
+    const passing: published.PublishedDepResult["status"][] = ["published", "behind", "unknown"];
+    passing.forEach((status) => {
+      fields.forEach((field) => assert.equal(published.isBlocking(verdict(status, field)), false, `${status} in ${field}`));
+    });
+  });
+});
+
+/**
+ * The real registry reader.
+ *
+ * Every other test injects a stub, which left the URL this builds and the statuses it maps
+ * as the only unverified part of the check — a broken default would have passed the whole
+ * suite (#3105 round 2, Codex).
+ */
+describe("defaultFetchPublishedVersions", () => {
+  const respond = (init: { status: number; body?: unknown }) => {
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = async (url) => {
+      calls.push(String(url));
+      return {
+        status: init.status,
+        ok: init.status >= 200 && init.status < 300,
+        json: async () => init.body,
+      } as unknown as Response;
+    };
+    return { calls, fetchImpl };
+  };
+
+  it("asks registry.npmjs.org for the encoded package name", async () => {
+    const { calls, fetchImpl } = respond({ status: 200, body: { versions: { "1.0.0": {} }, "dist-tags": { latest: "1.0.0" } } });
+    await published.defaultFetchPublishedVersions({ name: "@mulmoclaude/core", fetchImpl });
+    assert.deepEqual(calls, ["https://registry.npmjs.org/%40mulmoclaude%2Fcore"], "the scope's / must not split the path");
+  });
+
+  it("reads the versions and the latest dist-tag", async () => {
+    const { fetchImpl } = respond({ status: 200, body: { versions: { "1.0.0": {}, "1.1.0": {} }, "dist-tags": { latest: "1.1.0" } } });
+    const result = await published.defaultFetchPublishedVersions({ name: "@mulmoclaude/core", fetchImpl });
+    assert.deepEqual(result.versions, ["1.0.0", "1.1.0"]);
+    assert.equal(result.latest, "1.1.0");
+  });
+
+  it("reads a 404 as 'never published', not as an error", async () => {
+    const { fetchImpl } = respond({ status: 404 });
+    const result = await published.defaultFetchPublishedVersions({ name: "@mulmoclaude/ghost", fetchImpl });
+    assert.deepEqual(result.versions, [], "empty, which classifies as not-on-npm");
+    assert.equal(result.reason, null);
+  });
+
+  it("reads a 5xx as unknown rather than as an empty package", async () => {
+    // The difference matters: empty means "never published" and BLOCKS; null means "could
+    // not ask" and does not.
+    const { fetchImpl } = respond({ status: 503 });
+    const result = await published.defaultFetchPublishedVersions({ name: "@mulmoclaude/core", fetchImpl });
+    assert.equal(result.versions, null);
+    assert.match(result.reason ?? "", /503/);
+  });
+
+  it("reads a thrown request as unknown", async () => {
+    const fetchImpl: typeof fetch = async () => {
+      throw new Error("getaddrinfo ENOTFOUND");
+    };
+    const result = await published.defaultFetchPublishedVersions({ name: "@mulmoclaude/core", fetchImpl });
+    assert.equal(result.versions, null);
+    assert.match(result.reason ?? "", /ENOTFOUND/);
+  });
+
+  it("treats a body with no versions as an empty package, not a crash", async () => {
+    const { fetchImpl } = respond({ status: 200, body: {} });
+    const result = await published.defaultFetchPublishedVersions({ name: "@mulmoclaude/core", fetchImpl });
+    assert.deepEqual(result.versions, []);
+    assert.equal(result.latest, null);
+  });
+});
+
 describe("declaredInternalDeps", () => {
   it("reads peer and optional fields too — a peer range can ETARGET just as well", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "mc-published-"));
