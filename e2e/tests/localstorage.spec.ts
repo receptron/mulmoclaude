@@ -12,7 +12,7 @@ test.describe("localStorage state restoration", () => {
     await page.goto("/");
     await page.evaluate(() => localStorage.setItem("canvas_layout_mode", "stack"));
     await page.reload();
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(async () => {
       const stored = await page.evaluate(() => localStorage.getItem("canvas_layout_mode"));
       expect(stored).toBe("stack");
@@ -23,7 +23,7 @@ test.describe("localStorage state restoration", () => {
     await page.goto("/");
     await page.evaluate(() => localStorage.setItem("canvas_layout_mode", "single"));
     await page.reload();
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(async () => {
       const stored = await page.evaluate(() => localStorage.getItem("canvas_layout_mode"));
       expect(stored).toBe("single");
@@ -34,7 +34,7 @@ test.describe("localStorage state restoration", () => {
     await page.goto("/");
     await page.evaluate(() => localStorage.setItem("canvas_layout_mode", "<script>alert(1)</script>"));
     await page.reload();
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // Layout silently falls back to single; no URL param is written.
     await expect(page).toHaveURL(/\/chat/);
   });
@@ -43,7 +43,7 @@ test.describe("localStorage state restoration", () => {
     await page.goto("/");
     await page.evaluate(() => localStorage.setItem("canvas_view_mode", "files"));
     await page.reload();
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(async () => {
       const legacy = await page.evaluate(() => localStorage.getItem("canvas_view_mode"));
       expect(legacy).toBeNull();
@@ -58,7 +58,7 @@ test.describe("localStorage state restoration", () => {
     await page.reload();
     // The right sidebar should be visible (it contains tool call history).
     // We check for the build icon which toggles it.
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // The right sidebar state is a UI pref — just verify no crash.
   });
 
@@ -70,14 +70,14 @@ test.describe("localStorage state restoration", () => {
       localStorage.setItem("files_expanded_dirs", "not-json");
     });
     await page.reload();
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
   });
 
   test("files_expanded_dirs with valid JSON set is preserved", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => localStorage.setItem("files_expanded_dirs", JSON.stringify(["", "wiki", "data"])));
     await page.reload();
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     const stored = await page.evaluate(() => localStorage.getItem("files_expanded_dirs"));
     expect(JSON.parse(stored ?? "[]")).toContain("wiki");
   });

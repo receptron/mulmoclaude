@@ -14,12 +14,14 @@
 //   WHATSAPP_ALLOWED_NUMBERS  — CSV of phone numbers (empty = all)
 
 import "dotenv/config";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 import { createWebhookApp, registerMetaWebhook, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { parseCsvSet } from "@mulmoclaude/common";
 import { extractWhatsAppMessages, type WhatsAppTextMessage } from "@mulmoclaude/common/meta-webhook";
 
 const TRANSPORT_ID = "whatsapp";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const FETCH_TIMEOUT_MS = 30_000;
 
 function readRequiredEnv(): { accessToken: string; phoneNumberId: string; verifyToken: string; appSecret: string } {

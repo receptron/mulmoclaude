@@ -24,7 +24,7 @@ test.describe("session-history side-panel toggle", () => {
 
   test("Single view: toggle button hidden → visible shows the left session-history column", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Off by default — side-panel DOM is absent.
     await expect(page.getByTestId("session-history-side-panel")).toBeHidden();
@@ -51,7 +51,7 @@ test.describe("session-history side-panel toggle", () => {
     });
 
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Side panel off initially in Stack too.
     await expect(page.getByTestId("session-history-side-panel")).toBeHidden();
@@ -75,7 +75,7 @@ test.describe("session-history side-panel toggle", () => {
 
     // Reload — panel should still be visible without clicking again.
     await page.reload();
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(page.getByTestId("session-history-side-panel")).toBeVisible();
   });
 
@@ -93,7 +93,7 @@ test.describe("session-history side-panel toggle", () => {
 
   test("opening the side panel replaces the SessionTabBar entirely", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // SessionTabBar is present with its tabs and toggle when the panel is off.
     await expect(page.getByTestId(`session-tab-${SESSION_A.id}`)).toBeVisible();
@@ -160,7 +160,7 @@ test.describe("session tab bar — visible per-tab info", () => {
   test("shows a short label under the role icon on each tab", async ({ page }) => {
     await mockAllApis(page, { sessions: [SESSION_A, SESSION_B] });
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const tabA = page.getByTestId(`session-tab-${SESSION_A.id}`);
     const tabB = page.getByTestId(`session-tab-${SESSION_B.id}`);
@@ -185,7 +185,7 @@ test.describe("session tab bar — visible per-tab info", () => {
       ],
     });
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const tabA = page.getByTestId(`session-tab-${SESSION_A.id}`);
     const tabB = page.getByTestId(`session-tab-${SESSION_B.id}`);
@@ -203,7 +203,7 @@ test.describe("session tab bar — visible per-tab info", () => {
       ],
     });
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const tabA = page.getByTestId(`session-tab-${SESSION_A.id}`);
     const tabB = page.getByTestId(`session-tab-${SESSION_B.id}`);
@@ -229,7 +229,7 @@ test.describe("session tab bar — visible per-tab info", () => {
 
     // On /chat, the Chat button already carries the unread badge.
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await expect(chatBtn.getByTestId("session-count-unread")).toBeVisible();
 
     // Navigate off chat. The tab bar (and its per-tab dots) unmounts,

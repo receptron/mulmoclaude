@@ -89,7 +89,7 @@ test.describe("image plugin rendering", () => {
 
   test("image session loads without crashing", async ({ page }) => {
     await page.goto("/chat/img-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // The session has tool results — the tool-results panel renders a preview
     // per result. Scope to that panel — the session-tab bar now also surfaces
     // the preview text as a tab label, so an unscoped getByText would trip
@@ -99,7 +99,7 @@ test.describe("image plugin rendering", () => {
 
   test("empty imageData does not produce a broken <img> tag", async ({ page }) => {
     await page.goto("/chat/img-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // Wait for the tool-results to render before checking for broken images.
     await expect(page.getByTestId("tool-results-scroll").getByText("Generate an image")).toBeVisible();
     // No <img> with empty src should exist.
@@ -109,7 +109,7 @@ test.describe("image plugin rendering", () => {
 
   test("legacy data URI image renders as an actual <img>", async ({ page }) => {
     await page.goto("/chat/img-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // At least one <img> with a data: src should exist (the legacy entry).
     const dataImages = page.locator('img[src^="data:image"]');
     await expect(async () => {
@@ -119,7 +119,7 @@ test.describe("image plugin rendering", () => {
 
   test("file-path image uses /api/files/raw for src", async ({ page }) => {
     await page.goto("/chat/img-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // At least one <img> with a /api/files/raw src should exist.
     const fileImages = page.locator('img[src*="/api/files/raw"]');
     await expect(async () => {

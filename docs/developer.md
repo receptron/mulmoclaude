@@ -619,6 +619,8 @@ When a user reports "this failed with no UI feedback" and you can't reproduce it
 
 E2E tests live in `e2e/tests/*.spec.ts`. **No backend runs**; `await mockAllApis(page)` from `e2e/fixtures/api.ts` intercepts every `/api/*` call. Per-test mocks registered AFTER `mockAllApis` win because Playwright walks routes last-registered-first.
 
+Assert "the shell rendered" with `page.getByTestId("app-title")`, never `page.getByText("MulmoClaude")`. The app name also appears in the empty-chat role suggestion chips (`src/config/roles.ts`), so the text locator resolves to five elements whenever those render and Playwright's strict mode fails the assertion — a spec then goes red for a reason unrelated to what it tests, and only on the runs where the chat happened to come up empty.
+
 When to add E2E coverage is documented in [CLAUDE.md](../CLAUDE.md#when-to-add-e2e-coverage).
 
 ---

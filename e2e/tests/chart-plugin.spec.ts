@@ -82,7 +82,7 @@ test.describe("chart plugin rendering", () => {
 
   test("renders both charts in the canvas", async ({ page }) => {
     await page.goto("/chat/chart-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Click the preview for the chart result to open it in the canvas.
     // The sidebar preview component shows the document title.
@@ -104,7 +104,7 @@ test.describe("chart plugin rendering", () => {
 
   test("PNG export button triggers a download", async ({ page }) => {
     await page.goto("/chat/chart-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("Sales Overview").first().click();
     await expect(page.locator('[data-testid="chart-export-png-0"]')).toBeVisible();
 

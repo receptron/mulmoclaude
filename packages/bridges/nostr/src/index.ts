@@ -28,7 +28,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { SimplePool, finalizeEvent, getPublicKey, nip04, nip19, type Event } from "nostr-tools";
-import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, installProcessGuards } from "@mulmobridge/client";
 import { isErrorWithCode, parseCsvList, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "nostr";
@@ -246,13 +246,7 @@ function installShutdownFlush(): void {
       await cursorWriteInFlight;
     }
   };
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.once(signal, () => {
-      flush()
-        .catch(() => {})
-        .finally(() => process.exit(0));
-    });
-  }
+  installProcessGuards({ name: TRANSPORT_ID, onShutdown: flush });
 }
 
 // ── Subscription ────────────────────────────────────────────────

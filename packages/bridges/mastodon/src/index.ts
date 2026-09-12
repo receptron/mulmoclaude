@@ -22,13 +22,15 @@
 
 import "dotenv/config";
 import WebSocket from "ws";
-import { createBridgeClient, chunkText, formatAckReply, frameText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, formatAckReply, frameText, installProcessGuards } from "@mulmobridge/client";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 import { parseNotificationRaw, parseFrame, type JsonRecord, type ParsedStatus } from "./parse.js";
 import { fitBudget, hasRelayableContent, imageMediaEntries, isLostImagesOnly, resolveMessageText, type ImageMedia } from "./media.js";
 import { resolvePublicUrl } from "./urlGuard.js";
 
 const TRANSPORT_ID = "mastodon";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_STATUS_LEN = 500; // Mastodon's default soft limit; many instances raise to 1000+
 const FETCH_TIMEOUT_MS = 15_000;
 /** Cap on one fetched attachment. Without it a remote sender could point the

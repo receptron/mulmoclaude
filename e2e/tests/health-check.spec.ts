@@ -25,7 +25,7 @@ test.describe("health check (useHealth)", () => {
   test("sandboxEnabled=true → lock button shows 'Sandbox enabled' tooltip", async ({ page }) => {
     await mockHealth(page, { geminiAvailable: true, sandboxEnabled: true });
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const lockBtn = page.getByTestId("sandbox-lock-button");
     await expect(lockBtn).toHaveAttribute("title", "Sandbox enabled (Docker)", {
@@ -36,7 +36,7 @@ test.describe("health check (useHealth)", () => {
   test("sandboxEnabled=false → lock button shows 'No sandbox' tooltip", async ({ page }) => {
     await mockHealth(page, { geminiAvailable: false, sandboxEnabled: false });
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const lockBtn = page.getByTestId("sandbox-lock-button");
     await expect(lockBtn).toHaveAttribute("title", "No sandbox (Docker not found)", { timeout: 3 * ONE_SECOND_MS });
@@ -47,7 +47,7 @@ test.describe("health check (useHealth)", () => {
     // branch (geminiAvailable → false, sandboxEnabled unchanged).
     await page.route(urlEndsWith("/api/health"), (route: Route) => route.fulfill({ status: 500 }));
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Page didn't crash — lock button still rendered.
     await expect(page.getByTestId("sandbox-lock-button")).toBeVisible();

@@ -91,7 +91,7 @@ test.describe("internal link navigation", () => {
 
   test("sidebar preview link click selects result without navigating away", async ({ page }) => {
     await page.goto("/chat/link-test-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // The sidebar should show the text-response preview card.
     const previewCard = page.getByTestId("tool-results-scroll").locator("> div.cursor-pointer").nth(1);
@@ -106,7 +106,7 @@ test.describe("internal link navigation", () => {
 
   test("clicking workspace wiki link navigates to wiki view", async ({ page }) => {
     await page.goto("/chat/link-test-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Select the text-response result to show it in the canvas.
     const previewCard = page.getByTestId("tool-results-scroll").locator("> div.cursor-pointer").nth(1);
@@ -125,7 +125,7 @@ test.describe("internal link navigation", () => {
 
   test("clicking workspace file link navigates to files view", async ({ page }) => {
     await page.goto("/chat/link-test-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Select the text-response result.
     const previewCard = page.getByTestId("tool-results-scroll").locator("> div.cursor-pointer").nth(1);

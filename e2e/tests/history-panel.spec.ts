@@ -24,7 +24,7 @@ test.describe("session-history side panel", () => {
 
   test("toggling the button opens the panel with server sessions", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Panel is closed initially — session items should not be in DOM.
     await expect(page.getByTestId(`session-item-${SESSION_A.id}`)).toBeHidden();
@@ -38,7 +38,7 @@ test.describe("session-history side panel", () => {
 
   test("clicking a session navigates to /chat/:id and closes nothing", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     await page.getByTestId("session-history-toggle-off").click();
     await page.getByTestId(`session-item-${SESSION_A.id}`).click();
@@ -64,7 +64,7 @@ test.describe("session-history side panel", () => {
     });
 
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // Wait for the onMount /api/sessions GET to land before snapshotting the baseline.
     await expect.poll(() => sessionFetchCount).toBeGreaterThan(0);
     const countAfterMount = sessionFetchCount;
@@ -78,7 +78,7 @@ test.describe("session-history side panel", () => {
 
   test("filter bar is visible with All/Unread/Human/Scheduler/Skill/Bridge buttons", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     await page.getByTestId("session-history-toggle-off").click();
 

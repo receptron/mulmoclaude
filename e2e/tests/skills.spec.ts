@@ -125,14 +125,14 @@ test.describe("manageSkills plugin", () => {
 
   test("sidebar preview renders the skill list count", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // Preview renders "2 skills" somewhere in the sidebar.
     await expect(page.getByText("2 skills").first()).toBeVisible();
   });
 
   test("View renders the full skill list when selected", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Click the tool-result preview in the sidebar to open the View.
     await page.getByText("2 skills").first().click();
@@ -144,7 +144,7 @@ test.describe("manageSkills plugin", () => {
 
   test("selecting a skill loads its detail body from the API", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
     await expect(page.getByTestId("skill-item-ci_enable")).toBeVisible();
 
@@ -158,7 +158,7 @@ test.describe("manageSkills plugin", () => {
 
   test("skill body is rendered as formatted HTML, not raw markdown", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
     await expect(page.getByTestId("skill-item-ci_enable")).toBeVisible();
 
@@ -272,7 +272,7 @@ test.describe("manageSkills plugin — delete (phase 1)", () => {
 
   test("Delete button is hidden for user-scope skills", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
     await expect(page.getByTestId("skill-item-user-only")).toBeVisible();
 
@@ -285,7 +285,7 @@ test.describe("manageSkills plugin — delete (phase 1)", () => {
 
   test("Delete button is visible for project-scope skills", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
     await expect(page.getByTestId("skill-item-user-only")).toBeVisible();
 
@@ -312,7 +312,7 @@ test.describe("manageSkills plugin — delete (phase 1)", () => {
     );
 
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
     await expect(page.getByTestId("skill-item-user-only")).toBeVisible();
 
@@ -344,7 +344,7 @@ test.describe("manageSkills plugin — delete (phase 1)", () => {
     );
 
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
     await expect(page.getByTestId("skill-item-user-only")).toBeVisible();
 
@@ -446,7 +446,7 @@ test.describe("manageSkills plugin — post-delete selection", () => {
 
   test("deleting the selected middle skill advances to the neighbour, not the first row", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("3 skills").first().click();
     await expect(page.getByTestId("skill-item-beta-skill")).toBeVisible();
 
@@ -467,7 +467,7 @@ test.describe("manageSkills plugin — post-delete selection", () => {
 
   test("deleting the selected last skill advances to the new last row", async ({ page }) => {
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("3 skills").first().click();
     await expect(page.getByTestId("skill-item-gamma-skill")).toBeVisible();
 
@@ -579,7 +579,7 @@ test.describe("manageSkills plugin — external catalog (#1383 PR-C2)", () => {
     const calls = { star: [] as StarCall[], install: [] as InstallCall[], deleted: [] as string[] };
     await setupExternalCatalog(page, calls);
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
 
     const repo = page.getByTestId("skill-catalog-repo-anthropics-skills");
@@ -611,7 +611,7 @@ test.describe("manageSkills plugin — external catalog (#1383 PR-C2)", () => {
       return route.fulfill({ status: 500, json: { error: "repo registry corrupt" } });
     });
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
 
     // The catalog load resolving (presets render) is the very event that
@@ -625,7 +625,7 @@ test.describe("manageSkills plugin — external catalog (#1383 PR-C2)", () => {
     const calls = { star: [] as StarCall[], install: [] as InstallCall[], deleted: [] as string[] };
     await setupExternalCatalog(page, calls);
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
 
     await page.getByTestId("skill-catalog-item-anthropics-skills/pdf").click();
@@ -641,7 +641,7 @@ test.describe("manageSkills plugin — external catalog (#1383 PR-C2)", () => {
     const calls = { star: [] as StarCall[], install: [] as InstallCall[], deleted: [] as string[] };
     await setupExternalCatalog(page, calls);
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
 
     await page.getByTestId("skill-catalog-add-repo").click();
@@ -672,7 +672,7 @@ test.describe("manageSkills plugin — external catalog (#1383 PR-C2)", () => {
     const calls = { star: [] as StarCall[], install: [] as InstallCall[], deleted: [] as string[] };
     await setupExternalCatalog(page, calls);
     await page.goto("/chat/skills-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByText("2 skills").first().click();
 
     await page.getByTestId("skill-catalog-repo-update-anthropics-skills").click();

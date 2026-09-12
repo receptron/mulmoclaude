@@ -20,12 +20,14 @@
 import "dotenv/config";
 import express, { type Request, type Response } from "express";
 import { CloudAdapter, ConfigurationBotFrameworkAuthentication, TurnContext, type Activity } from "botbuilder";
-import { createBridgeClient, chunkText, formatAckReply } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, formatAckReply, installProcessGuards } from "@mulmobridge/client";
 import { listenWebhook } from "@mulmobridge/webhook-runtime";
 import { parseCsvSet } from "@mulmoclaude/common";
 import { extractIncomingMessage } from "./parse.js";
 
 const TRANSPORT_ID = "teams";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_TEAMS_TEXT = 28_000; // Teams message limit is 40k; leave headroom for formatting
 
 function readRequiredEnv(): { appId: string; appPassword: string } {
