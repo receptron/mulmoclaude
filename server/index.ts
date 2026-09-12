@@ -903,11 +903,15 @@ async function resolvePort(): Promise<number> {
   // warning for as long as it did not — a second `yarn dev` without `PORT` used
   // to render the FIRST instance's data with nothing failing (#2650).
   //
-  // Still worth saying out loud: two instances sharing a workspace overwrite each
-  // other's `.session-token`, so `PORT` remains the right way to run a second one.
+  // Reaching here means the occupant is NOT one of ours: `refuseSecondInstance`
+  // has already stopped the launch if this workspace had a live server (#3079).
+  // So the walk is what it says it is — stepping around a stale process or an
+  // unrelated program — and `PORT` alone is no longer the way to run a second
+  // instance, because a second one on this workspace is refused whatever port it
+  // asks for. `MULMOCLAUDE_WORKSPACE_PATH` is.
   log.info(
     "server",
-    `Port ${requested} busy → using ${fallback} instead. The dev client follows this port; set PORT to run a second instance against its own workspace.`,
+    `Port ${requested} busy → using ${fallback} instead. The dev client follows this port; set MULMOCLAUDE_WORKSPACE_PATH to run a second instance against its own workspace.`,
   );
   return fallback;
 }
