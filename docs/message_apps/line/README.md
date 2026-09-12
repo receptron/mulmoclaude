@@ -149,7 +149,7 @@ to add the bot. Send a message — MulmoClaude replies.
 | Bot sends double replies | LINE auto-reply is ON | LINE Official Account settings, Auto-reply messages, OFF |
 | `LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN are required` | Env vars not loaded | Add to `.env` or export them |
 | `sh: mulmobridge-line: command not found` | `npx` can't find the bin in the monorepo | Use `node packages/bridges/line/dist/index.js` |
-| `Connect error: bearer token rejected` | MulmoClaude server restarted, token changed | Restart the LINE bridge |
+| `Connect error: bearer token rejected` | MulmoClaude server restarted, token changed | Nothing — the bridge re-reads the token and reconnects on its own (#3078). Still saying it? The server has not finished starting. |
 | No reply, no error | `yarn dev` is not running | Check the MulmoClaude server |
 
 ---
@@ -163,4 +163,4 @@ to add the bot. Send a message — MulmoClaude replies.
 - Treat Channel secret and Channel access token like passwords.
   If leaked, reissue them in the LINE Developers Console.
 - MulmoClaude's bearer token never leaves your machine. The LINE
-  bridge connects to `localhost:3001` only.
+  bridge connects to the IPv4 loopback only.

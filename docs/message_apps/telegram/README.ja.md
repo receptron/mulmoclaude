@@ -143,9 +143,12 @@ CLI と同じです。Telegram チャットにそのまま入力してくださ�
 
 **ブリッジに `Connect error: bearer token rejected` が出る。**
 MulmoClaude サーバを再起動すると bearer token が変わります。
-`yarn telegram` を再起動すれば新しい token を読み込みます。
-毎回再起動したくないなら、サーバと bridge の両方で
-`MULMOCLAUDE_AUTH_TOKEN` を同じ値に固定してください
+**何もしなくて構いません** — ブリッジは接続に失敗すると token と
+ポートを読み直し、たいてい 1〜2 秒で自力で再接続します (#3078)。
+それでも出続けるなら、サーバがまだ起動し終えていません: token を
+書いてからポートを bind するまでの間に sandbox のビルドが入ります。
+`MULMOCLAUDE_AUTH_TOKEN` の固定は、workspace をそもそも読めない
+ブリッジ（別マシン、mount していないコンテナ）のためのものです
 ([`../../developer.md`](../../developer.md) の Auth セクション参照)。
 
 **`TELEGRAM_ALLOWED_CHAT_IDS: "foo" is not an integer chat id` と出る。**
@@ -183,5 +186,5 @@ env を変えた後にブリッジを再起動しましたか？ allowlist は�
   **メッセージ本文や bot token は残しません**。完全な監査ログが
   必要なら、別途 Telegram 側で何か記録する必要があります。
 - MulmoClaude の bearer token は外に出ません。Telegram bridge は
-  `localhost:3001` にしか繋がらず、あなたの友人は Telegram の
+  IPv4 loopback にしか繋がらず、あなたの友人は Telegram の
   サーバとだけ通信します。

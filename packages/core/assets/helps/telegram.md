@@ -56,8 +56,14 @@ Expected output:
 ```
 MulmoClaude Telegram bridge
 Allowlist: (empty — all chats will be denied)
+Connecting to http://127.0.0.1:<port>
 Connected (<socket id>).
 ```
+
+That third line is the bridge telling you which server it found. If it ever says
+`http://localhost:3001` while `.server-port` says something else, that bridge is
+an old build — see "a messaging bridge's bot does not reply" in the error
+recovery help.
 
 ## Step 3 — Find Your Chat ID and Allowlist It
 
