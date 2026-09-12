@@ -17,11 +17,10 @@
 import "dotenv/config";
 import type { Request, Response } from "express";
 import { createBridgeClient, chunkText, formatAckReply } from "@mulmobridge/client";
-import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature } from "@mulmobridge/webhook-runtime";
+import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { extractIncomingLineMessage, parseLineWebhookBody } from "./parse.js";
 
 const TRANSPORT_ID = "line";
-const PORT = Number(process.env.LINE_BRIDGE_PORT) || 3002;
 
 function readRequiredEnv(): { channelSecret: string; channelAccessToken: string } {
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
@@ -158,8 +157,8 @@ app.post("/webhook", webhookRateLimit, async (req: Request, res: Response) => {
   }
 });
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "LINE_BRIDGE_PORT", fallback: 3002 }, (port) => {
   console.log("MulmoClaude LINE bridge");
-  console.log(`Webhook listening on http://localhost:${PORT}/webhook`);
+  console.log(`Webhook listening on http://localhost:${port}/webhook`);
   console.log("Set your LINE webhook URL to: <public-url>/webhook");
 });

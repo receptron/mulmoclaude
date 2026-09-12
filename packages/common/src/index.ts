@@ -151,3 +151,4 @@ export function splitJwtSegments(token: string): JwtSegments | null {
 
 export { scanEnvOptions, snakeToLowerCamel, type ScanEnvOptionsConfig } from "./envScan.js";
 export type { MinimalLogger, StructuredLogger } from "./logger.js";
+export { asInt, PORT_RANGE, type IntRange } from "./envCoerce.js";

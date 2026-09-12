@@ -22,6 +22,7 @@ ngrok http 3004
 ### 3. Configure webhook
 
 In Meta Dashboard → Messenger → Settings → Webhooks:
+
 - **Callback URL**: `https://xxxx.ngrok-free.app/webhook`
 - **Verify token**: any string (set as `MESSENGER_VERIFY_TOKEN`)
 - Subscribe to: `messages`
@@ -46,16 +47,20 @@ npx @mulmobridge/messenger
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `MESSENGER_PAGE_ACCESS_TOKEN` | Yes | Page access token |
-| `MESSENGER_VERIFY_TOKEN` | Yes | Arbitrary string for webhook verification |
-| `MESSENGER_APP_SECRET` | Yes | App secret for HMAC signature verification |
-| `MESSENGER_BRIDGE_PORT` | No | Webhook port (default: 3004) |
-| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`; waits if nothing is published) |
-| `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
-| `MESSENGER_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a messenger session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
-| `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `MESSENGER_BRIDGE_DEFAULT_ROLE` wins when both are set. |
+| Variable                        | Required | Description                                                                                                                                                                                                                                                                      |
+| ------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MESSENGER_PAGE_ACCESS_TOKEN`   | Yes      | Page access token                                                                                                                                                                                                                                                                |
+| `MESSENGER_VERIFY_TOKEN`        | Yes      | Arbitrary string for webhook verification                                                                                                                                                                                                                                        |
+| `MESSENGER_APP_SECRET`          | Yes      | App secret for HMAC signature verification                                                                                                                                                                                                                                       |
+| `MESSENGER_BRIDGE_PORT`         | No       | Webhook port (default: 3004; `0` asks the OS for a free port)                                                                                                                                                                                                                    |
+| `MULMOCLAUDE_API_URL`           | No       | Default: auto (`.server-port`; waits if nothing is published)                                                                                                                                                                                                                    |
+| `MULMOCLAUDE_AUTH_TOKEN`        | No       | Bearer token                                                                                                                                                                                                                                                                     |
+| `MESSENGER_BRIDGE_DEFAULT_ROLE` | No       | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a messenger session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
+| `BRIDGE_DEFAULT_ROLE`           | No       | Same as above but shared across every bridge. Transport-specific `MESSENGER_BRIDGE_DEFAULT_ROLE` wins when both are set.                                                                                                                                                         |
+
+An unusable value (a typo, a number outside 0-65535) stops the bridge with a message naming
+the variable, rather than silently starting on the default. A port already in use is reported
+the same way (#3084).
 
 ### Auth token persistence across server restarts
 
@@ -103,7 +108,7 @@ Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package famil
 - [`@mulmobridge/mastodon`](https://www.npmjs.com/package/@mulmobridge/mastodon) — Mastodon DMs + mentions
 - [`@mulmobridge/matrix`](https://www.npmjs.com/package/@mulmobridge/matrix) — Matrix / Element
 - [`@mulmobridge/mattermost`](https://www.npmjs.com/package/@mulmobridge/mattermost) — Mattermost
-- [`@mulmobridge/messenger`](https://www.npmjs.com/package/@mulmobridge/messenger) — Facebook Messenger via MulmoBridge relay  ← **this package**
+- [`@mulmobridge/messenger`](https://www.npmjs.com/package/@mulmobridge/messenger) — Facebook Messenger via MulmoBridge relay ← **this package**
 - [`@mulmobridge/nostr`](https://www.npmjs.com/package/@mulmobridge/nostr) — Nostr NIP-04 encrypted DMs
 - [`@mulmobridge/rocketchat`](https://www.npmjs.com/package/@mulmobridge/rocketchat) — Rocket.Chat
 - [`@mulmobridge/signal`](https://www.npmjs.com/package/@mulmobridge/signal) — Signal via signal-cli-rest-api

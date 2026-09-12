@@ -42,14 +42,18 @@ In Google Chat, find your app and send it a direct message.
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `GOOGLE_CHAT_PROJECT_NUMBER` | Yes | Google Cloud project number |
-| `GOOGLE_CHAT_BRIDGE_PORT` | No | Webhook port (default: 3005) |
-| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`; waits if nothing is published) |
-| `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
-| `GOOGLE_CHAT_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a google-chat session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
-| `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `GOOGLE_CHAT_BRIDGE_DEFAULT_ROLE` wins when both are set. |
+| Variable                          | Required | Description                                                                                                                                                                                                                                                                        |
+| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_CHAT_PROJECT_NUMBER`      | Yes      | Google Cloud project number                                                                                                                                                                                                                                                        |
+| `GOOGLE_CHAT_BRIDGE_PORT`         | No       | Webhook port (default: 3005; `0` asks the OS for a free port)                                                                                                                                                                                                                      |
+| `MULMOCLAUDE_API_URL`             | No       | Default: auto (`.server-port`; waits if nothing is published)                                                                                                                                                                                                                      |
+| `MULMOCLAUDE_AUTH_TOKEN`          | No       | Bearer token                                                                                                                                                                                                                                                                       |
+| `GOOGLE_CHAT_BRIDGE_DEFAULT_ROLE` | No       | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a google-chat session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
+| `BRIDGE_DEFAULT_ROLE`             | No       | Same as above but shared across every bridge. Transport-specific `GOOGLE_CHAT_BRIDGE_DEFAULT_ROLE` wins when both are set.                                                                                                                                                         |
+
+An unusable value (a typo, a number outside 0-65535) stops the bridge with a message naming
+the variable, rather than silently starting on the default. A port already in use is reported
+the same way (#3084).
 
 ### Auth token persistence across server restarts
 
@@ -109,7 +113,7 @@ Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package famil
 - [`@mulmobridge/cli`](https://www.npmjs.com/package/@mulmobridge/cli) — interactive terminal bridge
 - [`@mulmobridge/discord`](https://www.npmjs.com/package/@mulmobridge/discord) — Discord bot via Gateway
 - [`@mulmobridge/email`](https://www.npmjs.com/package/@mulmobridge/email) — IMAP poll + SMTP reply, threading preserved
-- [`@mulmobridge/google-chat`](https://www.npmjs.com/package/@mulmobridge/google-chat) — Google Chat via MulmoBridge relay  ← **this package**
+- [`@mulmobridge/google-chat`](https://www.npmjs.com/package/@mulmobridge/google-chat) — Google Chat via MulmoBridge relay ← **this package**
 - [`@mulmobridge/irc`](https://www.npmjs.com/package/@mulmobridge/irc) — IRC (Libera, Freenode, custom)
 - [`@mulmobridge/line`](https://www.npmjs.com/package/@mulmobridge/line) — LINE Messaging API via MulmoBridge relay
 - [`@mulmobridge/line-works`](https://www.npmjs.com/package/@mulmobridge/line-works) — LINE Works (enterprise LINE)

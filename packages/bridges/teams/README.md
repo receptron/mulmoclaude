@@ -82,16 +82,20 @@ Message your bot in Teams — DM or @mention in a channel — and you'll get a r
 
 ## Environment variables
 
-| Variable                   | Required    | Default       | Description |
-|----------------------------|-------------|---------------|-------------|
-| `MICROSOFT_APP_ID`         | yes         | —             | Azure Bot App ID (aka MicrosoftAppId) |
-| `MICROSOFT_APP_PASSWORD`   | yes         | —             | Azure Bot client secret |
-| `MICROSOFT_APP_TYPE`       | no          | `MultiTenant` | `MultiTenant` / `SingleTenant` / `UserAssignedMSI` |
-| `MICROSOFT_APP_TENANT_ID`  | conditional | —             | Required when `MICROSOFT_APP_TYPE=SingleTenant` |
-| `TEAMS_BRIDGE_PORT`        | no          | `3006`        | HTTP port to listen on |
-| `TEAMS_ALLOWED_USERS`      | no          | (all)         | CSV of AAD user object IDs — empty = accept everyone in the tenant |
-| `MULMOCLAUDE_AUTH_TOKEN`   | no          | auto          | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`      | no          | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
+| Variable                  | Required    | Default                                              | Description                                                        |
+| ------------------------- | ----------- | ---------------------------------------------------- | ------------------------------------------------------------------ |
+| `MICROSOFT_APP_ID`        | yes         | —                                                    | Azure Bot App ID (aka MicrosoftAppId)                              |
+| `MICROSOFT_APP_PASSWORD`  | yes         | —                                                    | Azure Bot client secret                                            |
+| `MICROSOFT_APP_TYPE`      | no          | `MultiTenant`                                        | `MultiTenant` / `SingleTenant` / `UserAssignedMSI`                 |
+| `MICROSOFT_APP_TENANT_ID` | conditional | —                                                    | Required when `MICROSOFT_APP_TYPE=SingleTenant`                    |
+| `TEAMS_BRIDGE_PORT`       | no          | `3006`                                               | HTTP port to listen on (`0` asks the OS for a free port)           |
+| `TEAMS_ALLOWED_USERS`     | no          | (all)                                                | CSV of AAD user object IDs — empty = accept everyone in the tenant |
+| `MULMOCLAUDE_AUTH_TOKEN`  | no          | auto                                                 | MulmoClaude bearer token override                                  |
+| `MULMOCLAUDE_API_URL`     | no          | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL                                             |
+
+An unusable value (a typo, a number outside 0-65535) stops the bridge with a message naming
+the variable, rather than silently starting on the default. A port already in use is reported
+the same way (#3084).
 
 ### Auth token persistence across server restarts
 
@@ -122,12 +126,12 @@ Recommended: at least 32 characters of random data (the server logs a warning at
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| 401 on `/api/messages` | Wrong app ID / password | Double-check Azure Bot → Configuration |
-| Bot doesn't reply in Teams | Messaging endpoint not set or tunnel URL stale | Update Azure Bot → Configuration → Messaging endpoint |
-| `ngrok` URL changes on restart | Free ngrok plan assigns random URLs | Use a reserved domain, Cloudflare Tunnel, or static ingress |
-| Push messages dropped | No conversation reference yet cached | User must message the bot first — push works from the second turn onward |
+| Symptom                        | Cause                                          | Fix                                                                      |
+| ------------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------ |
+| 401 on `/api/messages`         | Wrong app ID / password                        | Double-check Azure Bot → Configuration                                   |
+| Bot doesn't reply in Teams     | Messaging endpoint not set or tunnel URL stale | Update Azure Bot → Configuration → Messaging endpoint                    |
+| `ngrok` URL changes on restart | Free ngrok plan assigns random URLs            | Use a reserved domain, Cloudflare Tunnel, or static ingress              |
+| Push messages dropped          | No conversation reference yet cached           | User must message the bot first — push works from the second turn onward |
 
 ## Security notes
 
@@ -167,7 +171,7 @@ Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package famil
 - [`@mulmobridge/rocketchat`](https://www.npmjs.com/package/@mulmobridge/rocketchat) — Rocket.Chat
 - [`@mulmobridge/signal`](https://www.npmjs.com/package/@mulmobridge/signal) — Signal via signal-cli-rest-api
 - [`@mulmobridge/slack`](https://www.npmjs.com/package/@mulmobridge/slack) — Slack Socket Mode
-- [`@mulmobridge/teams`](https://www.npmjs.com/package/@mulmobridge/teams) — Microsoft Teams via Bot Framework  ← **this package**
+- [`@mulmobridge/teams`](https://www.npmjs.com/package/@mulmobridge/teams) — Microsoft Teams via Bot Framework ← **this package**
 - [`@mulmobridge/telegram`](https://www.npmjs.com/package/@mulmobridge/telegram) — Telegram bot
 - [`@mulmobridge/twilio-sms`](https://www.npmjs.com/package/@mulmobridge/twilio-sms) — SMS via Twilio Programmable Messaging
 - [`@mulmobridge/viber`](https://www.npmjs.com/package/@mulmobridge/viber) — Viber Public Account bots

@@ -124,11 +124,17 @@ Report body:
 
 ```markdown
 ## What happened
+
 ## What I expected
+
 ## Steps to reproduce
+
 1.
+
 ## Environment
+
 (paste the diagnostics report here)
+
 ## Attachments
 ```
 
@@ -280,7 +286,7 @@ naming the file:
   quotes, unquoted key.
 - `role file does not match the role schema, skipping` — the `issues`
   field names each field, e.g. `icon: Invalid input: expected string,
-  received undefined`. All of `id`, `name`, `icon`, `prompt`,
+received undefined`. All of `id`, `name`, `icon`, `prompt`,
   `availablePlugins` are required; `availablePlugins` must be an array
   even for one entry.
 - `role file is empty, skipping` — zero-length or whitespace only.
@@ -328,7 +334,7 @@ it:
     `my role.json`, rejected as `Invalid role id 'my role'.` Neither name
     reaches the role. Renaming is the only fix.
   - `… the id is not a usable role id` — the reverse, e.g. `"id": "my
-    role"` in `designer.json`. `delete designer` still works, and renaming
+role"` in `designer.json`. `delete designer` still works, and renaming
     to `my role.json` would take that away. Change the `id`.
   - `… neither is a usable role id` — pick one id that matches the pattern
     and use it for the file name and the `id` together.
@@ -926,12 +932,12 @@ They are genuinely different failures — a permanent load failure, a startup ra
 and guessing between them is what makes this expensive. Since #2842 the log answers it directly,
 so read these three before forming a theory:
 
-| Log line | What it tells you |
-|---|---|
-| `spawning agent … broker=tsx` | This install is on the SLOW path: the bundle is missing, so the broker is transcoded from source on every spawn (seconds to tens of seconds over a Windows/macOS bind mount). A `broker bundle missing` warn accompanies it once per process. |
-| `[mcp] broker ready bootMs=… initializeMs=…` | The broker DID connect, and how long it took. `broker cold boot is slow` replaces it past 5 s. |
-| `brokerEverReady=false reason=never-ready` on the retry warn | No beacon arrived for that chat, and the host kept looking until the beacon's own delivery budget was spent — the broker did not come up at all. The turn is NOT replayed: a replay would sit out another full connect wait and end in the same error. |
-| `reason=ready-during-wait` on the retry warn | The beacon arrived while the host waited, so the broker lost the race by a moment and IS connected now. The turn is replayed, which is what fixes this one. |
+| Log line                                                      | What it tells you                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `spawning agent … broker=tsx`                                 | This install is on the SLOW path: the bundle is missing, so the broker is transcoded from source on every spawn (seconds to tens of seconds over a Windows/macOS bind mount). A `broker bundle missing` warn accompanies it once per process.                                                                                                                                                                                                                                                                                                     |
+| `[mcp] broker ready bootMs=… initializeMs=…`                  | The broker DID connect, and how long it took. `broker cold boot is slow` replaces it past 5 s.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `brokerEverReady=false reason=never-ready` on the retry warn  | No beacon arrived for that chat, and the host kept looking until the beacon's own delivery budget was spent — the broker did not come up at all. The turn is NOT replayed: a replay would sit out another full connect wait and end in the same error.                                                                                                                                                                                                                                                                                            |
+| `reason=ready-during-wait` on the retry warn                  | The beacon arrived while the host waited, so the broker lost the race by a moment and IS connected now. The turn is replayed, which is what fixes this one.                                                                                                                                                                                                                                                                                                                                                                                       |
 | `brokerEverStarted=` on the `MCP tools were unavailable` warn | Whether the broker PROCESS ever existed, which is a different question from whether it answered. `true` with `brokerEverReady=false` means it launched and never finished booting — the boot is the problem (the mount, the `tsx` path). `false` means it never launched — the spawn is the problem. Diagnostic only, and not authenticated: under Docker everything needed to forge it sits in the per-session MCP config inside the workspace mount, so read it as evidence about a healthy install rather than as proof against a hostile one. |
 
 ### Fix
@@ -968,7 +974,7 @@ so read these three before forming a theory:
 
 - The `google` tool (or a `google.calendar.*` remote command) fails with **"Google account not linked on this host"**.
 - **"Google sign-in service unreachable"** or **"Google sign-in service returned HTTP …"**.
-- **"multiple client_secret_*.json files found"**.
+- **"multiple client_secret\_*.json files found"**.
 - **"Google Calendar API: HTTP 403"** with a hint about enabling the API.
 - **"Google Calendar API: HTTP 403 — Request had insufficient authentication scopes"** when pushing
   a collection to a calendar that is NOT in the account's own calendar list.
@@ -1121,8 +1127,7 @@ Pass the file instead. `putItems` accepts **`itemsFile`** — an absolute path t
 a JSON file holding the array of record objects, read by the host:
 
 ```jsonc
-{ "action": "putItems", "slug": "slots", "mode": "create",
-  "itemsFile": "/absolute/path/to/generated-slots.json" }
+{ "action": "putItems", "slug": "slots", "mode": "create", "itemsFile": "/absolute/path/to/generated-slots.json" }
 ```
 
 Write the generated file **under the workspace**. Paths outside it are refused:
@@ -1144,17 +1149,17 @@ Rules that make it fail cleanly rather than silently:
 
 Reading the refusal you got:
 
-| Message | What it means |
-| --- | --- |
-| `must be an ABSOLUTE path` | You passed a relative path. Pass the full one. |
-| `must be inside the workspace` | The file is outside the workspace (or a symlink out of it). Regenerate it under the workspace. |
-| `is a symbolic link` | Symlinks are never followed. Pass the real path. |
-| `changed while it was being opened` | The file was replaced mid-call. Finish writing it, then call putItems. |
-| `grew while it was being read` | The file was still being written. Wait for the script to finish, then call putItems. |
-| `could not read \`itemsFile\`` | The host cannot see that path — the usual cause is a file written to a temp dir outside the mount. Write it under the workspace. |
-| `is not a regular file` | The path is a directory, device, or fifo. |
-| `could not be read as JSON` | The file exists and was read, but does not parse. This is YOUR file's shape, not a host problem — check the script that wrote it (a truncated write, a trailing comma, log output mixed into the file). |
-| `must hold a non-empty JSON array of record objects` | It parsed, but is `[]`, an object, or an array of scalars. The file must be `[{…}, {…}]` — the same row objects you would have passed as `items`. |
+| Message                                              | What it means                                                                                                                                                                                           |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `must be an ABSOLUTE path`                           | You passed a relative path. Pass the full one.                                                                                                                                                          |
+| `must be inside the workspace`                       | The file is outside the workspace (or a symlink out of it). Regenerate it under the workspace.                                                                                                          |
+| `is a symbolic link`                                 | Symlinks are never followed. Pass the real path.                                                                                                                                                        |
+| `changed while it was being opened`                  | The file was replaced mid-call. Finish writing it, then call putItems.                                                                                                                                  |
+| `grew while it was being read`                       | The file was still being written. Wait for the script to finish, then call putItems.                                                                                                                    |
+| `could not read \`itemsFile\``                       | The host cannot see that path — the usual cause is a file written to a temp dir outside the mount. Write it under the workspace.                                                                        |
+| `is not a regular file`                              | The path is a directory, device, or fifo.                                                                                                                                                               |
+| `could not be read as JSON`                          | The file exists and was read, but does not parse. This is YOUR file's shape, not a host problem — check the script that wrote it (a truncated write, a trailing comma, log output mixed into the file). |
+| `must hold a non-empty JSON array of record objects` | It parsed, but is `[]`, an object, or an array of scalars. The file must be `[{…}, {…}]` — the same row objects you would have passed as `items`.                                                       |
 
 Do NOT spawn the MCP bridge yourself. A hand-written JSON-RPC client fails
 invisibly and can leave a partially written collection that nothing reports.
@@ -1196,10 +1201,14 @@ the calendar can place. So format the string, never convert it:
 
 ```js
 // WRONG — appends `Z` and shifts the hours by the generating machine's offset
-{ startAt: new Date(`${day}T08:00`).toISOString() }   // "2026-08-17T15:00:00.000Z"
+{
+  startAt: new Date(`${day}T08:00`).toISOString();
+} // "2026-08-17T15:00:00.000Z"
 
 // RIGHT — the clock you meant, written as the clock
-{ startAt: `${day}T08:00` }                            // "2026-08-17T08:00"
+{
+  startAt: `${day}T08:00`;
+} // "2026-08-17T08:00"
 ```
 
 The conversion is the more expensive half: had the format passed, a Tokyo court's
@@ -1249,7 +1258,7 @@ second line, with the plugin-load errors above it, is what a bug report needs.
 ### Symptoms
 
 - Reading or writing a collection fails with `shared collection unavailable:
-  connect remote-host first`.
+connect remote-host first`.
 - A collection whose `schema.json` declares `"storage": { "type": "firestore" }`
   never appears in the list at all.
 - Reads and writes fail with `permission-denied` from Firestore even though the
@@ -1269,7 +1278,7 @@ The backend deliberately fails loudly instead of returning nothing.
 
 2. **The collection never appears** — discovery REFUSED the schema, and the
    reason is in the server log under `collections` (`schema.json rejected after
-   validation, skipping`). For a shared collection the usual reason is the app
+validation, skipping`). For a shared collection the usual reason is the app
    declaration: `apps/{aid}/collections/{cid}/items` needs an `aid`, which comes
    from `app.json` at the repository root, not from the schema.
 
@@ -1390,6 +1399,54 @@ the server's `[server] listening port=…` line, and whether
 `<workspace>/.server-port` exists. Those three answer "which server, on which
 port, and did the bridge agree" — which is what every one of these turns out to
 be.
+
+## A webhook bridge exits at startup, or never binds its port
+
+### Symptoms
+
+One of the webhook bridges — `line`, `line-works`, `google-chat`, `messenger`,
+`teams`, `twilio-sms`, `viber`, `webhook`, `whatsapp` — exits immediately after
+being started, printing one of:
+
+```text
+Port 3002 is already in use. Set LINE_BRIDGE_PORT to a free port, or LINE_BRIDGE_PORT=0 to let the OS pick one.
+LINE_BRIDGE_PORT="302a" is not a usable port. Set it to an integer from 0 to 65535 (LINE_BRIDGE_PORT=0 asks the OS for a free port), or unset it to use 3002.
+```
+
+Both name the env var to change, and each bridge has its own — `WEBHOOK_PORT`,
+`TWILIO_WEBHOOK_PORT`, `VIBER_WEBHOOK_PORT` and so on. Read the message rather
+than guessing the name.
+
+### "Already in use" is usually the server, not a second bridge
+
+The server's port walk (3002-3021) covers the whole bridge band (3002-3013), so
+a server that found 3001 busy and moved forward can be sitting on a bridge's
+default. Check what the server actually bound before moving the bridge:
+
+```bash
+cat "${MULMOCLAUDE_WORKSPACE_PATH:-$HOME/mulmoclaude}/.server-port"
+lsof -nP -iTCP:3002 -sTCP:LISTEN
+```
+
+Two ways out, both fine:
+
+- Give the bridge a port outside the server's band: `LINE_BRIDGE_PORT=3200`.
+- Let the OS choose: `LINE_BRIDGE_PORT=0`. The startup banner then names the
+  port it actually got — read the banner, not the env var, when tunnelling to it
+  (`Webhook listening on http://localhost:52431/webhook`).
+
+### Before #3084 both of these were silent
+
+A bridge of that vintage reads its port as `Number(process.env.X) || <default>`
+and calls a bare `app.listen`. So a **typo ran on the default without a word**
+(`302a` → `NaN` → falsy → the default), `X=0` was impossible (falsy too), and a
+busy port surfaced as an unhandled `EADDRINUSE` with no mention of which env var
+to change. If neither message above appears and the bridge simply dies, or it is
+answering on a port you did not ask for, that is the old build: reinstall it
+(`npm i -g @mulmobridge/<platform>@latest`).
+
+A bridge that starts but never replies is a different failure — see "A messaging
+bridge's bot does not reply, and nothing errors" above.
 
 ## `renderShapeScript` says Chromium is not installed
 
