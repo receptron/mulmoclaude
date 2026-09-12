@@ -36,10 +36,8 @@
     "test": "tsx --test test/test_*.ts test/accounting/test_*.ts",
     "lint": "eslint src test"
   },
-  "dependencies": {
-    "@mulmoclaude/common": "^1.3.0"
-  },
   "peerDependencies": {
+    "@mulmoclaude/common": "^1.3.0",
     "@mulmoclaude/core": "^4.9.1",
     "express": "^5.2.1",
     "gui-chat-protocol": "^2.0.0",
@@ -61,6 +59,7 @@
     }
   },
   "devDependencies": {
+    "@mulmoclaude/common": "^1.3.0",
     "@mulmoclaude/core": "^4.9.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^5.0.6",
