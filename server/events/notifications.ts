@@ -67,9 +67,11 @@ export interface PublishNotificationOpts {
 
 /** Discriminated marker on `NotifierEntry.pluginData` for entries
  *  produced by the legacy `publishNotification()` wrapper. The bell
- *  reads this to preserve the legacy icon, i18n localization, and
- *  transport routing. New direct callers of `notifier.publish()`
- *  publish without this shape. */
+ *  reads this to preserve the legacy icon (`kind`), i18n localization,
+ *  the caller-supplied dedup id and the originating session. NOT
+ *  transport routing — there is no `transportId` here and no bridge
+ *  path left to route to (see the file header). New direct callers of
+ *  `notifier.publish()` publish without this shape. */
 export interface LegacyNotifierPluginData {
   legacy: true;
   /** Caller-supplied stable id (e.g. plugin-meta diagnostic id), or

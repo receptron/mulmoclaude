@@ -191,8 +191,8 @@ const HOST_STATIC_CHANNELS = {
    *  `location.reload()` so the author sees their save without ⌘R.
    *  Payload: `{ name: string, changedFiles: string[], serverSideChange: boolean }`. */
   devPluginChanged: "dev-plugin-changed",
-  /** Notifier state-change events (`published` / `cleared` /
-   *  `cancelled`) as a discriminated union. Single global channel;
+  /** Notifier state-change events (`published` / `updated` / `cleared`
+   *  / `cancelled`) as a discriminated union. Single global channel;
    *  subscribers filter by `pluginPkg` client-side. Publisher:
    *  `server/notifier/engine.ts` after persistence succeeds.
    *  Payload: `NotifierEvent`. */

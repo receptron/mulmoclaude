@@ -6,7 +6,9 @@
 /** Two notification shapes, distinguished by who fires the close call:
  *
  *    `fyi`    — informational. The host (bell panel) clears it when the
- *               user dismisses the row. No deep-link target.
+ *               user dismisses the row. MAY carry a `navigateTarget`
+ *               (the legacy wrapper publishes fyi entries with one);
+ *               the row then navigates and clears.
  *    `action` — pending obligation. The plugin clears it when the
  *               underlying domain state changes (the user paid the tax,
  *               viewed the digest, etc.). The bell row navigates to
@@ -22,8 +24,9 @@
  *       is incoherent — fyi if it's a ping, `nudge`/`urgent` if it's a
  *       real obligation worth a landing page.
  *
- *  Both rules are mirrored in the HTTP layer so plugin-runtime callers
- *  and HTTP callers hit the same wall. */
+ *  Both rules live in `validate.ts`, which `publish` and
+ *  `updateForPlugin` share — there is no HTTP publish path for them to
+ *  be mirrored into (see `server/api/routes/notifier.ts`). */
 export const NOTIFIER_LIFECYCLES = ["fyi", "action"] as const;
 export type NotifierLifecycle = (typeof NOTIFIER_LIFECYCLES)[number];
 
@@ -39,18 +42,22 @@ export interface NotifierEntry<TPluginData = unknown> {
   /** Engine-assigned UUID. Generated synchronously inside `publish()`
    *  so the caller can use it before persistence completes. */
   id: string;
-  /** Plugin namespace (e.g. `"encore"`, `"debug__system"`). The
-   *  engine never inspects it — used only for `listFor()` filtering
-   *  and as a UI grouping key. */
+  /** Plugin namespace (e.g. `"encore"`, `"debug__system"`), and the
+   *  key the per-plugin isolation is built on: `updateForPlugin`,
+   *  `getForPlugin` and `clearForPlugin` each compare it and no-op on
+   *  a mismatch, so one plugin cannot touch another's entries.
+   *  `listFor` filters on it, and the UI groups by it. */
   pluginPkg: string;
   severity: NotifierSeverity;
   lifecycle?: NotifierLifecycle;
   title: string;
   body?: string;
   /** Optional in-app deep-link target (relative URL). The bell popup
-   *  routes here on row click, with `&notificationId=<id>` appended
-   *  so the landing page can identify which entry to clear. The
-   *  engine doesn't read this — it's a UI hint stored on the entry. */
+   *  routes here on row click, splicing in `notificationId=<id>` so the
+   *  landing page can identify which entry to clear — with `?` or `&`
+   *  as the target requires, and before any `#fragment`
+   *  (`appendNotificationId` in `NotificationBell.vue`). The engine
+   *  doesn't read this — it's a UI hint stored on the entry. */
   navigateTarget?: string;
   /** Opaque to the engine. Round-trips through JSON unchanged; only
    *  the originating plugin's UI knows the shape. */
@@ -104,8 +111,10 @@ export interface NotifierHistoryFile {
   entries: NotifierHistoryEntry[];
 }
 
-/** History size cap. The bell popup's History section renders this
- *  many entries; older ones fall off when new terminations land. */
+/** History size cap — how many terminated entries the FILE keeps, not
+ *  how many the UI shows: older ones fall off when new terminations
+ *  land. The bell popup renders `HISTORY_INITIAL_VISIBLE` of them and
+ *  reveals the rest behind "Show more" (`NotificationBell.vue`). */
 export const HISTORY_CAP = 50;
 
 /** Pub-sub event published on the host's notifier channel after every

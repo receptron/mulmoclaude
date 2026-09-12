@@ -88,5 +88,11 @@ export function checkWorkspaceDrift(options?: CheckWorkspaceDriftOptions): Promi
  */
 export function formatLine(result: PackageDriftResult): string;
 
-/** CLI entry point. Returns 0 on clean, 1 if any package drifted. */
-export function main(): Promise<number>;
+/** Statuses that fail the run. `pending-publish` joins the list only at release time:
+ *  non-fatal on an ordinary PR, fatal when publishing, because the declared range's lower
+ *  bound is then missing from the registry (#3099). */
+export function failingStatuses(release: boolean): PackageDriftResult["status"][];
+
+/** CLI entry point. Returns 0 on clean, 1 if any package blocks publishing.
+ *  `release: true` (CLI: `--release`) also fails on `pending-publish`. */
+export function main(options?: { release?: boolean }): Promise<number>;

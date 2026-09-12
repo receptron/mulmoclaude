@@ -288,6 +288,48 @@ describe("formatLine", () => {
   });
 });
 
+/**
+ * Which verdicts stop the run, and when.
+ *
+ * `pending-publish` is deliberately non-fatal on an ordinary PR — the bump is the
+ * developer's acknowledgement and blocking would stop a PR that did the right thing while
+ * the cascade publish is still pending. At RELEASE time the same state is the blocker
+ * itself: the declared range's lower bound is not on the registry, so
+ * `npx mulmoclaude@<next>` fails with ETARGET. That is what happened on 1.16.0, and only a
+ * hand-run shell loop caught it (#3099).
+ *
+ * So the property is not "pending-publish fails" or "pending-publish passes" — it is that
+ * the SAME verdict answers differently depending on the flag.
+ */
+describe("failingStatuses", () => {
+  it("fails only on drift for an ordinary run", () => {
+    assert.deepEqual(drift.failingStatuses(false), ["drifted"]);
+  });
+
+  it("also fails on pending-publish at release time", () => {
+    assert.deepEqual(drift.failingStatuses(true), ["drifted", "pending-publish"]);
+  });
+
+  it("treats pending-publish differently BETWEEN the two — the whole point of the flag", () => {
+    assert.equal(drift.failingStatuses(false).includes("pending-publish"), false);
+    assert.equal(drift.failingStatuses(true).includes("pending-publish"), true);
+  });
+
+  it("never lets a release run pass something an ordinary run would fail", () => {
+    const ordinary = drift.failingStatuses(false);
+    const release = drift.failingStatuses(true);
+    ordinary.forEach((status) => assert.ok(release.includes(status), `${status} must still fail at release time`));
+  });
+
+  it("leaves ok and skipped passing in both modes", () => {
+    [false, true].forEach((release) => {
+      const failing = drift.failingStatuses(release);
+      assert.equal(failing.includes("ok"), false, `ok passes (release=${release})`);
+      assert.equal(failing.includes("skipped"), false, `skipped passes (release=${release})`);
+    });
+  });
+});
+
 describe("isLocalVersionAhead", () => {
   it("returns true when any component is strictly greater", () => {
     assert.equal(drift.isLocalVersionAhead("0.1.3", "0.1.2"), true);
