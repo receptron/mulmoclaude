@@ -66,37 +66,45 @@ export async function workspaceVersions({ root = process.cwd(), manifestPaths } 
 }
 
 /**
- * Workspace manifests, found by walking `packages/` two levels deep.
+ * Workspace manifests under `packages/`, at ANY depth.
+ *
+ * Recursive rather than a fixed two levels: this repo is two and three deep today
+ * (`packages/core`, `packages/plugins/x-plugin`), and a depth limit would report a deeper
+ * one as "not a workspace package" — the silent-pass shape this whole check exists to remove.
  *
  * Deliberately NOT `git ls-files packages`: that also matches the drift fixtures nested
  * under `test/scripts/mulmoclaude/fixtures/`, whose deliberately-stale versions would
- * overwrite the real entries and invent drift that is not there.
+ * overwrite the real entries and invent drift that is not there. `node_modules` is skipped
+ * for the same reason — an installed copy is not a workspace package.
  */
 async function defaultManifestPaths(root) {
   const { readdir } = await import("node:fs/promises");
-  const packagesDir = path.join(root, "packages");
-  const found = [];
-  const entries = await readdir(packagesDir, { withFileTypes: true }).catch(() => []);
-  for (const entry of entries.filter((candidate) => candidate.isDirectory())) {
-    found.push(path.join("packages", entry.name, "package.json"));
-    const nested = await readdir(path.join(packagesDir, entry.name), { withFileTypes: true }).catch(() => []);
-    nested.filter((candidate) => candidate.isDirectory()).forEach((candidate) => found.push(path.join("packages", entry.name, candidate.name, "package.json")));
-  }
-  return found;
+  const walk = async (relative) => {
+    const entries = await readdir(path.join(root, relative), { withFileTypes: true }).catch(() => []);
+    const here = entries.some((entry) => entry.isFile() && entry.name === "package.json") ? [path.join(relative, "package.json")] : [];
+    const deeper = await Promise.all(
+      entries.filter((entry) => entry.isDirectory() && entry.name !== "node_modules").map((entry) => walk(path.join(relative, entry.name))),
+    );
+    return [...here, ...deeper.flat()];
+  };
+  return walk("packages");
 }
 
-/** The versions the registry lists for `name`, or null when the package is not on npm. */
+/** The versions the registry lists for `name`, plus its `latest` dist-tag. `versions` is
+ *  null when the registry could not be asked, and empty when the package is not on npm.
+ *  `latest` comes from the dist-tag rather than the last key of `versions`: key order is
+ *  not a documented guarantee, and "newest" is exactly what the tag means. */
 async function defaultFetchPublishedVersions({ name, timeoutMs = REGISTRY_TIMEOUT_MS } = {}) {
   const controller = new AbortController();
   const killer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${REGISTRY_BASE}/${encodeURIComponent(name)}`, { signal: controller.signal });
-    if (response.status === 404) return { versions: [], reason: null };
-    if (!response.ok) return { versions: null, reason: `registry ${response.status}` };
+    if (response.status === 404) return { versions: [], latest: null, reason: null };
+    if (!response.ok) return { versions: null, latest: null, reason: `registry ${response.status}` };
     const meta = await response.json();
-    return { versions: Object.keys(meta.versions ?? {}), reason: null };
+    return { versions: Object.keys(meta.versions ?? {}), latest: meta["dist-tags"]?.latest ?? null, reason: null };
   } catch (err) {
-    return { versions: null, reason: `network: ${err instanceof Error ? err.message : String(err)}` };
+    return { versions: null, latest: null, reason: `network: ${err instanceof Error ? err.message : String(err)}` };
   } finally {
     clearTimeout(killer);
   }
@@ -113,18 +121,38 @@ export async function checkPublishedDeps({ root = process.cwd(), fetchPublishedV
   return Promise.all(
     deps.map(async ({ name, range, field }) => {
       const workspaceVersion = versions.get(name) ?? null;
-      if (workspaceVersion === null) return { name, range, field, workspaceVersion, status: "not-a-workspace" };
-      const { versions: published, reason } = await fetchPublishedVersions({ name });
+      const { versions: published, latest = null, reason } = await fetchPublishedVersions({ name });
       if (published === null) return { name, range, field, workspaceVersion, status: "unknown", reason };
       if (published.length === 0) return { name, range, field, workspaceVersion, status: "not-on-npm" };
-      return { name, range, field, workspaceVersion, status: published.includes(workspaceVersion) ? "published" : "unpublished" };
+      // The registry is asked FIRST, so a dep with no workspace twin is still verified.
+      // Returning early on a missing twin let a declared internal dep through unchecked —
+      // the one thing this gate exists to stop (#3105 round 1, Codex).
+      if (workspaceVersion === null) return { name, range, field, workspaceVersion, status: "not-a-workspace" };
+      if (!published.includes(workspaceVersion)) return { name, range, field, workspaceVersion, status: "unpublished" };
+      // `behind` cannot cause ETARGET, so it does not block — but the shell loop this
+      // replaced surfaced it (as `local != npm`), and dropping a signal in a replacement is
+      // a regression even when the signal is not fatal.
+      const behind = latest !== null && latest !== workspaceVersion;
+      return { name, range, field, workspaceVersion, newestPublished: latest, status: behind ? "behind" : "published" };
     }),
   );
 }
 
-/** Verdicts that stop a launcher publish. `unknown` does not: an unreachable registry is
- *  not evidence of an unpublished version, and failing on it would block on a flaky network. */
-export const BLOCKING = ["unpublished", "not-on-npm"];
+/**
+ * Verdicts that stop a launcher publish.
+ *
+ * `not-a-workspace` blocks. Every `@mulmoclaude/*` / `@mulmobridge/*` the launcher declares
+ * is published from this repo, so a missing twin means the manifest moved or the walk missed
+ * it — and either way the declared range went UNVERIFIED. A gate that passes what it could
+ * not check is the shape this file replaced.
+ *
+ * `unknown` does not block: an unreachable registry is not evidence of an unpublished
+ * version, and a gate that fails on a flaky network is one people learn to skip. It is
+ * printed, and the summary says how many went unchecked.
+ *
+ * `behind` does not block: the workspace being older than npm cannot cause ETARGET.
+ */
+export const BLOCKING = ["unpublished", "not-on-npm", "not-a-workspace"];
 
 function formatLine(result) {
   const { name, range, workspaceVersion, status, reason } = result;
@@ -132,7 +160,8 @@ function formatLine(result) {
     return `  ⚠ ${name} workspace ${workspaceVersion} is NOT on npm — the launcher declares ${range}, whose lower bound does not exist`;
   if (status === "not-on-npm") return `  ⚠ ${name} has never been published — the launcher declares ${range}`;
   if (status === "unknown") return `  · ${name}: could not ask the registry — ${reason}`;
-  if (status === "not-a-workspace") return `  · ${name}: declared ${range} but not a workspace package here — nothing to compare`;
+  if (status === "not-a-workspace") return `  ⚠ ${name} is declared ${range} but has no workspace manifest here — the range went UNVERIFIED`;
+  if (status === "behind") return `  · ${name} ${workspaceVersion} is published, but npm already has ${result.newestPublished} — the workspace is behind`;
   return `  ✓ ${name} ${workspaceVersion} is published`;
 }
 
@@ -140,8 +169,10 @@ export async function main() {
   const results = await checkPublishedDeps();
   results.forEach((result) => console.log(formatLine(result)));
   const blocking = results.filter((result) => BLOCKING.includes(result.status));
+  const unchecked = results.filter((result) => result.status === "unknown");
   if (blocking.length === 0) {
-    console.log("[mulmoclaude:published-deps] OK — every launcher dep resolves to a published version.");
+    const caveat = unchecked.length > 0 ? ` (${unchecked.length} could not be checked — the registry was unreachable)` : "";
+    console.log(`[mulmoclaude:published-deps] OK — every launcher dep resolves to a published version${caveat}.`);
     return 0;
   }
   console.error("");

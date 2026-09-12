@@ -17,12 +17,18 @@ export interface DeclaredDep {
  */
 export interface PublishedDepResult extends DeclaredDep {
   workspaceVersion: string | null;
-  status: "published" | "unpublished" | "not-on-npm" | "not-a-workspace" | "unknown";
+  status: "published" | "unpublished" | "not-on-npm" | "not-a-workspace" | "behind" | "unknown";
+  /** The registry's `latest` dist-tag. Present once the registry answered. */
+  newestPublished?: string | null;
   reason?: string;
 }
 
 export interface PublishedVersions {
+  /** Null when the registry could not be asked; empty when the package is not on npm. */
   versions: string[] | null;
+  /** The `latest` dist-tag — the registry's own answer for "newest", which the key order
+   *  of `versions` is not. */
+  latest?: string | null;
   reason: string | null;
 }
 
@@ -32,8 +38,9 @@ export type FetchPublishedVersions = (args: { name: string; timeoutMs?: number }
 export interface CheckOptions {
   root?: string;
   fetchPublishedVersions?: FetchPublishedVersions;
-  /** Workspace manifest paths relative to `root`. Defaults to a two-level walk of
-   *  `packages/`, which deliberately excludes the test fixtures a `git ls-files` would match. */
+  /** Workspace manifest paths relative to `root`. Defaults to a RECURSIVE walk of
+   *  `packages/` (skipping `node_modules`), which deliberately excludes the test fixtures a
+   *  `git ls-files` would match. */
   manifestPaths?: string[];
 }
 

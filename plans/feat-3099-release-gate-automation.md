@@ -35,6 +35,10 @@ cascade publish の前にブロックしないため。その判断は `drift.mj
 semver は入れない。`launcherSync.mjs` が既に自前の range 解析を持っており、ここで要るのは
 range 演算ではなく「**この exact version が公開一覧にあるか**」という存在確認だけ。
 
+**置き換えである以上、旧ループが出していた信号を落とさない。** round 1 で2つ落ちていた ——
+「workspace に manifest が無い」（レジストリを見ずに通していた）と「local が npm より古い」。
+前者は range が未検証のまま通るので**落とす**、後者は ETARGET にならないので報告のみ。
+
 ## 直さないもの
 
 - `pending-publish` への降格そのもの（通常 PR では正しい）

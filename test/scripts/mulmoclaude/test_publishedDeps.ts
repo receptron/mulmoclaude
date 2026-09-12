@@ -35,7 +35,10 @@ async function workspace(launcherDeps: Record<string, string>, packages: { dir: 
 
 const registryWith =
   (table: Record<string, string[]>) =>
-  async ({ name }: { name: string }) => ({ versions: table[name] ?? [], reason: null });
+  async ({ name }: { name: string }) => {
+    const versions = table[name] ?? [];
+    return { versions, latest: versions.at(-1) ?? null, reason: null };
+  };
 
 const byName = (results: published.PublishedDepResult[], name: string) => results.find((result) => result.name === name);
 
@@ -85,10 +88,45 @@ describe("checkPublishedDeps", () => {
     assert.equal(published.BLOCKING.includes("unknown"), false, "a flaky network must not stop a release");
   });
 
-  it("says so when a declared dep has no workspace twin, instead of guessing", async () => {
+  it("BLOCKS a declared dep with no workspace twin — it went unverified", async () => {
+    // Returning early on a missing twin skipped the registry entirely, so a declared
+    // internal dep passed the gate without being checked at all. Every internal scope here
+    // is published from this repo, so no twin means the manifest moved or the walk missed
+    // it — and in both cases the range is unverified (#3105 round 1, Codex).
     const root = await workspace({ "@mulmoclaude/external": "^2.0.0" }, []);
-    const results = await published.checkPublishedDeps({ root, fetchPublishedVersions: registryWith({}) });
+    const results = await published.checkPublishedDeps({ root, fetchPublishedVersions: registryWith({ "@mulmoclaude/external": ["2.0.0"] }) });
     assert.equal(byName(results, "@mulmoclaude/external")?.status, "not-a-workspace");
+    assert.ok(published.BLOCKING.includes("not-a-workspace"), "and that verdict stops a publish");
+  });
+
+  it("names the MORE specific reason when a twin-less dep is also not on npm", async () => {
+    // Both verdicts block, so the exit code cannot tell them apart — what differs is what
+    // the operator is told. Asking the registry before checking for a twin is what lets the
+    // report say "never published" instead of the vaguer "no workspace manifest".
+    const root = await workspace({ "@mulmoclaude/ghost": "^1.0.0" }, []);
+    const results = await published.checkPublishedDeps({ root, fetchPublishedVersions: registryWith({}) });
+    assert.equal(byName(results, "@mulmoclaude/ghost")?.status, "not-on-npm");
+  });
+
+  it("reports a workspace that is BEHIND npm — the signal the shell loop surfaced", async () => {
+    // `local != npm` in the replaced loop covered this too. It cannot cause ETARGET, so it
+    // does not block, but losing it in a replacement would be a regression.
+    const root = await workspace({ "@mulmobridge/client": "^1.0.2" }, [{ dir: "client", name: "@mulmobridge/client", version: "1.0.2" }]);
+    const results = await published.checkPublishedDeps({ root, fetchPublishedVersions: registryWith({ "@mulmobridge/client": ["1.0.2", "1.1.0"] }) });
+    const verdict = byName(results, "@mulmobridge/client");
+    assert.equal(verdict?.status, "behind");
+    assert.equal(verdict?.newestPublished, "1.1.0");
+    assert.equal(published.BLOCKING.includes("behind"), false, "being behind cannot cause ETARGET");
+  });
+
+  it("finds a manifest nested deeper than any layout here today", async () => {
+    // A fixed-depth walk reports a deeper package as "not a workspace package", which is now
+    // BLOCKING — so the walk has to be recursive or the gate fails on a legal layout.
+    const root = await workspace({ "@mulmoclaude/deep": "^1.0.0" }, [
+      { dir: path.join("services", "group", "deep"), name: "@mulmoclaude/deep", version: "1.0.0" },
+    ]);
+    const results = await published.checkPublishedDeps({ root, fetchPublishedVersions: registryWith({ "@mulmoclaude/deep": ["1.0.0"] }) });
+    assert.equal(byName(results, "@mulmoclaude/deep")?.status, "published");
   });
 
   it("ignores third-party deps — only the scopes this repo publishes", async () => {
