@@ -1,7 +1,7 @@
 {
   "name": "mulmoclaude",
   "version": "1.16.0",
-  "description": "MulmoClaude \u2014 GUI-chat with Claude Code + long-term memory. One command to start.",
+  "description": "MulmoClaude — GUI-chat with Claude Code + long-term memory. One command to start.",
   "type": "module",
   "bin": {
     "mulmoclaude": "bin/mulmoclaude.js"
@@ -58,14 +58,14 @@
     "graphai": "^2.0.18",
     "gui-chat-protocol": "^2.0.0",
     "heic-convert": "^2.1.0",
-    "ignore": "^7.0.8",
+    "ignore": "^7.0.9",
     "js-yaml": "^5.4.1",
-    "jszip": "^3.10.1",
+    "jszip": "^3.10.2",
     "mammoth": "^1.12.2",
-    "marked": "^18.0.11",
+    "marked": "^18.0.12",
     "mulmocast": "^2.12.0",
     "node-html-parser": "^9.0.2",
-    "puppeteer": "^25.9.0",
+    "puppeteer": "^25.10.0",
     "sharp": "^0.35.4",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
@@ -74,7 +74,7 @@
     "which": "^6",
     "ws": "^8.21.3",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
-    "zod": "^4.5.4"
+    "zod": "^4.6.2"
   },
   "optionalDependencies": {
     "node-pty": "^1.1.0"
