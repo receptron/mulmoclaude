@@ -28,12 +28,12 @@ import "dotenv/config";
 import crypto from "crypto";
 import express, { type Request, type Response as ExpressResponse } from "express";
 import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "twilio-sms";
 const MAX_SMS_LEN = 1_600; // Twilio concatenates segments up to 1600 chars
 const FETCH_TIMEOUT_MS = 15_000;
-const PORT = Number(process.env.TWILIO_WEBHOOK_PORT) || 3010;
 
 function readRequiredEnv(): { accountSid: string; authToken: string; fromNumber: string } {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -209,9 +209,9 @@ app.post("/sms", async (req: Request, res: ExpressResponse) => {
   }
 });
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "TWILIO_WEBHOOK_PORT", fallback: 3010 }, (port) => {
   console.log("MulmoClaude Twilio SMS bridge");
-  console.log(`Webhook listening on http://localhost:${PORT}/sms`);
+  console.log(`Webhook listening on http://localhost:${port}/sms`);
   console.log(`From number: ${fromNumber}`);
   console.log(`Public URL: ${publicUrl ?? "(not set — signature verification OFF)"}`);
   console.log(`Allowlist: ${allowAll ? "(all)" : [...allowedNumbers].join(", ")}`);

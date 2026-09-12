@@ -9,8 +9,11 @@
 // has to be applied six times. This package is the single source.
 
 import crypto from "crypto";
+import type { Server } from "node:http";
 import express, { type Express, type Request, type Response } from "express";
 import rateLimit, { ipKeyGenerator, type RateLimitRequestHandler } from "express-rate-limit";
+import { hasNumberProp } from "@mulmoclaude/common";
+import { describeListenError, resolveWebhookPort } from "./port.js";
 
 // Honour an explicit `trust proxy` setting so `req.ip` (the rate-limit
 // key) reflects the real client IP rather than the load balancer's.
@@ -196,4 +199,51 @@ export function registerMetaWebhook(app: Express, opts: MetaWebhookOptions): voi
     res.status(200).send(opts.ackBody ?? "EVENT_RECEIVED");
     await opts.onBody(rawBody);
   });
+}
+
+export interface ListenWebhookOptions {
+  /** The env var that overrides the port. Every message names it — each bridge
+   *  has a different one, and "which knob do I turn" is the question an
+   *  operator has at exactly the moment this fails. */
+  envVar: string;
+  /** Port used when the env var is unset or blank. */
+  fallback: number;
+  /** Test seam. Production prints the message and exits non-zero. */
+  onFatal?: (message: string) => void;
+}
+
+// Bind a bridge's webhook port, and say something useful when that fails.
+//
+// Before #3084 each bridge did `Number(process.env.X) || N` and a bare
+// `app.listen(PORT, cb)`: a typo ran on the default without a word, `X=0` was
+// impossible, and `EADDRINUSE` surfaced as an unhandled error with no mention
+// of which env var to change. The server's port band (3002-3021) overlaps the
+// bridge band (3002-3013), so that collision is routine, not theoretical
+// (#3079).
+export function listenWebhook(app: Express, opts: ListenWebhookOptions, onReady: (port: number) => void): Server | undefined {
+  const fatal = opts.onFatal ?? exitWithMessage;
+  const resolved = resolveWebhookPort(process.env[opts.envVar], opts.fallback, opts.envVar);
+  if (!resolved.ok) {
+    fatal(resolved.message);
+    return undefined;
+  }
+  const server = app.listen(resolved.port, () => {
+    // `server.address()` is the authority on whether the bind happened, and on
+    // which port it got (it differs from the requested one for `=0`). Express 5
+    // runs this callback even when the bind FAILED — verified against
+    // express@5.1: `address()` is null, `listening` is false, and the 'error'
+    // event arrives on the next tick. Without this guard a bridge prints its
+    // "listening on <port>" banner for a server that never bound, which is the
+    // same silence #3084 is about, one step later.
+    const address = server.address();
+    if (!hasNumberProp(address, "port")) return;
+    onReady(address.port);
+  });
+  server.on("error", (err: unknown) => fatal(describeListenError(err, resolved.port, opts.envVar)));
+  return server;
+}
+
+function exitWithMessage(message: string): void {
+  console.error(message);
+  process.exit(1);
 }

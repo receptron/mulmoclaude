@@ -15,12 +15,11 @@
 
 import "dotenv/config";
 import { createBridgeClient } from "@mulmobridge/client";
-import { createWebhookApp, registerMetaWebhook } from "@mulmobridge/webhook-runtime";
+import { createWebhookApp, registerMetaWebhook, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { parseCsvSet } from "@mulmoclaude/common";
 import { extractWhatsAppMessages, type WhatsAppTextMessage } from "@mulmoclaude/common/meta-webhook";
 
 const TRANSPORT_ID = "whatsapp";
-const PORT = Number(process.env.WHATSAPP_BRIDGE_PORT) || 3003;
 const FETCH_TIMEOUT_MS = 30_000;
 
 function readRequiredEnv(): { accessToken: string; phoneNumberId: string; verifyToken: string; appSecret: string } {
@@ -132,7 +131,7 @@ async function handleWebhookBody(rawBody: string): Promise<void> {
 
 registerMetaWebhook(app, { verifyToken, appSecret, label: "whatsapp", ackBody: "OK", onBody: handleWebhookBody });
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "WHATSAPP_BRIDGE_PORT", fallback: 3003 }, (port) => {
   console.log("MulmoClaude WhatsApp bridge");
-  console.log(`Webhook listening on http://localhost:${PORT}/webhook`);
+  console.log(`Webhook listening on http://localhost:${port}/webhook`);
 });

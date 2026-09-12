@@ -21,12 +21,12 @@ import "dotenv/config";
 import express, { type Request, type Response } from "express";
 import { CloudAdapter, ConfigurationBotFrameworkAuthentication, TurnContext, type Activity } from "botbuilder";
 import { createBridgeClient, chunkText, formatAckReply } from "@mulmobridge/client";
+import { listenWebhook } from "@mulmobridge/webhook-runtime";
 import { parseCsvSet } from "@mulmoclaude/common";
 import { extractIncomingMessage } from "./parse.js";
 
 const TRANSPORT_ID = "teams";
 const MAX_TEAMS_TEXT = 28_000; // Teams message limit is 40k; leave headroom for formatting
-const PORT = Number(process.env.TEAMS_BRIDGE_PORT) || 3006;
 
 function readRequiredEnv(): { appId: string; appPassword: string } {
   const appId = process.env.MICROSOFT_APP_ID;
@@ -129,9 +129,9 @@ app.get("/health", (__req: Request, res: Response) => {
   res.json({ status: "ok", transport: TRANSPORT_ID });
 });
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "TEAMS_BRIDGE_PORT", fallback: 3006 }, (port) => {
   console.log("MulmoClaude Teams bridge");
-  console.log(`Webhook listening on http://localhost:${PORT}/api/messages`);
+  console.log(`Webhook listening on http://localhost:${port}/api/messages`);
   console.log(`App ID: ${appId}`);
   console.log(`Allowlist: ${allowAll ? "(all)" : [...allowedUsers].join(", ")}`);
 });

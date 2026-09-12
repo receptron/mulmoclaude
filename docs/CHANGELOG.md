@@ -10,6 +10,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### A webhook bridge read its port with `Number(env) || N`, and a busy port killed it unexplained (#3084)
+
+The nine bridges that receive events over an inbound webhook (`line`, `line-works`, `google-chat`,
+`messenger`, `teams`, `twilio-sms`, `viber`, `webhook`, `whatsapp`) each resolved their listen port
+as `Number(process.env.X) || <default>` and then called a bare `app.listen`. Three consequences, all
+silent: a typo (`302a` → `NaN` → falsy) started the bridge **on the default without a word**, so it
+answered somewhere other than where it was told to; `X=0` was impossible for the same falsy reason,
+even though that is the documented way to ask the OS for a free port and the server itself supports
+it; and a busy port arrived as an unhandled `EADDRINUSE` naming no env var — which is routine rather
+than rare, since the server's walk-forward band (3002-3021) covers the whole bridge band
+(3002-3013).
+
+The bind now goes through one `listenWebhook` in `@mulmobridge/webhook-runtime`, where six of the
+nine already got their Express setup — `teams`, `twilio-sms` and `webhook` hand-rolled theirs and
+declare the dependency as part of this change. Each bridge names its env var once, and the rule has
+a single home. An unusable value stops the bridge with the value, the range and the env var
+in the message, instead of quietly taking the default (issue decision D-3). `EADDRINUSE` and `EACCES`
+each say which env var to change. The coercion itself is the server's own `asInt` / `PORT_RANGE`,
+moved from `server/utils/envCoerce.ts` into `@mulmoclaude/common` so there is still exactly one copy —
+`server/utils/envCoerce.ts` stays as the door `vite.config.ts` reaches it through, and `DEFAULT_PORT`
+(the host's own 3001) stays behind. The move was verified against a verbatim copy of the pre-move
+function over 620k generated (value, fallback, range) triples: 0 differences.
+
+Two behaviours needed guarding rather than describing. `PORT=0` only helps if you can find out what
+you got, so the startup banner now names the port actually bound — and the banner is printed only
+when `server.address()` confirms a bind, because **Express 5 runs `app.listen`'s callback even when
+the bind failed** (verified on express@5.1: `address()` is `null`, `listening` is `false`, and the
+`error` event lands on the next tick). Without that check a collided bridge printed
+`Webhook listening on http://localhost:3002/webhook` and then the error — the same silence, one step
+later. `packages/webhook-runtime/test/test_port.ts` pins both, including a real `EADDRINUSE` against
+an occupied port.
+
+The matching operator-facing section — both messages, why "already in use" is usually the server, and
+the `=0` way out — is in `packages/core/assets/helps/error-recovery.md`, which the agent reads before
+asking the user anything on a tool failure. It reaches npm users with the next `@mulmoclaude/core`.
+
+Out of scope, deliberately: `email` (`EMAIL_IMAP_PORT`, `EMAIL_SMTP_PORT`) and `irc` (`IRC_PORT`) use
+the same expression, but those are outbound ports where `PORT_RANGE`'s `min: 0` has no meaning. The
+process-level gaps the issue's comment counts (no `unhandledRejection` handler in any of the 25
+bridges, `SIGINT` in only two) are a separate change.
+
 #### `@mulmoclaude/core@4.9.0` — the bundled help stopped telling the agent that the server is on 3001 (#3085)
 
 `assets/helps/*` still described a server pinned to `localhost:3001` after #3081 and #3092 had

@@ -10,6 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { PORT_RANGE } from "@mulmoclaude/common";
 import { ONE_SECOND_MS } from "../../../utils/time.js";
 import { workspaceRoot } from "./workspace.js";
 
@@ -41,7 +42,10 @@ export function readPort(): number | null {
   const raw = readSidecar(PORT_FILE);
   if (!raw) return null;
   const port = Number.parseInt(raw, 10);
-  return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+  // Strictly ABOVE the range floor: 0 is a valid port to BIND (it asks the OS
+  // for an ephemeral one) but never one to connect to, and this value is read
+  // to reach the server.
+  return Number.isInteger(port) && port > PORT_RANGE.min && port <= PORT_RANGE.max ? port : null;
 }
 
 // Build an authenticated POST request against the parent server.

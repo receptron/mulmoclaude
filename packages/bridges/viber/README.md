@@ -43,14 +43,18 @@ Send a message to your Public Account from the Viber app — you'll get a reply.
 
 ## Environment variables
 
-| Variable               | Required | Default         | Description |
-|------------------------|----------|-----------------|-------------|
-| `VIBER_AUTH_TOKEN`     | yes      | —               | Public Account auth token from the admin panel |
-| `VIBER_SENDER_NAME`    | no       | `MulmoClaude`   | Display name used on outbound messages |
-| `VIBER_WEBHOOK_PORT`   | no       | `3012`          | HTTP port |
-| `VIBER_ALLOWED_USERS`  | no       | (all)           | CSV of Viber user IDs allowed (empty = everyone who messages the bot) |
-| `MULMOCLAUDE_AUTH_TOKEN` | no     | auto            | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`  | no       | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
+| Variable                 | Required | Default                                              | Description                                                           |
+| ------------------------ | -------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| `VIBER_AUTH_TOKEN`       | yes      | —                                                    | Public Account auth token from the admin panel                        |
+| `VIBER_SENDER_NAME`      | no       | `MulmoClaude`                                        | Display name used on outbound messages                                |
+| `VIBER_WEBHOOK_PORT`     | no       | `3012`                                               | HTTP port (`0` asks the OS for a free port)                           |
+| `VIBER_ALLOWED_USERS`    | no       | (all)                                                | CSV of Viber user IDs allowed (empty = everyone who messages the bot) |
+| `MULMOCLAUDE_AUTH_TOKEN` | no       | auto                                                 | MulmoClaude bearer token override                                     |
+| `MULMOCLAUDE_API_URL`    | no       | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL                                                |
+
+An unusable value (a typo, a number outside 0-65535) stops the bridge with a message naming
+the variable, rather than silently starting on the default. A port already in use is reported
+the same way (#3084).
 
 ### Auth token persistence across server restarts
 
@@ -81,11 +85,11 @@ Recommended: at least 32 characters of random data (the server logs a warning at
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Webhook registration returns `{"status":10,"status_message":"No URL parameter supplied."}` | Typo in set_webhook call | Re-check JSON body |
-| Invalid signature on all events | Rotation mismatch between `VIBER_AUTH_TOKEN` and the token used to register the webhook | Re-register the webhook using the current token |
-| `send non-zero status: {"status":6,…}` | Receiver hasn't messaged your bot first | Viber requires the user to start the conversation before you can push to them |
+| Symptom                                                                                    | Cause                                                                                   | Fix                                                                           |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Webhook registration returns `{"status":10,"status_message":"No URL parameter supplied."}` | Typo in set_webhook call                                                                | Re-check JSON body                                                            |
+| Invalid signature on all events                                                            | Rotation mismatch between `VIBER_AUTH_TOKEN` and the token used to register the webhook | Re-register the webhook using the current token                               |
+| `send non-zero status: {"status":6,…}`                                                     | Receiver hasn't messaged your bot first                                                 | Viber requires the user to start the conversation before you can push to them |
 
 ## Security notes
 
@@ -127,7 +131,7 @@ Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package famil
 - [`@mulmobridge/teams`](https://www.npmjs.com/package/@mulmobridge/teams) — Microsoft Teams via Bot Framework
 - [`@mulmobridge/telegram`](https://www.npmjs.com/package/@mulmobridge/telegram) — Telegram bot
 - [`@mulmobridge/twilio-sms`](https://www.npmjs.com/package/@mulmobridge/twilio-sms) — SMS via Twilio Programmable Messaging
-- [`@mulmobridge/viber`](https://www.npmjs.com/package/@mulmobridge/viber) — Viber Public Account bots  ← **this package**
+- [`@mulmobridge/viber`](https://www.npmjs.com/package/@mulmobridge/viber) — Viber Public Account bots ← **this package**
 - [`@mulmobridge/webhook`](https://www.npmjs.com/package/@mulmobridge/webhook) — generic HTTP webhook bridge
 - [`@mulmobridge/whatsapp`](https://www.npmjs.com/package/@mulmobridge/whatsapp) — WhatsApp Cloud API via MulmoBridge relay
 - [`@mulmobridge/xmpp`](https://www.npmjs.com/package/@mulmobridge/xmpp) — XMPP / Jabber

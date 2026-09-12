@@ -46,19 +46,23 @@ Send the bot a direct message in LINE Works — you'll get a reply.
 
 ## Environment variables
 
-| Variable                       | Required | Default | Description |
-|--------------------------------|----------|---------|-------------|
-| `LINEWORKS_CLIENT_ID`          | yes      | —       | App Client ID |
-| `LINEWORKS_CLIENT_SECRET`      | yes      | —       | App Client Secret |
-| `LINEWORKS_SERVICE_ACCOUNT`    | yes      | —       | Service account ID |
-| `LINEWORKS_BOT_ID`             | yes      | —       | Numeric Bot ID |
-| `LINEWORKS_BOT_SECRET`         | yes      | —       | Per-bot secret (used to verify `X-WORKS-Signature` on webhooks) |
-| `LINEWORKS_PRIVATE_KEY`        | either   | —       | PEM string (use `\n` for newlines when putting on a single env line) |
-| `LINEWORKS_PRIVATE_KEY_FILE`   | either   | —       | Path to PEM file (alternative to inline env) |
-| `LINEWORKS_WEBHOOK_PORT`       | no       | `3013`  | HTTP port |
-| `LINEWORKS_ALLOWED_USERS`      | no       | (all)   | CSV of sender `userId`s allowed |
-| `MULMOCLAUDE_AUTH_TOKEN`       | no       | auto    | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL`          | no       | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
+| Variable                     | Required | Default                                              | Description                                                          |
+| ---------------------------- | -------- | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| `LINEWORKS_CLIENT_ID`        | yes      | —                                                    | App Client ID                                                        |
+| `LINEWORKS_CLIENT_SECRET`    | yes      | —                                                    | App Client Secret                                                    |
+| `LINEWORKS_SERVICE_ACCOUNT`  | yes      | —                                                    | Service account ID                                                   |
+| `LINEWORKS_BOT_ID`           | yes      | —                                                    | Numeric Bot ID                                                       |
+| `LINEWORKS_BOT_SECRET`       | yes      | —                                                    | Per-bot secret (used to verify `X-WORKS-Signature` on webhooks)      |
+| `LINEWORKS_PRIVATE_KEY`      | either   | —                                                    | PEM string (use `\n` for newlines when putting on a single env line) |
+| `LINEWORKS_PRIVATE_KEY_FILE` | either   | —                                                    | Path to PEM file (alternative to inline env)                         |
+| `LINEWORKS_WEBHOOK_PORT`     | no       | `3013`                                               | HTTP port (`0` asks the OS for a free port)                          |
+| `LINEWORKS_ALLOWED_USERS`    | no       | (all)                                                | CSV of sender `userId`s allowed                                      |
+| `MULMOCLAUDE_AUTH_TOKEN`     | no       | auto                                                 | MulmoClaude bearer token override                                    |
+| `MULMOCLAUDE_API_URL`        | no       | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL                                               |
+
+An unusable value (a typo, a number outside 0-65535) stops the bridge with a message naming
+the variable, rather than silently starting on the default. A port already in use is reported
+the same way (#3084).
 
 ### Auth token persistence across server restarts
 
@@ -89,12 +93,12 @@ Recommended: at least 32 characters of random data (the server logs a warning at
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `token: 400 invalid_grant` | Private key doesn't match the service account | Re-download the PEM for the exact service account ID |
-| `token: 401 invalid_client` | Client ID / secret wrong | Regenerate in Developer Console |
-| Webhook never arrives | Callback URL not HTTPS or event types unchecked | Set HTTPS URL; enable `Message` event type |
-| `send failed: 403` | Scope missing | Add `bot` + `bot.message` to the app and reauthorize |
+| Symptom                     | Cause                                           | Fix                                                  |
+| --------------------------- | ----------------------------------------------- | ---------------------------------------------------- |
+| `token: 400 invalid_grant`  | Private key doesn't match the service account   | Re-download the PEM for the exact service account ID |
+| `token: 401 invalid_client` | Client ID / secret wrong                        | Regenerate in Developer Console                      |
+| Webhook never arrives       | Callback URL not HTTPS or event types unchecked | Set HTTPS URL; enable `Message` event type           |
+| `send failed: 403`          | Scope missing                                   | Add `bot` + `bot.message` to the app and reauthorize |
 
 ## Security notes
 
@@ -125,7 +129,7 @@ Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package famil
 - [`@mulmobridge/google-chat`](https://www.npmjs.com/package/@mulmobridge/google-chat) — Google Chat via MulmoBridge relay
 - [`@mulmobridge/irc`](https://www.npmjs.com/package/@mulmobridge/irc) — IRC (Libera, Freenode, custom)
 - [`@mulmobridge/line`](https://www.npmjs.com/package/@mulmobridge/line) — LINE Messaging API via MulmoBridge relay
-- [`@mulmobridge/line-works`](https://www.npmjs.com/package/@mulmobridge/line-works) — LINE Works (enterprise LINE)  ← **this package**
+- [`@mulmobridge/line-works`](https://www.npmjs.com/package/@mulmobridge/line-works) — LINE Works (enterprise LINE) ← **this package**
 - [`@mulmobridge/mastodon`](https://www.npmjs.com/package/@mulmobridge/mastodon) — Mastodon DMs + mentions
 - [`@mulmobridge/matrix`](https://www.npmjs.com/package/@mulmobridge/matrix) — Matrix / Element
 - [`@mulmobridge/mattermost`](https://www.npmjs.com/package/@mulmobridge/mattermost) — Mattermost

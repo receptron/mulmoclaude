@@ -12,12 +12,11 @@
 //   MESSENGER_BRIDGE_PORT — Webhook port (default: 3004)
 
 import "dotenv/config";
-import { createWebhookApp, registerMetaWebhook } from "@mulmobridge/webhook-runtime";
+import { createWebhookApp, registerMetaWebhook, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { createBridgeClient, chunkText } from "@mulmobridge/client";
 import { extractMessengerMessages, type MessengerTextMessage } from "@mulmoclaude/common/meta-webhook";
 
 const TRANSPORT_ID = "messenger";
-const PORT = Number(process.env.MESSENGER_BRIDGE_PORT) || 3004;
 
 function readRequiredEnv(): { pageAccessToken: string; verifyToken: string; appSecret: string } {
   const pageAccessToken = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
@@ -105,7 +104,7 @@ async function processOneMessage(msg: MessengerTextMessage): Promise<void> {
 
 // ── Start ───────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+listenWebhook(app, { envVar: "MESSENGER_BRIDGE_PORT", fallback: 3004 }, (port) => {
   console.log("MulmoClaude Messenger bridge");
-  console.log(`Webhook listening on http://localhost:${PORT}/webhook`);
+  console.log(`Webhook listening on http://localhost:${port}/webhook`);
 });
