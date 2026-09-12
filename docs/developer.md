@@ -320,102 +320,91 @@ Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on
 
 ---
 
-## Notifications (PoC scaffold)
+## Notifications (the notifier)
 
-A one-shot, delayed **push fan-out** that lands on every open Web tab _and_ every connected bridge simultaneously. Scaffolding for the in-app notification center (#144) and external-channel notifications (#142) — the endpoint and fan-out are stable, the UI / persistence layers land in those issues.
+One engine, one bell. A plugin or a host module publishes an entry; it is persisted, fanned out
+over pub-sub, and rendered in the bell popup until something clears it.
 
-### Trigger
+Engine: `packages/core/src/notifier/` — `engine.ts` (the API), `store.ts` (file I/O),
+`types.ts` (the value contract, and the best thing to read first), `validate.ts` (publish-input
+limits, kept pure so any future caller can share them).
 
-```bash
-curl -X POST http://localhost:3001/api/notifications/test \
-  -H "Authorization: Bearer $(cat ~/mulmoclaude/.session-token)" \
-  -H "Content-Type: application/json" \
-  -d '{"message":"hello from curl","delaySeconds":5}'
-# → 202 { "firesAt": "2026-04-16T15:37:42.123Z", "delaySeconds": 5 }
-```
+### The entry contract
 
-Body fields (all optional):
+A `NotifierEntry` carries an engine-assigned `id`, a `pluginPkg` namespace, a `severity`
+(`info` / `nudge` / `urgent` — badge colour, worst-wins), a `title`, an optional `body`, an
+optional `navigateTarget`, and opaque `pluginData` the engine never inspects.
 
-| Field          | Default                | Effect                                                                                                                                 |
-| -------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `message`      | `"Test notification"`  | Title delivered to both targets.                                                                                                       |
-| `body`         | _(none)_               | Optional second-line body in the bell panel.                                                                                           |
-| `delaySeconds` | `60`, capped at `3600` | Timer length. Non-numeric / NaN falls back to the default; negative clamps to `0`; fractional floors.                                  |
-| `transportId`  | `"cli"`                | Bridge target for `chatService.pushToBridge`.                                                                                          |
-| `chatId`       | `"notifications"`      | Bridge chat slot.                                                                                                                      |
-| `kind`         | `"push"`               | One of `todo` / `scheduler` / `agent` / `journal` / `push` / `bridge`. Drives the bell-panel icon — see `NOTIFICATION_ICONS`.          |
-| `action`       | `{ type: "none" }`     | Permalink target — see [Notification permalinks](#notification-permalinks-762) below. Without this the click in the bell does nothing. |
+`lifecycle` is the field that changes behaviour, and it says **who closes the entry**:
 
-### Fan-out at fire time
+| `lifecycle` | Who clears it | Deep link |
+| ----------- | ------------- | --------- |
+| `fyi` (default) | the user, by dismissing the row | none |
+| `action` | the plugin, when the underlying state changes (the tax got paid, the digest got read) | required |
 
-```text
-setTimeout elapses
-  ├─ pubsub.publish(PUBSUB_CHANNELS.notifications, { message, firedAt })  → Web
-  └─ chatService.pushToBridge(transportId, chatId, message)               → Bridge (offline-queued)
-```
+The engine enforces exactly two rules at publish time, and they both follow from that: an
+`action` entry MUST have a non-empty `navigateTarget` (without one the row's click does nothing,
+so it is a degraded `fyi`), and it MUST NOT be `info` severity (a low-priority obligation is
+incoherent). Everything downstream — fan-out, persistence, history — is lifecycle-blind.
 
-Web subscribers listen on `PUBSUB_CHANNELS.notifications` (`src/config/pubsubChannels.ts`). The `useNotifications` composable wraps the subscription; `NotificationToast.vue` renders the latest inbound item as a top-right toast that auto-dismisses after 5 s. Bridges receive via the Phase B push socket (`yarn cli` prints `[push] notifications: hello …`).
+`validate.ts` caps the rest, and the engine re-reads every entry on every list call, so the caps
+protect every reader rather than just the writer: `title` 200 chars and non-empty, `body` 4000,
+`navigateTarget` 1000, `pluginData` 16 KiB of JSON. A `navigateTarget` must also be a same-origin
+relative path beginning with a single `/` — a scheme (`javascript:`, `https://…`) or a
+scheme-relative `//host/…` is rejected, because the bell renders it as a link.
 
-### Observing the PoC end-to-end
+### Publishing
 
-1. `yarn dev` (server + Vite)
-2. In a second terminal: `yarn cli`
-3. In a third terminal: fire the curl above with `delaySeconds: 5`
-4. After 5 s: a toast slides in top-right of the open browser tab ("hello from curl"), and the CLI terminal prints `[push] notifications: hello from curl`
+**There is no generic publish endpoint, deliberately.** `server/api/routes/notifier.ts` states
+the reason: bearer auth proves "the caller is on this machine and knows the token", not "the
+caller is plugin X", so an HTTP publish would let any token holder publish under any plugin's
+namespace. Publishers are in-process:
 
-### Scope caveats
+- **A plugin** calls `runtime.notifier.publish`, which `makeScopedNotifier`
+  (`server/plugins/runtime.ts`) binds to the calling plugin's own `pluginPkg`.
+- **Host modules** call `engine.publish` directly — `server/agent/mcp-tools/notify.ts`,
+  `server/plugins/diagnostics.ts`, `server/agent/mcpFailureMonitor.ts`,
+  `server/system/announceOptionalDeps.ts` and others.
 
-- **Single toast**, no stack / notification-center bell / bell badge — those land with the real notification center (#144). The toast is intentionally a thin wrapper to confirm the pipeline delivers.
-- **No persistence**: `setTimeout` is in-memory; a server restart before the delay elapses drops the push.
-- **One bridge per call**: `pushToBridge` targets a single `transportId`. Fan-out to every connected bridge is deferred until a caller needs it.
-- **One-shot only**: no repeat / snooze / dedup. Production triggers should go through the notification center once #144 lands.
+`server/events/notifications.ts` is a legacy wrapper kept so those older call sites did not have
+to change: it maps the old `kind` to a `pluginPkg`, the old `priority` to a `severity`, and
+flattens a typed `NotificationAction` to a relative URL through `legacyActionToNavigateTarget()`.
+Its bridge fan-out is gone — the only callers that ever set `transportId` were the PoC test route
+and `scheduleTestNotification`, both deleted with it.
 
-Full motivation + file plan: `plans/done/feat-notification-push-scaffold.md`. Implementation: `server/events/notifications.ts` (scheduler) + `server/api/routes/notifications.ts` (HTTP wrapper) + `src/composables/useNotifications.ts` + `src/components/NotificationToast.vue`.
+### What the UI talks to
 
-### Notification permalinks (#762)
+`POST /api/notifier` (`API_ROUTES.notifier.dispatch`) takes `{ action }` — `list`, `listHistory`,
+`clear`, `cancel`. `clear` and `cancel` are host-scoped on purpose: the bell belongs to the host,
+sees every plugin's entries, and must be able to dismiss any of them. Per-plugin isolation
+(`clearForPlugin`, `getForPlugin`) exists only on the in-process API.
 
-Clicking a bell entry calls `router.push` with whatever its `action.target` resolves to. Targets are typed per feature page so the dispatcher and the page components agree on identifier semantics:
+`src/composables/useNotifications.ts` seeds both lists from that endpoint and then follows
+`PUBSUB_CHANNELS.notifier`. Events are a discriminated union — `published`, `updated`, `cleared`,
+`cancelled` — and the composable rebuilds each payload field by field, because pub-sub JSON is
+untrusted. `src/components/NotificationBell.vue` renders the active list plus a read-only
+History section. Clicking a row routes to `navigateTarget` with `&notificationId=<id>` appended,
+so the landing page knows which entry to clear.
 
-| `target.view` | Identifier(s)                        | Resolves to URL                                       |
-| ------------- | ------------------------------------ | ----------------------------------------------------- |
-| `chat`        | `sessionId` (required)               | `/chat/:sessionId`                                    |
-| `calendar`    | _none_                               | `/calendar`                                           |
-| `automations` | `taskId?`                            | `/automations` or `/automations/:taskId`              |
-| `sources`     | `slug?`                              | `/sources` or `/sources/:slug`                        |
-| `files`       | `path?`                              | `/files/<segments>` (catch-all)                       |
-| `wiki`        | `slug?`, `anchor?`                   | `/wiki/pages/:slug` (`#:anchor` if set)               |
+### Persistence
 
-Pure dispatcher: `src/utils/notification/dispatch.ts`. App.vue feeds the result straight into `router.push(target)`.
+`<workspace>/data/notifier/` (`WORKSPACE_DIRS.notifier`) holds two files, addressed as
+`WORKSPACE_PATHS.notifierActive` and `WORKSPACE_PATHS.notifierHistory`. `active.json` is a
+snapshot of entries that have not been cleared or cancelled — not an event log. `history.json`
+holds terminated entries newest-first, capped at `HISTORY_CAP` (50) with FIFO eviction; each
+records `terminalType` (`cleared` / `cancelled`) and `terminalAt`.
 
-#### Manual testing
+### Coverage
 
-`scripts/dev/fire-sample-notifications.sh` POSTs eight representative notifications — one per target variant — through the test endpoint. Useful for confirming every permalink lands on the right page after a UI change.
+- **Unit**: `packages/core/test/notifier/test_engine.ts` and `test/server/notifier/test_engine.ts`.
+- **E2E**: `e2e/tests/notifications.spec.ts` — four suites over the bell (navigation, dismiss,
+  history more/less, history body expansion). Run via `yarn test:e2e notifications`.
 
-```bash
-# Server + Vite
-yarn dev
+Historical plan docs: `plans/done/feat-notification-push-scaffold.md` and
+`plans/done/feat-notification-permalinks.md`. Both describe the PoC that preceded this engine —
+the typed `action.target` dispatcher they specify no longer exists, and `navigateTarget` (a plain
+relative URL) took its place.
 
-# In another terminal
-./scripts/dev/fire-sample-notifications.sh
-# (optional flags) --host http://127.0.0.1:3001  --delay 0.5
-```
-
-The script reads the bearer token from `MULMOCLAUDE_AUTH_TOKEN` first, then falls back to `~/mulmoclaude/.session-token`. **Stale-token gotcha**: a long-running server's in-memory token can drift from the on-disk file if a different server process overwrote it. If every call returns `401`, restart `yarn dev` so memory + file resync, or pin a token across restarts:
-
-```bash
-MULMOCLAUDE_AUTH_TOKEN=$(openssl rand -hex 32) yarn dev
-# In another terminal — must use the same value
-MULMOCLAUDE_AUTH_TOKEN=<same value> ./scripts/dev/fire-sample-notifications.sh
-```
-
-After firing, open the bell in the Web UI and click each entry; every click should land on the URL noted in the script's `→` output line. The `automations` and `sources` rows additionally scroll + flash the matching item via `scrollIntoViewByTestId` (`src/utils/dom/`).
-
-#### Automated coverage
-
-- **Unit**: `test/utils/notification/test_dispatch.ts` — every target variant + edge cases (missing sessionId, file path splitting, wiki anchor hash).
-- **E2E**: `e2e/tests/notifications.spec.ts` — boots the app with a mocked pub-sub socket that delivers one canned payload per scenario, clicks bell + item, asserts the resulting URL. Run via `yarn test:e2e notifications`.
-
-Plan doc: `plans/done/feat-notification-permalinks.md`. Implementation lives in `src/types/notification.ts` (typed targets), `src/utils/notification/dispatch.ts` (dispatcher), `src/router/pageRoutes.ts` (route names), and per-page mount-time scroll handlers (`SourcesView.vue`, `TasksTab.vue`).
 
 ---
 

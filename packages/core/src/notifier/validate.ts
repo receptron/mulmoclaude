@@ -1,7 +1,9 @@
-// Publish-input validation — pure, dependency-free. Shared by
-// `engine.publish` (throws on error) and the host's HTTP route
-// (returns 400 on error). Single source of truth so plugin-runtime
-// callers and HTTP callers can't drift.
+// Publish-input validation — pure, dependency-free, so every caller
+// can share one rule set. Today that is `engine.publish` and
+// `updateForPlugin`, both of which throw on error: publish is
+// deliberately absent from the HTTP surface (see
+// `server/api/routes/notifier.ts`), so the route layer this once also
+// served no longer exists.
 
 import type { PublishInput } from "./types.js";
 
