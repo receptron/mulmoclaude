@@ -465,6 +465,14 @@ describe("path transform options", () => {
     withMesh(`hull {\n fill { ${square} }\n translate 0 0 2\n fill { ${square} }\n}`, (mesh) => near(extent(mesh).toArray(), [2, 2, 2]));
   });
 
+  it("lofts a defined or returned path value — the marker survives capture and placement", () => {
+    withMesh("define sq square\nloft {\n sq\n translate 0 0 1\n sq\n}", (mesh) => near(extent(mesh).toArray(), [1, 1, 1]));
+    withMesh("define sq(s) {\n square { size s }\n}\nloft {\n sq(1)\n translate 0 0 1\n sq(2)\n}", (mesh) => near(extent(mesh).toArray(), [2, 2, 1]));
+    withMesh('define bar text "I"\nloft {\n bar\n translate 0 0 1\n bar\n}', (mesh) => assert.ok(extent(mesh).z > 0.99));
+    // A defined solid is still not a path.
+    assert.throws(() => astToThreeJS(parseShapeScript("define c cube\nloft {\n c\n translate 0 0 1\n c\n}")), /`loft` expects `path`/);
+  });
+
   it("lofts open paths, closing each section implicitly as upstream does", () => {
     // Native 1.11.4 builds a watertight 2×2×2 box from four unrepeated corners per section.
     const open = (z: number) => `path {\n position 0 0 ${z}\n point -1 -1\n point 1 -1\n point 1 1\n point -1 1\n}`;

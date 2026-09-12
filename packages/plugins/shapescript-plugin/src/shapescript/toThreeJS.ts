@@ -777,6 +777,7 @@ export class Converter {
     const geometry = value.geometry.clone();
     const mesh = this.makeMesh(geometry, this.createMaterial({ properties: {} }, undefined, geometry.hasAttribute("color")));
     if (value.name !== undefined) mesh.name = value.name;
+    if (value.path) markPathValue(mesh);
     this.applyCurrentTransform(mesh);
     return mesh;
   }
@@ -807,7 +808,7 @@ export class Converter {
   private buildScratch(
     nodes: readonly SceneNode[],
     after?: (captured: Value[]) => void,
-  ): { captured: Value[]; geometries: THREE.BufferGeometry[]; name: string | undefined; polygons: PolygonValue[] | undefined } {
+  ): { captured: Value[]; geometries: THREE.BufferGeometry[]; name: string | undefined; polygons: PolygonValue[] | undefined; path: boolean } {
     const temporary = new THREE.Group();
     const captured: Value[] = [];
     const charged = this.vertexCount;
@@ -831,7 +832,8 @@ export class Converter {
               points: face.points.map((point) => new THREE.Vector3(...point).applyMatrix4(single.matrixWorld).toArray() as Point3),
             }))
           : undefined;
-      return { captured, geometries, name: single?.name || undefined, polygons };
+      const path = meshes.length > 0 && meshes.every(isPathValue);
+      return { captured, geometries, name: single?.name || undefined, polygons, path };
     } finally {
       disposeObject3D(temporary);
       this.vertexCount = charged;
@@ -938,7 +940,7 @@ export class Converter {
    *  merged into one geometry the script can read members of and place. A
    *  polygon block or a function that returned one is that value itself. */
   private shapeValue(node: SceneNode): Value {
-    const { captured, geometries, name, polygons } = this.buildScratch([node]);
+    const { captured, geometries, name, polygons, path } = this.buildScratch([node]);
     if (geometries.length === 0) {
       if (captured.length === 1) return captured[0]!;
       if (captured.length > 1) return captured;
@@ -947,7 +949,7 @@ export class Converter {
     const geometry = mergeMeshGeometries(geometries);
     geometries.forEach((part) => part.dispose());
     this.chargeRetained(geometry);
-    return { kind: "mesh", geometry, ...(name === undefined ? {} : { name }), ...(polygons === undefined ? {} : { polygons }) };
+    return { kind: "mesh", geometry, ...(name === undefined ? {} : { name }), ...(polygons === undefined ? {} : { polygons }), ...(path ? { path } : {}) };
   }
 
   /** A function whose body builds shapes: run it at the origin with its
@@ -955,14 +957,14 @@ export class Converter {
   private callShapeFunction(fn: FunctionValue, args: Value[]): Value {
     const { params = [], body = [], value, name } = fn.definition;
     return this.evaluator.withArguments(params, args, () => {
-      const { captured, geometries } = this.buildScratch(body, (values) => {
+      const { captured, geometries, path } = this.buildScratch(body, (values) => {
         // A shape the body ends with is placed where the body's transforms
         // left the frame, as a statement there would be.
         if (value !== undefined) values.push(this.transformedForCapture(this.evaluator.evaluate(value)));
       });
       for (const geometry of geometries) {
         this.chargeRetained(geometry);
-        captured.push({ kind: "mesh", geometry });
+        captured.push({ kind: "mesh", geometry, ...(path ? { path } : {}) });
       }
       if (captured.length === 0) throw new Error(`Function \`${name}\` produced no value`);
       return captured.length === 1 ? captured[0]! : captured;
