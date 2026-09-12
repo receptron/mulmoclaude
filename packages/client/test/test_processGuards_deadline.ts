@@ -26,11 +26,27 @@ interface ChildResult {
   elapsedMs: number;
 }
 
+// Windows has no catchable SIGTERM: `subprocess.kill()` terminates the target
+// unconditionally whatever name it is given, so the child dies before its
+// handler runs and the deadline this test exists to measure never starts. The
+// fixture therefore also accepts the request on stdin, which lands in the same
+// `process.on("SIGTERM")` handler — so only the door changes, not what is
+// observed. POSIX keeps the real signal: nothing else in the repo proves an
+// actual OS signal reaches a bridge's handler (the sibling suite synthesises it
+// with `process.emit`), and that coverage is worth keeping where it is possible.
+const requestShutdown = (child: ReturnType<typeof spawn>): void => {
+  if (process.platform === "win32") child.stdin?.write("shutdown\n");
+  else child.kill("SIGTERM");
+};
+
 const runUntilShutdown = async (): Promise<ChildResult> =>
   new Promise<ChildResult>((resolve, reject) => {
     const child = spawn(process.execPath, ["--import", "tsx", FIXTURE, String(GRACE_MS)], {
       cwd: path.join(HERE, "..", "..", ".."),
-      stdio: ["ignore", "pipe", "pipe"],
+      // stdin is piped on every platform so the two trigger paths differ in one
+      // line rather than in the spawn shape; the fixture unrefs it, so it does
+      // not become a second referenced handle and mask what this test measures.
+      stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
     let stderr = "";
@@ -45,7 +61,7 @@ const runUntilShutdown = async (): Promise<ChildResult> =>
       // before it had a handler at all.
       if (startedAt === 0 && stdout.includes("ready")) {
         startedAt = Date.now();
-        child.kill("SIGTERM");
+        requestShutdown(child);
       }
     });
     child.stderr.on("data", (chunk: Buffer) => {
