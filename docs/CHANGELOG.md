@@ -10,6 +10,41 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### `@mulmoclaude/common@1.3.0`, `@mulmobridge/webhook-runtime@1.2.0`, `@mulmoclaude/core@4.9.1` — the versions catch up with #3084
+
+#3084 added exports to two shared packages and changed a bundled help asset, all at unchanged
+versions. That is the state `scripts/mulmoclaude/drift.mjs` exists to refuse: npm keeps serving the
+old tarball, so a consumer resolving `^1.2.0` gets a `@mulmoclaude/common` with no `asInt`, and one
+resolving `^1.1.0` gets a `@mulmobridge/webhook-runtime` with no `listenWebhook` — a runtime
+"does not provide an export named …", invisible to lint, typecheck and local dev because a
+yarn-workspace symlink always points at the freshly built local dist.
+
+The drift gate only catches part of it: it scans the `@mulmobridge/*` packages the launcher depends
+on, which is why `@mulmobridge/client` (bumped in the PR that added its export) failed the check
+while `@mulmobridge/webhook-runtime` — not a launcher dependency — and `@mulmoclaude/common` — wrong
+scope — passed. `yarn audit:releases --code-only` is what names those, and it is the reason this
+bump is not left to the next accidental discovery.
+
+- **`@mulmoclaude/common` 1.3.0** (minor) — `asInt`, `PORT_RANGE` and the `IntRange` type moved here
+  from `server/utils/envCoerce.ts` so the host, the dev proxy and the bridges bound a port with one
+  rule. `PORT_RANGE` is typed `Required<IntRange>` so a caller can compare against its bounds
+  without a non-null assertion.
+- **`@mulmobridge/webhook-runtime` 1.2.0** (minor) — `listenWebhook`, the single bind path for the
+  nine webhook bridges: it resolves the port, refuses an unusable value with the env var named,
+  explains `EADDRINUSE` / `EACCES`, and reports the port actually bound.
+- **`@mulmoclaude/core` 4.9.1** (patch) — no behaviour change. It carries the new
+  `assets/helps/error-recovery.md` sections (the agent reads that file before asking the user
+  anything on a tool failure, so the content only reaches npm users through a core publish) plus the
+  comment corrections from #3106 in `src/notifier/`, and its declared range on
+  `@mulmoclaude/common` moves to `^1.3.0`.
+
+Every declared range on the three is swept in the same change — 33 on common, 9 on webhook-runtime,
+9 on core — because a caret range on an internal package does not float a consumer forward on its
+own. The launcher's OWN version is untouched; that field belongs to `/publish-mulmoclaude`.
+
+Publish order is bottom-up and not optional here, since each dependent imports something the
+published copy lacks: common → webhook-runtime and client → the bridges.
+
 #### A webhook bridge read its port with `Number(env) || N`, and a busy port killed it unexplained (#3084)
 
 The nine bridges that receive events over an inbound webhook (`line`, `line-works`, `google-chat`,
@@ -176,7 +211,7 @@ did not repeat its first was dropped as an open stroke, so a two-section loft fa
 at least two cross-sections"; upstream closes such a section implicitly and so does this builder
 now. Sections keep their written order when open and closed ones mix.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.9.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.6.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.3.0`, `@mulmoclaude/core@4.9.1`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.6.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 #### A bridge no longer has to be restarted every time the server is (#3078)
 

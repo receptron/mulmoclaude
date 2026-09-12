@@ -24,7 +24,7 @@
   "dependencies": {
     "@mulmobridge/client": "^1.1.0",
     "@mulmobridge/protocol": "^1.0.1",
-    "@mulmobridge/webhook-runtime": "^1.1.0",
+    "@mulmobridge/webhook-runtime": "^1.2.0",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
     "express-rate-limit": "^8.7.0"
