@@ -27,6 +27,9 @@ export interface ProcessGuardOptions {
   onShutdown?: ShutdownTask;
   /** Test seam; production ends the process. */
   exit?: (code: number) => void;
+  /** How long a shutdown task may take before the process leaves anyway.
+   *  Defaults to `SHUTDOWN_GRACE_MS`; tests shorten it. */
+  graceMs?: number;
 }
 
 /** A shutdown task that hangs must not hold the terminal hostage. */
@@ -63,26 +66,34 @@ function installSignalGuards(opts: ProcessGuardOptions, exit: (code: number) => 
     }
     shuttingDown = true;
     console.log(`[${opts.name}] ${signal} — shutting down`);
-    void runShutdown(opts.name, opts.onShutdown).then(() => exit(0));
+    void runShutdown(opts.name, opts.onShutdown, opts.graceMs ?? SHUTDOWN_GRACE_MS).then(() => exit(0));
   };
   (["SIGINT", "SIGTERM"] as const).forEach((signal) => process.on(signal, () => handle(signal)));
 }
 
-async function runShutdown(name: string, task: ShutdownTask | undefined): Promise<void> {
+async function runShutdown(name: string, task: ShutdownTask | undefined, graceMs: number): Promise<void> {
   if (task === undefined) return;
+  // The deadline timer stays REFERENCED, and is cleared once the race settles.
+  // An `unref`ed one looks tidier and silently breaks the guarantee: a shutdown
+  // task that hangs after the last other handle closed lets Node empty its loop
+  // and exit before the timer fires, so neither the message below nor the
+  // `exit(0)` that follows this call ever runs. Keeping it referenced is what
+  // holds the process open for exactly as long as the grace period.
+  let deadline: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([Promise.resolve(task()), graceExpiry(name)]);
+    await Promise.race([
+      Promise.resolve(task()),
+      new Promise<void>((resolve) => {
+        deadline = setTimeout(() => {
+          console.error(`[${name}] shutdown did not finish within ${graceMs}ms — exiting anyway`);
+          resolve();
+        }, graceMs);
+      }),
+    ]);
   } catch (err) {
     console.error(`[${name}] shutdown task failed: ${errorMessage(err)}`);
+  } finally {
+    // A fast shutdown must not wait out the rest of the grace period.
+    if (deadline !== undefined) clearTimeout(deadline);
   }
-}
-
-function graceExpiry(name: string): Promise<void> {
-  return new Promise<void>((resolve) => {
-    // `unref` so a shutdown that finishes early is not held open by this timer.
-    setTimeout(() => {
-      console.error(`[${name}] shutdown did not finish within ${SHUTDOWN_GRACE_MS}ms — exiting anyway`);
-      resolve();
-    }, SHUTDOWN_GRACE_MS).unref();
-  });
 }

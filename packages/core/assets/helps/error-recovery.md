@@ -1392,12 +1392,13 @@ treatment, and the workspace mounted if you want it to follow the port.
 - The platform token (bot token, app token) was revoked or regenerated.
 - The bridge process is not running at all. Check before assuming anything above.
   Since #3084 a bridge that died says why on its last line — `[<transport>]
-unhandled rejection — exiting: …` or `[<transport>] uncaught exception —
-exiting: …`, naming the transport. A bridge killed with Ctrl-C or `kill` says
-  `[<transport>] SIGINT — shutting down` instead. **No such line and the process
-  gone** means either an older npm build (they had no handlers at all, so a
-  missed `await` left only a stack trace) or a kill that no handler can catch
-  (`SIGKILL`, or the OOM killer).
+  unhandled rejection — exiting: …` or `[<transport>] uncaught exception —
+  exiting: …`, naming the transport. A bridge stopped on purpose names the
+  signal: Ctrl-C prints `[<transport>] SIGINT — shutting down`, while a plain
+  `kill <pid>` sends SIGTERM and prints `[<transport>] SIGTERM — shutting down`.
+  **No such line and the process gone** means either an older npm build (they
+  had no handlers at all, so a missed `await` left only a stack trace) or a kill
+  no handler can catch (`kill -9` / SIGKILL, or the OOM killer).
 
 ### What to collect if none of it explains the silence
 
