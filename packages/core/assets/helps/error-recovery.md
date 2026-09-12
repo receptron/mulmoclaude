@@ -1321,7 +1321,9 @@ this holds for all of them, not only the ones with a banner:
 Connecting to http://127.0.0.1:3099
 ```
 
-Compare that with what the server published:
+It prints again each time the bridge follows the server to a new address, so a
+bridge that has outlived a restart has several. **Compare the last one** — the
+earlier lines are where it used to be. Against what the server published:
 
 ```bash
 cat "${MULMOCLAUDE_WORKSPACE_PATH:-$HOME/mulmoclaude}/.server-port"

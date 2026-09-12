@@ -410,3 +410,58 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
     }
   });
 });
+
+// `error-recovery.md` tells the operator to read the bridge's `Connecting to …`
+// line and compare it with `.server-port` — that is the whole first step of the
+// "bot does not reply and nothing errors" recipe, and the reason #3085 exists is
+// that a help describing a diagnostic the code does not emit is worse than no
+// help. Nothing else in the suite reads this line, so without these two cases a
+// deleted `console.error` leaves every gate green and the shipped help false.
+//
+// The stream matters as much as the text: the help quotes it as terminal output,
+// and a bridge's stdout is its transcript. Asserting on the child's STDERR is
+// what pins that.
+describe("the bridge prints the address the help tells you to read (#3085)", () => {
+  /** Poll the child's accumulated stderr until `wanted` shows up. */
+  async function waitForLine(read: () => string, wanted: string, budgetMs: number): Promise<string> {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      if (read().includes(wanted)) return read();
+      await sleep(POLL_MS);
+    }
+    // `throw` rather than `assert.fail`: the latter is `never` to TypeScript but
+    // a plain call to eslint, which then reads the function as falling off its
+    // end (`consistent-return`).
+    throw new Error(`never printed ${JSON.stringify(wanted)}. stderr so far:\n${read()}`);
+  }
+
+  it("names the published address on startup, and again after it follows a restart", async () => {
+    const first = await startGeneration("gen-say-a", "token-say-a");
+    publish(first);
+    const child = spawnBridge([]);
+    const chunks: string[] = [];
+    child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk.toString()));
+    const stderr = (): string => chunks.join("");
+    const second = { value: null as Generation | null };
+    try {
+      const atStartup = await waitForLine(stderr, `Connecting to http://127.0.0.1:${first.port}`, RECONNECT_BUDGET_MS);
+      assert.equal(atStartup.includes("localhost:3001"), false, "the bridge announced a hardcoded address");
+
+      // The restart the help's "compare the LAST one" sentence is about.
+      await first.stop();
+      second.value = await startGeneration("gen-say-b", "token-say-b");
+      publish(second.value);
+
+      const afterRestart = await waitForLine(stderr, `Connecting to http://127.0.0.1:${second.value.port}`, RECONNECT_BUDGET_MS);
+      assert.ok(
+        afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${second.value.port}`) >
+          afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${first.port}`),
+        "the last address printed must be where the bridge is now, not where it was",
+      );
+    } finally {
+      child.kill("SIGKILL");
+      await first.stop();
+      if (second.value !== null) await second.value.stop();
+    }
+  });
+});

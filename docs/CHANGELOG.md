@@ -34,6 +34,15 @@ WAITING because the server has not published its port (a cold start builds the s
 between writing the token and binding), and a bridge that cannot see the workspace at all and
 therefore needs both `MULMOCLAUDE_API_URL` and `MULMOCLAUDE_AUTH_TOKEN`.
 
+The banner is now guarded rather than described. `test/bridges/test_bridgeFollowsRestart.ts`
+spawns a bridge as its own process and asserts the line appears on the child's **stderr**,
+naming the published port — and appears again, naming the new one, after the bridge follows a
+restart. Deleting the `console.error` from the built client turns that case red and leaves the
+other eleven green. Nothing else in the suite reads the line, so without it the help could go
+back to describing a diagnostic that no longer exists — which is the whole bug this entry is
+about. The help now also says to compare the LAST such line, since a bridge that has outlived a
+restart prints several.
+
 It opens by saying what NOT to advise: "restart the bridge" after a server restart has been
 wrong since #3078.
 
