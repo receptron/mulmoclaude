@@ -350,7 +350,7 @@ test.describe("wiki navigation — from manageWiki tool result", () => {
 
   test("clicking a page card in a tool-result index navigates to /wiki", async ({ page }) => {
     await page.goto("/chat/wiki-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Select the wiki index tool result in the right sidebar.
     await page.getByText(`Wiki Index`, { exact: false }).first().click();
@@ -370,7 +370,7 @@ test.describe("wiki navigation — from manageWiki tool result", () => {
 
   test("Chat button returns to /chat from /wiki (session-tab bar is chat-only)", async ({ page }) => {
     await page.goto("/chat/wiki-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Leave /chat for /wiki. The session-history chrome is now
     // chat-only, so the session-tab bar unmounts off /chat.

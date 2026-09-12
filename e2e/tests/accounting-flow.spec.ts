@@ -57,7 +57,7 @@ test.describe("accounting plugin — flow", () => {
     });
 
     await page.goto(`/chat/${SESSION_ID}`);
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Production path: <AccountingApp> mounts on the seeded book and
     // shows the regular chrome (header + tabs). The first-run form
@@ -327,7 +327,7 @@ test.describe("accounting plugin — flow", () => {
     await setupSession(page, { envelope: { bookId: null } });
 
     await page.goto(`/chat/${SESSION_ID}`);
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     await expect(page.getByTestId("accounting-app")).toBeVisible();
     await expect(page.getByTestId("accounting-new-book-modal")).toBeVisible();

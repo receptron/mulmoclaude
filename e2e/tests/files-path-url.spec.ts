@@ -188,7 +188,7 @@ test.describe("rejections", () => {
   for (const { label, url } of BAD_PATHS) {
     test(`rejects ${label}`, async ({ page }) => {
       await page.goto(url);
-      await expect(page.getByText("MulmoClaude")).toBeVisible();
+      await expect(page.getByTestId("app-title")).toBeVisible();
       await expect(async () => {
         const parsed = new URL(page.url());
         expect(parsed.searchParams.get("path")).toBeNull();

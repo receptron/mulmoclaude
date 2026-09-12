@@ -13,7 +13,7 @@ test.describe("right sidebar toggle (useRightSidebar)", () => {
 
   test("clicking the header button shows/hides the sidebar", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // The sidebar has a unique heading "Tool Call History" (h2).
     const sidebarHeading = page.getByRole("heading", {
@@ -31,7 +31,7 @@ test.describe("right sidebar toggle (useRightSidebar)", () => {
 
   test("toggle state persists to localStorage", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     await page.getByTitle("Tool call history", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Tool Call History" })).toBeVisible();
@@ -53,14 +53,14 @@ test.describe("right sidebar toggle (useRightSidebar)", () => {
     await page.addInitScript(() => localStorage.setItem("right_sidebar_visible", "true"));
 
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // Panel and toggle button both visible on chat.
     await expect(page.getByRole("heading", { name: "Tool Call History" })).toBeVisible();
     await expect(page.getByTitle("Tool call history", { exact: true })).toBeVisible();
 
     for (const route of ["/wiki", "/automations", "/files"] as const) {
       await page.goto(route);
-      await expect(page.getByText("MulmoClaude")).toBeVisible();
+      await expect(page.getByTestId("app-title")).toBeVisible();
       // Panel content gone.
       await expect(page.getByRole("heading", { name: "Tool Call History" })).toBeHidden();
       // Toggle button gone (dead control suppression).

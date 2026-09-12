@@ -18,7 +18,7 @@ test.describe("URL injection defence", () => {
     // Even with a garbage path, the app should not crash.
     // The catch-all redirect sends it to /chat.
     await page.goto("/chat/<script>alert(1)</script>");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // URL must resolve to a valid /chat path — no script tags in decoded pathname
     const pathname = decodeURIComponent(new URL(page.url()).pathname);
@@ -28,7 +28,7 @@ test.describe("URL injection defence", () => {
 
   test("path traversal → app renders normally", async ({ page }) => {
     await page.goto("/chat/..%2F..%2Fetc%2Fpasswd");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // URL must resolve to a valid /chat path, not a traversed location
     const { pathname } = new URL(page.url());
@@ -38,18 +38,18 @@ test.describe("URL injection defence", () => {
   test("extremely long path segment → app renders normally", async ({ page }) => {
     const longStr = "a".repeat(200);
     await page.goto(`/chat/${longStr}`);
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
   });
 
   test("unknown route → redirected to /chat, app loads", async ({ page }) => {
     await page.goto("/admin/secret");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     const { pathname } = new URL(page.url());
     expect(pathname).toMatch(VALID_CHAT_PATH);
   });
 
   test("special chars in path → app does not crash", async ({ page }) => {
     await page.goto('/chat/test"onmouseover="alert(1)');
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
   });
 });
