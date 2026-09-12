@@ -13,7 +13,8 @@ Generic HTTP-webhook bridge for [MulmoClaude](https://github.com/receptron/mulmo
 ## Quick start
 
 ```bash
-# Start the bridge (with MulmoClaude running on :3001)
+# Start the bridge (MulmoClaude must be running; the bridge finds its port
+# in the workspace, so you do not need to know it)
 npx @mulmobridge/webhook
 
 # In another terminal
@@ -56,13 +57,15 @@ curl -X POST http://localhost:3009/webhook \
 | `WEBHOOK_SECRET`    | yes (prod) | —        | Shared secret. Every request must include `x-webhook-secret: <value>` header (constant-time compared). The bridge refuses to start without a secret unless `WEBHOOK_ALLOW_OPEN=1` is also set. |
 | `WEBHOOK_ALLOW_OPEN`| no       | —          | Set to `1` to run without `WEBHOOK_SECRET` (local testing only). Prints a loud warning and leaves the endpoint unauthenticated — every POST will drive an LLM call. Do **not** expose publicly. |
 | `MULMOCLAUDE_AUTH_TOKEN` | no  | auto       | MulmoClaude bearer token override |
-| `MULMOCLAUDE_API_URL` | no     | auto (`.server-port`, else `http://localhost:3001`) | MulmoClaude server URL |
+| `MULMOCLAUDE_API_URL` | no     | auto (`.server-port`; waits if nothing is published) | MulmoClaude server URL |
 
 ### Auth token persistence across server restarts
 
-The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset). The bridge reads that file once at launch and keeps the token in memory — so if the server restarts while the bridge is running, the bridge keeps using the **old** token and every API call returns **401**, silently.
+The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset), alongside the port it bound in `.server-port`.
 
-**Fix**: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on **both** the server and the bridge. The server uses it verbatim instead of regenerating, so the token survives restarts and the bridge stays authenticated.
+**The bridge follows a restart on its own.** When the connection fails it re-reads both files, and if the server came back as a different generation — new token, new port, or both — it rebuilds its socket against it (#3078). You do not have to restart the bridge.
+
+Pinning the token is still useful when the bridge runs **on a different machine** from the server, where it cannot read the workspace at all: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on both sides. The server then uses it verbatim instead of regenerating.
 
 ```bash
 # Server (one-time setup — same value across restarts)

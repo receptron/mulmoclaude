@@ -23,7 +23,7 @@ how they fit into the five layers), see
 |---|---|
 | Protocol | [socket.io](https://socket.io) 4.x |
 | Path | `/ws/chat` |
-| Host | `http://127.0.0.1:<port>`, where `<port>` is the number in `<workspace>/.server-port` (server binds `127.0.0.1` only). `http://localhost:3001` only as a last resort — see [Finding the server](#finding-the-server) |
+| Host | `http://127.0.0.1:<port>`, where `<port>` is the number in `<workspace>/.server-port` (server binds `127.0.0.1` only). No default: with nothing published, WAIT — see [Finding the server](#finding-the-server) |
 | Transport | `websocket` (long-polling skipped — loopback always upgrades) |
 
 The server is written with `socket.io` 4.8.x. Clients **must** be
@@ -49,7 +49,18 @@ Resolve in this order:
 2. `<workspace>/.server-port` → `http://127.0.0.1:<port>`. Accept
    decimal digits only and range-check `1..65535`; anything else
    means "nothing published", not a port.
-3. `http://localhost:3001`, as a last resort only.
+
+With neither, what to do depends on **where your token came from**:
+
+- **Read from `<workspace>/.session-token`** → WAIT, do not fall back.
+  The workspace owns both halves, so a token with no port is half a
+  generation: the server is mid-startup. The window is not narrow —
+  it writes the token before it binds, with sandbox setup in between,
+  so it can last minutes (#3078). Presenting a freshly minted token
+  at an address the workspace never named is the thing to avoid.
+- **Supplied by the operator** (`MULMOCLAUDE_AUTH_TOKEN`) →
+  `http://localhost:3001` is a reasonable last resort. They pinned the
+  credential and are pointing you somewhere on purpose.
 
 Address `127.0.0.1`, not `localhost`: the server binds the IPv4
 loopback explicitly, while `localhost` resolves to `::1` first on a
@@ -61,7 +72,66 @@ with nothing on 3001 it retries forever against nothing, and with a
 DIFFERENT instance on 3001 it connects to that one — cleanly
 authenticated, no error — and answers the wrong server's users.
 
+### The published port is only good while the server is running
+
+Both sidecars are removed when the server shuts down cleanly, and
+`.server-port` is also cleared at startup before the new token is
+written (#3082). So a port you can read belongs to a server that was
+alive when it wrote it.
+
+What that does NOT give you is proof about the process now answering
+there. A bridge presents its bearer token in the socket.io handshake
+before it has learned anything about the peer, so if the server died
+without running its shutdown path — a crash, a `kill -9` — and some
+other local process then took that port, the token goes to whatever is
+listening.
+
+**This is a known, accepted exposure, not an oversight.** The reasoning,
+so it can be revisited rather than rediscovered:
+
+- On a single-user machine it buys an attacker nothing. `.session-token`
+  is mode 0600, and any process running as that user can simply read it
+  — squatting a port is the harder way to get something already
+  readable.
+- It differs only where a *different* local user holds the port, since
+  binding loopback is not restricted per-user. That is a multi-user host,
+  which is not the shape MulmoClaude is deployed in.
+- Closing it means verifying the peer before presenting the token: a new
+  unauthenticated identity endpoint, or a challenge-response handshake.
+  Both are protocol changes carried by all 25 bridges, for a threat that
+  is equivalent to file access in the deployment that actually exists.
+
+If you are writing a bridge for a shared host, set
+`MULMOCLAUDE_API_URL` explicitly rather than following the sidecar, and
+give the server a `PORT` it will not have to walk away from.
+
 ---
+
+### Re-read the pair on every connection failure
+
+Both files are rewritten when the server restarts, and a socket's URL is
+fixed when the socket is built — so resolving once pins your bridge to
+the generation it started against (#3078). Re-read them whenever a
+connection attempt fails, and when the pair has CHANGED, rebuild the
+socket against the new values.
+
+Two details decide whether this works:
+
+- **A failed connection is the trigger, not an auth error.** `invalid
+  token` only arrives when you still reach the server, i.e. when the
+  port happened not to change. When the port did change, nothing
+  answers and all you get is a refused connection.
+- **Rebuild only when the pair moved.** A server that is merely down
+  produces an unbroken stream of refusals; tearing the socket down for
+  each one replaces your socket library's reconnection with a worse
+  copy of it.
+
+Mid-restart both files are briefly absent. That is not a new
+generation — it is the absence of one — so treat it as "keep waiting",
+never as a reason to fall back or exit.
+
+---
+
 
 ## Authentication
 
@@ -69,8 +139,12 @@ Every bridge needs the current server bearer token (#272). Two
 ways to resolve it, in this order:
 
 1. `MULMOCLAUDE_AUTH_TOKEN` environment variable. Set this
-   explicitly when running the bridge on a different host than the
-   server, or when pinning the token across server restarts (#316).
+   explicitly when the bridge cannot read the workspace at all —
+   a different host, a container without it mounted (#316). Not
+   for surviving a server restart: a bridge that can read the pair
+   re-reads it and reconnects on its own (#3078), so pinning buys
+   nothing there and keeps a credential alive past the run that
+   issued it.
 2. `<workspace>/.session-token`. The server writes this at startup,
    `chmod 0600`. Read it as UTF-8, trim whitespace.
 
@@ -243,7 +317,10 @@ const published = (() => {
     return null;
   }
 })();
-const apiUrl = process.env.MULMOCLAUDE_API_URL || published || "http://localhost:3001";
+// No default: an address the workspace never named is not a place to present a
+// bearer token. With nothing published, wait and re-read (see above).
+const apiUrl = process.env.MULMOCLAUDE_API_URL || published;
+if (!apiUrl) throw new Error("no server published yet — retry rather than guessing a port");
 
 const socket = io(apiUrl, {
   path: "/ws/chat",
@@ -280,11 +357,13 @@ For the production-grade TS version with error paths baked in, use
 
 ## Operational notes
 
-- **Server restart invalidates the token.** Every bridge caches it
-  at startup. After a server bounce, the bridge sees
-  `invalid token` and must re-read the token. For long-running
-  bridges, pin the token with `MULMOCLAUDE_AUTH_TOKEN` on both
-  sides (#316).
+- **Server restart rewrites BOTH sidecars.** Re-read the pair on
+  every failed connection and rebuild when it has changed — see
+  "Re-read the pair on every connection failure" above. Do not wait
+  for `invalid token`: a restart that lands on a different port never
+  produces one, because nothing answers. Pinning the token with
+  `MULMOCLAUDE_AUTH_TOKEN` on both sides (#316) is for a bridge on a
+  DIFFERENT machine, which cannot read the workspace at all.
 - **Bridges are stateless.** All chat state lives server-side under
   `~/mulmoclaude/transports/<transportId>/chats/<externalChatId>.json`.
   A bridge can be killed and restarted freely.

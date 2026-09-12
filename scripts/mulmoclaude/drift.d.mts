@@ -81,5 +81,12 @@ export interface CheckWorkspaceDriftOptions {
 
 export function checkWorkspaceDrift(options?: CheckWorkspaceDriftOptions): Promise<PackageDriftResult[]>;
 
+/**
+ * One console line for a result. Exported so every status the audit can return
+ * is checkable: `pending-publish` used to render as the clean `✓` line, which
+ * stated the counts matched when they did not (#3099).
+ */
+export function formatLine(result: PackageDriftResult): string;
+
 /** CLI entry point. Returns 0 on clean, 1 if any package drifted. */
 export function main(): Promise<number>;

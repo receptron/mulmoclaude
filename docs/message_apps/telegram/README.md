@@ -60,7 +60,9 @@ In one terminal, start MulmoClaude as usual:
 yarn dev
 ```
 
-Wait until you see `[server] listening port=3001`.
+Wait until you see `[server] listening port=…`. The number is whatever the server
+bound — it honours `PORT`, and an implicit default that is already busy walks
+forward. You do not need to note it: the bridge reads it from the workspace.
 
 In a second terminal, run the Telegram bridge with your token. The
 allowlist is **empty on purpose** the first time — we'll fill it in
@@ -77,6 +79,7 @@ You should see:
 ```
 MulmoClaude Telegram bridge
 Allowlist: (empty — all chats will be denied)
+Connecting to http://127.0.0.1:<port>
 Connected (<socket id>).
 ```
 
@@ -144,9 +147,14 @@ Anything else is a message to the assistant.
 
 **The bridge shows `Connect error: bearer token rejected`.**
 The MulmoClaude server was restarted, so the bearer token changed.
-Re-run `yarn telegram` to pick up the new one. If you want to
-avoid this, pin the token with `MULMOCLAUDE_AUTH_TOKEN` on both
-sides (see [`../../developer.md`](../../developer.md) §Auth).
+**Do nothing** — the bridge re-reads the token and the port after a
+failed connection and reconnects on its own, usually within a second
+or two (#3078). If it keeps saying this, the server has not finished
+starting: it writes the token before it binds its port, and a cold
+start builds the sandbox image in between. Pinning
+`MULMOCLAUDE_AUTH_TOKEN` on both sides is for a bridge that cannot
+read the workspace at all — another machine, or a container without
+it mounted (see [`../../developer.md`](../../developer.md) §Auth).
 
 **`TELEGRAM_ALLOWED_CHAT_IDS: "foo" is not an integer chat id`.**
 A typo in the allowlist. Chat IDs are integers — no spaces, no
@@ -183,5 +191,5 @@ that via BotFather's `/setprivacy` if you want the group use case.
   audit trail, keep a separate Telegram-side log (BotFather
   doesn't provide one by default).
 - Your MulmoClaude's bearer token never leaves your machine. The
-  Telegram bridge connects to `localhost:3001` only; your friends
+  Telegram bridge connects to the IPv4 loopback only; your friends
   talk to Telegram's servers, not yours.

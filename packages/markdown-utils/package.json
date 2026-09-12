@@ -34,9 +34,9 @@
   "author": "Receptron Team",
   "dependencies": {
     "@mulmoclaude/common": "^1.2.0",
-    "dompurify": "^3.4.13",
+    "dompurify": "^3.4.15",
     "js-yaml": "^5.4.1",
-    "marked": "^18.0.11"
+    "marked": "^18.0.12"
   },
   "peerDependencies": {
     "mathjax-full": "^3.2.2",

@@ -134,15 +134,22 @@ export const createRemoteHostSession = (config: FirebaseOptions): RemoteHostSess
     const previousApp = app;
     const previousBlob = store.exportBlob();
     appSeq += 1;
+    // `appSeq` restarts at 0 each process and counts failed opens too, so the
+    // name a blob was parked under is meaningless to a later run. `seed` re-keys
+    // the blob to the app we are opening now, which is what makes a parked
+    // session restorable at all (#3089).
+    const appName = `remote-host-${appSeq}`;
     try {
       store.clear();
-      if (seedBlob) store.seed(seedBlob);
-      const { app: nextApp, handles } = await openFreshApp(config, store, `remote-host-${appSeq}`);
+      if (seedBlob) store.seed(seedBlob, appName);
+      const { app: nextApp, handles } = await openFreshApp(config, store, appName);
       await validateOrRollback(nextApp, handles, validate);
       app = nextApp;
       if (previousApp) await deleteApp(previousApp).catch(() => undefined);
       return handles;
     } catch (error) {
+      // Verbatim: the previous app is still live and reads the keys the blob
+      // already carries, so re-keying here would hide its own session from it.
       store.clear();
       if (previousBlob) store.seed(previousBlob);
       throw error;

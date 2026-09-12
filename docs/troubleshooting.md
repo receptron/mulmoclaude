@@ -98,8 +98,10 @@ page picks it up when the HTML is served. A tab left open across a restart still
 token.
 
 **Fix** — reload the tab (`Ctrl+Shift+R` / `Cmd+Shift+R`) once the server logs `listening`. To keep one
-token across restarts (long-running bridges, docker-compose), set `MULMOCLAUDE_AUTH_TOKEN`. Details:
-[`developer.md`](developer.md#auth-bearer-token-on-api).
+token across restarts, set `MULMOCLAUDE_AUTH_TOKEN`. That is for a client that cannot read
+`<workspace>/.session-token` for itself — a container without the workspace mounted, or another
+machine. A messaging bridge on this host does not need it: it re-reads the pair and reconnects on
+its own (#3078). Details: [`developer.md`](developer.md#auth-bearer-token-on-api).
 
 A brief `ECONNREFUSED` from Vite in the first second is expected — the client starts before Express
 finishes booting, and the proxy recovers on its own.

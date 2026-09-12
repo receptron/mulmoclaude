@@ -57,16 +57,18 @@ Scan the QR code in the LINE Developers Console → Messaging API tab. Send a me
 | `LINE_CHANNEL_SECRET` | Yes | Channel secret for signature verification |
 | `LINE_CHANNEL_ACCESS_TOKEN` | Yes | Long-lived channel access token |
 | `LINE_BRIDGE_PORT` | No | Webhook port (default: 3002) |
-| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`, else `http://localhost:3001`) |
+| `MULMOCLAUDE_API_URL` | No | Default: auto (`.server-port`; waits if nothing is published) |
 | `MULMOCLAUDE_AUTH_TOKEN` | No | Bearer token |
 | `LINE_BRIDGE_DEFAULT_ROLE` | No | Role id to seed new bridge sessions with (e.g. `coder`, `general`). Applied ONLY when a line session first appears — once the user switches role via `/role <id>` the session's own role wins. Unknown role ids silently fall back to the server's default with a warn log. |
 | `BRIDGE_DEFAULT_ROLE` | No | Same as above but shared across every bridge. Transport-specific `LINE_BRIDGE_DEFAULT_ROLE` wins when both are set. |
 
 ### Auth token persistence across server restarts
 
-The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset). The bridge reads that file once at launch and keeps the token in memory — so if the server restarts while the bridge is running, the bridge keeps using the **old** token and every API call returns **401**, silently.
+The MulmoClaude server regenerates a fresh bearer token on every startup and writes it to `<workspace>/.session-token` (`$MULMOCLAUDE_WORKSPACE_PATH`, or `~/mulmoclaude` when unset), alongside the port it bound in `.server-port`.
 
-**Fix**: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on **both** the server and the bridge. The server uses it verbatim instead of regenerating, so the token survives restarts and the bridge stays authenticated.
+**The bridge follows a restart on its own.** When the connection fails it re-reads both files, and if the server came back as a different generation — new token, new port, or both — it rebuilds its socket against it (#3078). You do not have to restart the bridge.
+
+Pinning the token is still useful when the bridge runs **on a different machine** from the server, where it cannot read the workspace at all: set `MULMOCLAUDE_AUTH_TOKEN` to the same long random value on both sides. The server then uses it verbatim instead of regenerating.
 
 ```bash
 # Server (one-time setup — same value across restarts)
