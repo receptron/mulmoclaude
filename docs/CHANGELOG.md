@@ -46,8 +46,17 @@ launcher's `dependencies` plus eight plugins' `devDependencies` AND `peerDepende
 files — the same 17 the `4.9.0` release commit swept). A caret range on an internal package does not
 float a consumer forward on its own, so a range left behind pins that consumer to the old line. The launcher's OWN version is untouched; that field belongs to `/publish-mulmoclaude`.
 
-Publish order is bottom-up and not optional here, since each dependent imports something the
-published copy lacks: common → webhook-runtime and client → the bridges.
+Publish order is bottom-up, and which edges are STRICT is worth being exact about, because a strict
+edge published backwards ships code calling an export npm does not serve yet:
+
+- **`common@1.3.0` before `webhook-runtime@1.2.0`** — strict. `webhook-runtime/src/port.ts` imports
+  `asInt` and `PORT_RANGE`, neither of which exists in the published `common@1.2.0`.
+- **`webhook-runtime@1.2.0` before the nine webhook bridges** — strict; all nine call `listenWebhook`.
+- **`client@1.2.0` before all 24 resident bridges** — strict; all 24 call `installProcessGuards`.
+- **`client@1.2.0` relative to common** — NOT strict. `client` takes only `isRecord`,
+  `scanEnvOptions` and `errorMessage` from common, all of which `1.2.0` already serves.
+- **`core@4.9.1`** — not strict either: it uses none of common's new exports, and its range moves for
+  consistency rather than need.
 
 #### A bridge that crashed said nothing about which bridge it was, and Ctrl-C dropped work in flight (#3084)
 
