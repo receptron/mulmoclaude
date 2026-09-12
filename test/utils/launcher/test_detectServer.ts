@@ -14,6 +14,10 @@ import { classifyHealthProbe, detectRunningServer, findRunningServerPort } from 
 import type { ServerPresence } from "../../../server/utils/launcher/detect-server.d.mts";
 import { MAX_PORT_PROBES } from "../../../server/utils/port.mjs";
 
+// Longer than the probe's own total deadline (5s), so a failure here means
+// the probe really never settled rather than that the test was impatient.
+const STREAM_GIVE_UP_MS = 15_000;
+
 describe("classifyHealthProbe", () => {
   it("reads a 401 as MulmoClaude — /api/health sits behind bearerAuth, so that IS our answer", () => {
     assert.equal(classifyHealthProbe({ status: 401, body: '{"error":"unauthorized"}' }), "mulmoclaude");
@@ -79,6 +83,32 @@ describe("detectRunningServer", () => {
     server.close();
     await once(server, "close");
     assert.equal(await detectRunningServer(port), "absent");
+  });
+
+  // The socket `timeout` option is an INACTIVITY timeout, so a response that
+  // keeps dribbling never trips it and never emits `end`. The probe used to
+  // stay pending forever on one, which since #3079 means a launch that hangs
+  // with nothing printed — `refuseSecondInstance` awaits this on the startup
+  // path of every `yarn dev` (CodeRabbit review, PR #3107).
+  it("gives up on a foreign server that streams forever instead of answering", async () => {
+    const dribblers: ReturnType<typeof setInterval>[] = [];
+    const server = await listen((_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.write("{");
+      // Comfortably under the inactivity timeout, so only a TOTAL deadline ends this.
+      dribblers.push(setInterval(() => res.write(" "), 250));
+    });
+    try {
+      const settled = await Promise.race([
+        detectRunningServer(portOf(server)),
+        new Promise<"__pending__">((resolve) => setTimeout(() => resolve("__pending__"), STREAM_GIVE_UP_MS)),
+      ]);
+      assert.notEqual(settled, "__pending__", "the probe never settled — a launch awaiting it would hang");
+      assert.equal(settled, "absent");
+    } finally {
+      dribblers.forEach(clearInterval);
+      server.close();
+    }
   });
 });
 
