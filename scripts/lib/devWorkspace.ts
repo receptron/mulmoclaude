@@ -10,25 +10,7 @@
 //
 // Same failure as the one `devServerPort.ts` exists to prevent, one value over:
 // a second opinion about what `.env` says. So the rule is borrowed rather than
-// written — the VALUES come from the launcher's parser, and `process.env` wins
-// over the file exactly as the server's own `MULMOCLAUDE_WORKSPACE_PATH ||`
-// default does, empty counting as unset on both sides.
-import path from "node:path";
-import os from "node:os";
-
-export interface DevWorkspaceSources {
-  processEnv?: Record<string, string | undefined>;
-  /** `.env` as the launcher's `parseEnvFile` parsed it — NOT raw file text. */
-  envFileValues?: Record<string, string> | null;
-}
-
-const nonEmpty = (value: string | undefined): value is string => value !== undefined && value.length > 0;
-
-/** Where the workspace lives, resolved the way the server resolves it. */
-export const resolveDevWorkspacePath = (sources: DevWorkspaceSources = {}): string => {
-  const fromProcess = sources.processEnv?.MULMOCLAUDE_WORKSPACE_PATH;
-  if (nonEmpty(fromProcess)) return fromProcess;
-  const fromFile = sources.envFileValues?.MULMOCLAUDE_WORKSPACE_PATH;
-  if (nonEmpty(fromFile)) return fromFile;
-  return path.join(os.homedir(), "mulmoclaude");
-};
+// written — it lives in `server/utils/workspace-path.mjs`, which the npm
+// launcher can also reach (it boots before tsx, so it cannot import this file).
+export type { WorkspacePathSources as DevWorkspaceSources } from "../../server/utils/workspace-path.d.mts";
+export { resolveWorkspacePath as resolveDevWorkspacePath } from "../../server/utils/workspace-path.mjs";

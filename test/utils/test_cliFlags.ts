@@ -23,8 +23,9 @@ describe("cli-flags CLI_FLAGS registry", () => {
     assert.equal(new Set(envs).size, envs.length);
   });
 
-  it("covers exactly the five intended toggles", () => {
+  it("covers exactly the six intended toggles", () => {
     assert.deepEqual(CLI_FLAGS.map((entry) => entry.flag).sort(), [
+      "--allow-multiple-instances",
       "--chat-index-force-run",
       "--disable-macos-reminders",
       "--disable-sandbox",

@@ -64,6 +64,11 @@ export const env = Object.freeze({
   port: asInt(process.env.PORT, DEFAULT_PORT, PORT_RANGE),
   nodeEnv: process.env.NODE_ENV ?? "development",
   isProduction: process.env.NODE_ENV === "production",
+  // Start even when another instance is already serving this workspace
+  // (#3079). Off by default: the two would overwrite each other's
+  // `.session-token`, and the damage that follows is silent. See
+  // `server/utils/instance-guard.mjs`.
+  allowMultipleInstances: flagOf("MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES"),
 
   // Claude Code CLI config-location overrides (issue #87 §2). Both undefined →
   // `server/utils/claudeConfigPath.ts` falls back to `homedir()/.claude` +

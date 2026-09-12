@@ -11,6 +11,7 @@ import net from "node:net";
 import path from "node:path";
 import { wasRepublished, type FileSnapshot } from "./lib/publishedPort.js";
 import { describeRejection, parsePublishedPort, resolveServerPort } from "./lib/devServerPort.js";
+import { findLiveInstancePort, instanceGuardMessage, shouldStopForRunningInstance } from "../server/utils/instance-guard.mjs";
 import { waitForPort } from "./lib/waitForPort.js";
 import { resolveDevWorkspacePath } from "./lib/devWorkspace.js";
 import { parseEnvFile } from "../server/utils/launch-env.mjs";
@@ -109,6 +110,28 @@ async function awaitPublishedPort(portFile: string, before: FileSnapshot, deadli
 }
 
 /**
+ * Refuse the whole `yarn dev` chain when this workspace already has a server (#3079).
+ *
+ * Here, and not only in `server/index.ts`, because `reset()` below DELETES the
+ * evidence: it clears `.server-port` before either pane starts, so by the time
+ * the backend's own guard looks there is nothing left to find and the second
+ * instance starts in silence — which is the exact case #3079 is about. The
+ * rationale `reset()` gives for being safe to delete ("two instances sharing a
+ * workspace already overwrite each other's `.session-token`") is precisely the
+ * outcome now being refused.
+ *
+ * Exiting here aborts the `&&` chain, so `concurrently` never starts and the
+ * backend supervisor never sees a child to restart.
+ */
+async function refuseSecondInstance(portFile: string): Promise<void> {
+  const allowMultiple = process.env.MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES === "1" || process.argv.includes("--allow-multiple-instances");
+  const livePort = allowMultiple ? null : await findLiveInstancePort(portFile);
+  if (livePort === null || !shouldStopForRunningInstance({ livePort, allowMultiple })) return;
+  log(instanceGuardMessage(livePort));
+  process.exit(1);
+}
+
+/**
  * `--reset`: clear `.server-port` BEFORE either dev pane starts.
  *
  * This is what makes the rest of the check decidable, and it is why the loop of
@@ -122,10 +145,13 @@ async function awaitPublishedPort(portFile: string, before: FileSnapshot, deadli
  * `.server-port` that exists was written by this startup, full stop.
  *
  * Safe to delete: it only ever addresses a live server, so it is meaningless
- * once that server is gone. An instance still running in this same workspace
- * would lose its hook's address — but two instances sharing a workspace already
- * overwrite each other's `.session-token`, which is the very breakage being
- * detected here. Instances in different workspaces have different files.
+ * once that server is gone — and an instance still running in THIS workspace no
+ * longer reaches here at all, because `refuseSecondInstance` above stops the
+ * launch first (#3079). That used to be the one case this deletion could hurt:
+ * the live instance lost its hook's address, waved away on the grounds that two
+ * instances sharing a workspace were already broken. They still are; the
+ * difference is that the launch making it so is now refused rather than
+ * accommodated. Instances in different workspaces have different files.
  */
 function reset(portFile: string): void {
   try {
@@ -225,6 +251,7 @@ async function main(): Promise<void> {
   const portFile = resolveServerPortPath(envFileValues ?? {});
 
   if (process.argv.includes("--reset")) {
+    await refuseSecondInstance(portFile);
     reset(portFile);
     return;
   }

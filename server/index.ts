@@ -152,6 +152,7 @@ import { resolveHtmlFileRequestPath } from "@mulmoclaude/core/files";
 import { HTML_FILE_MOUNT } from "@mulmoclaude/html-plugin";
 import { ONE_SECOND_MS, ONE_MINUTE_MS, ONE_HOUR_MS, STARTUP_FAILURE_FORCE_EXIT_MS, FATAL_LOG_FLUSH_MS } from "./utils/time.js";
 import { isPortFree, findAvailablePort, MAX_PORT_PROBES } from "./utils/port.mjs";
+import { findLiveInstancePort, instanceGuardMessage, shouldStopForRunningInstance } from "./utils/instance-guard.mjs";
 import { SCHEDULE_TYPES, MISSED_RUN_POLICIES } from "@receptron/task-scheduler";
 
 const HTML_TOKEN_PLACEHOLDER = "__MULMOCLAUDE_AUTH_TOKEN__";
@@ -200,6 +201,28 @@ if (process.env.MULMOCLAUDE_FAKE_AGENT === "1") {
   setActiveBackend(fakeEchoBackend);
   log.info("agent", "MULMOCLAUDE_FAKE_AGENT=1 — active backend = fake-echo");
 }
+
+// Stop before anything else when this workspace already has a server (#3079).
+//
+// Ahead of `initWorkspace()` so a refused launch writes NOTHING into a workspace
+// the running instance owns — re-syncing its preset skills under it would fire
+// that instance's own file watchers for a start that never happened. Ahead of
+// `deleteServerPort()` for a harder reason: that call removes the very file this
+// reads, and the #3082 ordering note covers only the explicit-`PORT` exit, so
+// until this guard existed a silent walk forward went on to delete the LIVE
+// instance's published port. And ahead of `resolvePort()` because the question
+// is about the workspace, not the port.
+//
+// Top-level await: this module is an entry point nothing imports, and the work
+// is one file read plus one loopback probe.
+async function refuseSecondInstance(): Promise<void> {
+  const allowMultiple = env.allowMultipleInstances;
+  const livePort = allowMultiple ? null : await findLiveInstancePort(WORKSPACE_PATHS.serverPort);
+  if (livePort === null || !shouldStopForRunningInstance({ livePort, allowMultiple })) return;
+  log.error("server", instanceGuardMessage(livePort));
+  process.exit(1);
+}
+await refuseSecondInstance();
 
 initWorkspace();
 warnIfCspExtended();
