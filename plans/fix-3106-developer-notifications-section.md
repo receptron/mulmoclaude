@@ -55,3 +55,35 @@ publish できてしまう。**ドキュメントが、塞いだ穴を勧めて�
 - 節が名指しする**すべてのパス・ルート・定数の実在**を 1 つずつ確認する（issue の表と同じ方法）
 - `check:doc-links` / `check:changelog-ships`
 - 節に書いた主張を、上の「典拠」の行と突き合わせる
+
+## レビューで広がった範囲（round 1〜9）
+
+cross-review で **21 件**出ました。**1 件も「壊れたコード」ではなく、全部が誤った記述**です。
+**うち 9 件は `packages/core/src/notifier/` と `server/` のコメント** — つまり**この節を書くときの典拠**でした。
+典拠が間違っていたので節も間違い、写した側だけ直すと**出どころが次の読者を同じ穴に落とす**ので、両方直しています。
+
+### 生成器は 5 つ
+
+| 変更 | 生き残った記述 |
+|---|---|
+| `f522dc101` PoC ルートと bridge fan-out を**削除** | `notify.ts` の tool description / prompt、`diagnostics.ts`、`src/types/notification.ts`、`server/index.ts` の mount コメント |
+| `#789` 環境変数を**改名 + 極性反転**（`MACOS_REMINDER_NOTIFICATIONS` → `DISABLE_…`） | `developer.md` の env 表、`notify.ts` の 2 文字列 |
+| `#2617` 設定画面のトグルを**追加** | env 表、`notify.ts` の prompt |
+| `updated` イベントを**追加** | `pubsubChannels.ts` の docblock |
+| （変更ではなく）**最初から使えないレシピ** | `runtime-api.ts` と `runtime-tasks-api.ts` の「プラグインはこう import する」 |
+
+**「1 つの誤った考えが複数の住処を持つ」が最頻**でした（HTTP parity は **5 箇所**、
+bridge 配信は **4 箇所**、プラグインの import レシピは **2 箇所**）。
+直すたびに「他に住処は無いか」を grep する手順が、findings の半分を潰しています。
+
+### 私自身が 2 回、偽の主張を別の偽の主張で置き換えた
+
+`updateForPlugin` は throw しない / `fyi` は deep link を持つ。**コメントを書き換えるときは、
+書き換えた内容を実装と突き合わせ直す**必要があります。コミットメッセージのテスト件数も 2 回間違え、
+どちらも amend で訂正しました。
+
+## 対象外（追記）
+
+- `## [0.5.0]` の CHANGELOG が旧環境変数名を書いている件 — **そのリリース時点では正しい**ので触らない
+  （公開済みセクションは書き換えない規律）。
+- chat-service の `pushToBridge` 経路 — **現役**。消えたのは notifier の fan-out だけ。
