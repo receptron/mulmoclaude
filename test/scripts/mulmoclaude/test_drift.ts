@@ -227,43 +227,46 @@ describe("formatLine", () => {
     });
   });
 
-  it("renders EXACTLY this line — the whole line, not properties of it", () => {
-    // Three rounds, three different wrong formatters that satisfied a presence-based
-    // property: labels swapped, the fixture pair hard-coded, and labels swapped with the
-    // correct counts appended as a suffix. Presence can ALWAYS be satisfied by adding
-    // more text, so enumerating those is a queue rather than a rule. This states what is
-    // PERMITTED and rejects everything else, and the expected string is built from the
-    // fixture so a hard-coded formatter fails it too.
+  it("renders EXACTLY these lines — every status, with and without the fallback note", () => {
+    // Four rounds, four wrong formatters that satisfied a presence-based property: labels
+    // swapped, the fixture pair hard-coded, a swap with the correct counts appended as a
+    // suffix, and ` EXTRA` tacked onto the two statuses this test used to check loosely.
+    // Presence can ALWAYS be satisfied by adding more text, so enumerating those is a
+    // queue rather than a rule. This states what is PERMITTED — the exact line, for every
+    // status, with the expected string BUILT FROM the fixture so a hard-coded formatter
+    // fails it too (#3101 rounds 1-4).
     //
-    // It DELIBERATELY goes red on a reworded message. This is the line an operator reads
-    // to decide whether publishing is safe; rewording it should be a decision, not a side
-    // effect of an unrelated edit (#3101 rounds 1-3).
+    // It DELIBERATELY goes red on a reworded message. These are the lines an operator
+    // reads to decide whether publishing is safe; rewording one should be a decision, not
+    // a side effect of an unrelated edit.
+    const head = "@mulmobridge/client v1.1.0 → published v1.0.2";
     const pairs = [
       { localCount: 17, distCount: 4 },
       { localCount: 9, distCount: 8 },
       { localCount: 231, distCount: 5 },
     ];
+    const note = "registry unreachable";
     pairs.forEach(({ localCount, distCount }) => {
-      const head = "@mulmobridge/client v1.1.0 → published v1.0.2";
       const counts = `src has ${localCount} value-export lines, published dist has ${distCount}`;
-      assert.equal(drift.formatLine(result("pending-publish", { localCount, distCount })), `  ⧗ ${head}: ${counts} — bumped but NOT published yet`);
-      assert.equal(drift.formatLine(result("drifted", { localCount, distCount })), `  ⚠ ${head}: ${counts}`);
+      const expected: Record<string, string> = {
+        "pending-publish": `  ⧗ ${head}: ${counts} — bumped but NOT published yet`,
+        drifted: `  ⚠ ${head}: ${counts}`,
+        ok: `  ✓ ${head}: ${localCount} value-export lines (src == published)`,
+      };
+      Object.entries(expected).forEach(([status, line]) => {
+        const shape = { localCount, distCount };
+        assert.equal(drift.formatLine(result(status as drift.PackageDriftResult["status"], shape)), line, status);
+        assert.equal(
+          drift.formatLine(result(status as drift.PackageDriftResult["status"], { ...shape, fallbackReason: note })),
+          `${line} [${note}]`,
+          `${status} + fallback`,
+        );
+      });
     });
-  });
 
-  it("keeps ok and skipped as they were", () => {
-    const ok = drift.formatLine(result("ok"));
-    assert.ok(ok.includes("✓"), "the clean tick");
-    assert.ok(ok.includes("src == published"), "and the wording it has always had");
-    assert.match(drift.formatLine(result("skipped", { reason: "local src not found" })), /skipped — local src not found/);
-  });
-
-  it("carries the registry-fallback note through every verdict that has one", () => {
-    const verdicts: drift.PackageDriftResult["status"][] = ["ok", "drifted", "pending-publish"];
-    verdicts.forEach((status) => {
-      const line = drift.formatLine(result(status, { fallbackReason: "registry unreachable" }));
-      assert.match(line, /registry unreachable/, `${status} keeps the note`);
-    });
+    // `skipped` is the odd one out by design: no counts, no published version, no
+    // fallback note — it is the branch that ran before any of those were resolved.
+    assert.equal(drift.formatLine(result("skipped", { reason: "local src not found" })), "  · @mulmobridge/client v1.1.0: skipped — local src not found");
   });
 });
 
