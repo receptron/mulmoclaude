@@ -10,6 +10,86 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### `@mulmoclaude/common@1.3.0`, `@mulmobridge/webhook-runtime@1.2.0`, `@mulmoclaude/core@4.9.1` — the versions catch up with #3084
+
+#3084 left shared packages carrying new exports at unchanged versions. That is the state
+`scripts/mulmoclaude/drift.mjs` exists to refuse: npm keeps serving the old tarball, so a consumer
+resolving `^1.2.0` gets a `@mulmoclaude/common` with no `asInt` and one resolving `^1.1.0` gets a
+`@mulmobridge/webhook-runtime` with no `listenWebhook` — a runtime "does not provide an export
+named …", invisible to lint, typecheck and local dev because a yarn-workspace symlink always points
+at the freshly built local dist.
+
+Every number below is one a command produces, next to the thing it counts — three rounds of this
+PR's review went to prose that miscounted its own sweep, so the counts now sit in the table instead
+of in sentences:
+
+| package                        | version           | bump  | what npm does not serve yet                                                                                                                                                                                                                                                      | ranges swept (declarations / files)                                                                                                            |
+| ------------------------------ | ----------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@mulmoclaude/common`          | 1.2.0 → **1.3.0** | minor | `asInt`, `PORT_RANGE`, type `IntRange`, moved from `server/utils/envCoerce.ts`; `PORT_RANGE` typed `Required<IntRange>` so a caller compares against its bounds without a non-null assertion                                                                                     | **34** / 33 — 33 `dependencies` + one plugin's `devDependencies`                                                                               |
+| `@mulmobridge/webhook-runtime` | 1.1.0 → **1.2.0** | minor | `listenWebhook` — the single bind path for the nine webhook bridges: resolves the port, refuses an unusable value with the env var named, explains `EADDRINUSE` / `EACCES`, reports the port actually bound                                                                      | **9** / 9 — all `dependencies`                                                                                                                 |
+| `@mulmoclaude/core`            | 4.9.0 → **4.9.1** | patch | no export and no behaviour change: the new `assets/helps/error-recovery.md` sections (which reach npm users only through a core publish, since the agent reads that file before asking the user anything on a tool failure) and #3106's comment-only edits under `src/notifier/` | **17** / 9 — the launcher's `dependencies` plus eight plugins' `devDependencies` AND `peerDependencies`; the same 17 the `4.9.0` release swept |
+| `@mulmobridge/client`          | already 1.2.0     | —     | **two** things, not one: `installProcessGuards` + `SHUTDOWN_GRACE_MS` (from #3110, which bumped it — nothing to do here) **and `resolvePublishedApiUrl`**, another PR's unpublished work (`18b8c5ea3`) that rides along in 1.2.0                                                 | —                                                                                                                                              |
+
+Why sweep at all, when these are `1.x` lines? **Not** to unpin anyone: `^1.2.0` does admit 1.3.0
+(`semver.satisfies("1.3.0", "^1.2.0")` is `true`), and `docs/package-releases.md` says so — a caret
+floats across minors at or above 1.0. The `0.x` case in CLAUDE.md's rationale is the one where a stale
+range pins a consumer (`^0.23.0` excludes 0.24.0), and none of these three are on a `0.x` line. What a
+stale range costs here is the **floor**: `^1.2.0` permits a resolver to land on 1.2.x — an existing
+lockfile, `npm ci`, `--prefer-offline`, another constraint in the tree — and that copy has no `asInt`, so
+the failure arrives at runtime. `^1.3.0` turns it into an install-time resolution error. The sweep is
+also a hard gate for the launcher specifically: `check:launcher-sync` requires its declared lower bound
+to equal the workspace version. This is the same reading the `2026-07-25` entry in this file already
+took ("a caret on a `1.x` package floats, so the published `^1.2.x` ranges already resolved core
+1.3.0 … the bump only makes each declared floor match what the source actually requires").
+
+**The launcher's OWN `version` is untouched** (still 1.16.0); that field belongs to
+`/publish-mulmoclaude`.
+
+The drift gate caught one of the four and could not have caught the others: it scans the
+`@mulmobridge/*` packages the launcher depends on, so `@mulmobridge/client` failed the check while
+`@mulmobridge/webhook-runtime` (not a launcher dependency) and `@mulmoclaude/common` (wrong scope)
+passed. `yarn audit:releases --code-only` names them, and widening the gate is #3116.
+
+Publish order is bottom-up, and which edges are STRICT matters, because a strict edge published
+backwards ships code calling an export npm does not serve yet:
+
+| edge                                            | strict? | what forces it                                                                                                                                                   |
+| ----------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `common@1.3.0` → `webhook-runtime@1.2.0`        | **yes** | `webhook-runtime/src/port.ts` imports `asInt` and `PORT_RANGE`; published `common@1.2.0` has neither                                                             |
+| `webhook-runtime@1.2.0` → the 9 webhook bridges | **yes** | all nine call `listenWebhook`                                                                                                                                    |
+| `client@1.2.0` → all 24 resident bridges        | **yes** | all 24 call `installProcessGuards`                                                                                                                               |
+| `common` → `client@1.2.0`                       | no      | `client` takes only `isRecord`, `scanEnvOptions` and `errorMessage` from common — all present in the published **`common@1.2.0`** (the two 1.2.0s are unrelated) |
+| anything → `core@4.9.1`                         | no      | it uses none of common's new exports; its range moves for consistency                                                                                            |
+
+One trap for anyone re-deriving this with `git diff <name>@<version>..HEAD`: the
+`@mulmobridge/client@1.1.0` **tag lags its own publish**. The published tarball exports
+`resolveApiUrl` — checked directly against
+`https://unpkg.com/@mulmobridge/client@1.1.0/dist/index.js` — and the tag does not, which is why
+`drift.mjs` measures one line of drift against the tarball while the tag diff shows two added export
+lines. The tarball is the authority for "what a consumer has"; a tag is only as good as the
+discipline that wrote it, which is why this repo requires one on every publish.
+
+#### `yarn dev` no longer starts a second server against a workspace that already has one (#3079)
+
+Only the icon launcher ever checked. `yarn dev`, `yarn server` and `npx mulmoclaude` walked
+forward off a busy port — 3001 → 3002 — and started a SECOND server, announcing it in one
+`log.info` line. Nobody meant to run two, and two over one workspace overwrite each other's
+`.session-token`: after that a stateless plugin dispatch authenticates cleanly against the wrong
+server while the session-scoped `/api/internal/tool-result` push lands where the session does not
+exist and is dropped, so plugin views simply stop rendering on one of them and nothing errors.
+
+All three paths now refuse that launch. The question is asked of `<workspace>/.server-port` rather
+than of the port, because the harm is a shared WORKSPACE: a second instance with its own
+`MULMOCLAUDE_WORKSPACE_PATH` needs no flag on any port, and one sharing this workspace is refused
+even on a port nobody wanted — which `PORT=3100 yarn dev`, previously the documented escape hatch,
+now is. A stale sidecar left by a killed instance does not stop anything: the port it names is
+probed, and only a MulmoClaude-shaped answer counts. A busy port held by some other program still
+walks forward exactly as before.
+
+`MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1` opts back in, with the token stomping that implies
+(`--allow-multiple-instances` is the equivalent flag on `npx mulmoclaude` and `yarn server`; `yarn
+dev` is a compound script and drops trailing args, so the env var is the only form that works there).
+
 #### A bridge that crashed said nothing about which bridge it was, and Ctrl-C dropped work in flight (#3084)
 
 Counting all 25 packages under `packages/bridges/`: none had an `unhandledRejection` handler, none
@@ -210,7 +290,7 @@ did not repeat its first was dropped as an open stroke, so a two-section loft fa
 at least two cross-sections"; upstream closes such a section implicitly and so does this builder
 now. Sections keep their written order when open and closed ones mix.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.9.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.6.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.3.0`, `@mulmoclaude/core@4.9.1`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.6.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 #### A bridge no longer has to be restarted every time the server is (#3078)
 

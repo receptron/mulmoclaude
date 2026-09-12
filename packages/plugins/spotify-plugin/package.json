@@ -28,7 +28,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@mulmoclaude/common": "^1.2.0"
+    "@mulmoclaude/common": "^1.3.0"
   },
   "peerDependencies": {
     "gui-chat-protocol": "^2.0.0",

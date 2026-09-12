@@ -19,6 +19,8 @@ import { isPortFree, findAvailablePort, MAX_PORT_PROBES } from "../server/utils/
 import { parseDevPluginArgs } from "../server/utils/dev-plugin-args.mjs";
 import { cliFlagHelpLines, flagEnvOverrides } from "../server/utils/cli-flags.mjs";
 import { parseEnvFile, mergeLaunchEnv, describeLaunchEnvLoad } from "../server/utils/launch-env.mjs";
+import { findLiveInstancePort, instanceGuardMessage, serverPortPathIn, shouldStopForRunningInstance } from "../server/utils/instance-guard.mjs";
+import { resolveWorkspacePath } from "../server/utils/workspace-path.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -187,6 +189,35 @@ if (!existsSync(SERVER_ENTRY)) {
   process.exit(1);
 }
 
+// ── Load `<launch-dir>/.env` ────────────────────────────────
+
+// So `npx mulmoclaude` users keep secrets (e.g. GEMINI_API_KEY) next to where
+// they launch — NOT inside the isolated ~/mulmoclaude workspace. Shell-exported
+// vars win over the file, so `export GEMINI_API_KEY=…` still takes precedence.
+//
+// Before the port is resolved, because `MULMOCLAUDE_WORKSPACE_PATH` can come
+// from this file: the single-instance guard below has to look at the same
+// `.server-port` the spawned server will, and the server sees the merged value.
+const launchEnvPath = join(process.cwd(), ".env");
+const { exists: launchEnvExists, parsed: launchEnvParsed } = parseEnvFile(launchEnvPath);
+const { env: baseEnv, loadedKeys, skippedKeys } = mergeLaunchEnv(process.env, launchEnvParsed);
+const launchEnvSummary = describeLaunchEnvLoad({ path: launchEnvPath, exists: launchEnvExists, loadedKeys, skippedKeys });
+if (launchEnvSummary) log(launchEnvSummary);
+
+// ── Refuse a second instance on this workspace ──────────────
+
+// The icon launcher has always checked; this path did not, and walked forward
+// off a busy port into a second server nobody asked for (#3079). Asked here
+// rather than left to the server so the stop arrives before
+// "Starting MulmoClaude on port …" claims otherwise.
+const allowMultipleInstances = args.includes("--allow-multiple-instances") || baseEnv.MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES === "1";
+const workspacePath = resolveWorkspacePath({ processEnv: baseEnv });
+const livePort = allowMultipleInstances ? null : await findLiveInstancePort(serverPortPathIn(workspacePath));
+if (livePort !== null && shouldStopForRunningInstance({ livePort, allowMultiple: allowMultipleInstances })) {
+  error(instanceGuardMessage(livePort));
+  process.exit(1);
+}
+
 // ── Resolve a usable port ───────────────────────────────────
 
 // Check the requested port before spawning the server — an explicit
@@ -230,16 +261,6 @@ try {
   error("Failed to locate 'tsx' — the package may be installed incorrectly.");
   process.exit(1);
 }
-
-// Load `<launch-dir>/.env` so `npx mulmoclaude` users keep secrets
-// (e.g. GEMINI_API_KEY) next to where they launch — NOT inside the
-// isolated ~/mulmoclaude workspace. Shell-exported vars win over the
-// file, so `export GEMINI_API_KEY=…` still takes precedence.
-const launchEnvPath = join(process.cwd(), ".env");
-const { exists: launchEnvExists, parsed: launchEnvParsed } = parseEnvFile(launchEnvPath);
-const { env: baseEnv, loadedKeys, skippedKeys } = mergeLaunchEnv(process.env, launchEnvParsed);
-const launchEnvSummary = describeLaunchEnvLoad({ path: launchEnvPath, exists: launchEnvExists, loadedKeys, skippedKeys });
-if (launchEnvSummary) log(launchEnvSummary);
 
 const serverEnv = {
   ...baseEnv,

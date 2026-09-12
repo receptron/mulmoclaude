@@ -47,14 +47,14 @@
     "three-mesh-bvh": "0.9.15"
   },
   "peerDependencies": {
-    "@mulmoclaude/core": "^4.9.0",
+    "@mulmoclaude/core": "^4.9.1",
     "gui-chat-protocol": "^2.0.0",
     "puppeteer": "^25.0.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@mulmoclaude/core": "^4.9.0",
+    "@mulmoclaude/core": "^4.9.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
     "@types/three": "^0.186.0",
