@@ -442,26 +442,31 @@ describe("the bridge prints the address the help tells you to read (#3085)", () 
     const chunks: string[] = [];
     child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk.toString()));
     const stderr = (): string => chunks.join("");
-    const second = { value: null as Generation | null };
     try {
       const atStartup = await waitForLine(stderr, `Connecting to http://127.0.0.1:${first.port}`, RECONNECT_BUDGET_MS);
       assert.equal(atStartup.includes("localhost:3001"), false, "the bridge announced a hardcoded address");
 
-      // The restart the help's "compare the LAST one" sentence is about.
+      // The restart the help's "compare the LAST one" sentence is about. Both
+      // sidecars go first, the way a clean shutdown leaves them (#3082).
       await first.stop();
-      second.value = await startGeneration("gen-say-b", "token-say-b");
-      publish(second.value);
-
-      const afterRestart = await waitForLine(stderr, `Connecting to http://127.0.0.1:${second.value.port}`, RECONNECT_BUDGET_MS);
-      assert.ok(
-        afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${second.value.port}`) >
-          afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${first.port}`),
-        "the last address printed must be where the bridge is now, not where it was",
-      );
+      unpublish();
+      const second = await startGeneration("gen-say-b", "token-say-b");
+      publish(second);
+      try {
+        const afterRestart = await waitForLine(stderr, `Connecting to http://127.0.0.1:${second.port}`, RECONNECT_BUDGET_MS);
+        assert.ok(
+          afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${second.port}`) > afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${first.port}`),
+          "the last address printed must be where the bridge is now, not where it was",
+        );
+      } finally {
+        await second.stop();
+      }
     } finally {
+      // Harmless on the happy path, where `first` is already stopped: closing a
+      // closed server still invokes its callback. The point is the failure path,
+      // where an unstopped generation would outlive the case.
       child.kill("SIGKILL");
       await first.stop();
-      if (second.value !== null) await second.value.stop();
     }
   });
 });
