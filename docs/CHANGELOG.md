@@ -10,6 +10,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### `yarn dev` no longer starts a second server against a workspace that already has one (#3079)
+
+Only the icon launcher ever checked. `yarn dev`, `yarn server` and `npx mulmoclaude` walked
+forward off a busy port — 3001 → 3002 — and started a SECOND server, announcing it in one
+`log.info` line. Nobody meant to run two, and two over one workspace overwrite each other's
+`.session-token`: after that a stateless plugin dispatch authenticates cleanly against the wrong
+server while the session-scoped `/api/internal/tool-result` push lands where the session does not
+exist and is dropped, so plugin views simply stop rendering on one of them and nothing errors.
+
+All three paths now refuse that launch. The question is asked of `<workspace>/.server-port` rather
+than of the port, because the harm is a shared WORKSPACE: a second instance with its own
+`MULMOCLAUDE_WORKSPACE_PATH` needs no flag on any port, and one sharing this workspace is refused
+even on a port nobody wanted — which `PORT=3100 yarn dev`, previously the documented escape hatch,
+now is. A stale sidecar left by a killed instance does not stop anything: the port it names is
+probed, and only a MulmoClaude-shaped answer counts. A busy port held by some other program still
+walks forward exactly as before.
+
+`--allow-multiple-instances` (or `MULMOCLAUDE_ALLOW_MULTIPLE_INSTANCES=1`) opts back in, with the
+token stomping that implies.
+
 #### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)
 
 Two mismatches with the upstream app, both in `loft`. A `fill { path … }` as a section rendered
@@ -22,7 +42,7 @@ did not repeat its first was dropped as an open stroke, so a two-section loft fa
 at least two cross-sections"; upstream closes such a section implicitly and so does this builder
 now. Sections keep their written order when open and closed ones mix.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.1`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 #### A bridge no longer has to be restarted every time the server is (#3078)
 
