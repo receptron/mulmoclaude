@@ -227,42 +227,28 @@ describe("formatLine", () => {
     });
   });
 
-  it("renders the counts it was GIVEN, on their own sides, for every pair", () => {
-    // Two rounds each found a different wrong formatter that passed: one swapped the
-    // labels (both numbers present, opposite story), one hard-coded the single pair the
-    // test used. Enumerating wrong implementations is a queue, so this asserts the
-    // property that kills all of them at once — the line is a FUNCTION of its counts,
-    // with each on its own side. A constant fails it, a swap fails it, and so does the
-    // next variant nobody has thought of (#3101 rounds 1-2).
+  it("renders EXACTLY this line — the whole line, not properties of it", () => {
+    // Three rounds, three different wrong formatters that satisfied a presence-based
+    // property: labels swapped, the fixture pair hard-coded, and labels swapped with the
+    // correct counts appended as a suffix. Presence can ALWAYS be satisfied by adding
+    // more text, so enumerating those is a queue rather than a rule. This states what is
+    // PERMITTED and rejects everything else, and the expected string is built from the
+    // fixture so a hard-coded formatter fails it too.
+    //
+    // It DELIBERATELY goes red on a reworded message. This is the line an operator reads
+    // to decide whether publishing is safe; rewording it should be a decision, not a side
+    // effect of an unrelated edit (#3101 rounds 1-3).
     const pairs = [
       { localCount: 17, distCount: 4 },
       { localCount: 9, distCount: 8 },
       { localCount: 231, distCount: 5 },
     ];
-    const carriesCounts: drift.PackageDriftResult["status"][] = ["pending-publish", "drifted"];
-    carriesCounts.forEach((status) => {
-      pairs.forEach(({ localCount, distCount }) => {
-        const line = drift.formatLine(result(status, { localCount, distCount }));
-        assert.match(line, new RegExp(`src\\D*${localCount}`), `${status}: src side carries ${localCount}`);
-        assert.match(line, new RegExp(`dist\\D*${distCount}`), `${status}: published side carries ${distCount}`);
-      });
+    pairs.forEach(({ localCount, distCount }) => {
+      const head = "@mulmobridge/client v1.1.0 → published v1.0.2";
+      const counts = `src has ${localCount} value-export lines, published dist has ${distCount}`;
+      assert.equal(drift.formatLine(result("pending-publish", { localCount, distCount })), `  ⧗ ${head}: ${counts} — bumped but NOT published yet`);
+      assert.equal(drift.formatLine(result("drifted", { localCount, distCount })), `  ⚠ ${head}: ${counts}`);
     });
-  });
-
-  it("never claims a pending-publish package matches what is published", () => {
-    const line = drift.formatLine(result("pending-publish"));
-    assert.equal(line.includes("src == published"), false, "the counts differ — saying they match is the bug");
-    assert.equal(line.includes("✓"), false, "a clean tick reads as nothing to do");
-  });
-
-  it("says a pending-publish package is NOT on the registry yet", () => {
-    assert.match(drift.formatLine(result("pending-publish")), /not published/i);
-  });
-
-  it("tells pending-publish, drifted and ok apart", () => {
-    const verdicts: drift.PackageDriftResult["status"][] = ["ok", "drifted", "pending-publish"];
-    const lines = verdicts.map((status) => drift.formatLine(result(status)));
-    assert.equal(new Set(lines).size, 3, "each verdict reads differently");
   });
 
   it("keeps ok and skipped as they were", () => {
