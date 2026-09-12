@@ -1,7 +1,7 @@
 {
   "name": "mulmoclaude",
-  "version": "1.15.1",
-  "description": "MulmoClaude — GUI-chat with Claude Code + long-term memory. One command to start.",
+  "version": "1.16.0",
+  "description": "MulmoClaude \u2014 GUI-chat with Claude Code + long-term memory. One command to start.",
   "type": "module",
   "bin": {
     "mulmoclaude": "bin/mulmoclaude.js"
