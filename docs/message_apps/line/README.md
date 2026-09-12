@@ -114,7 +114,9 @@ In terminal A, start MulmoClaude:
 yarn dev
 ```
 
-Wait for `[server] listening port=3001`.
+Wait for `[server] listening port=…` — the number is whatever the server bound
+(it honours `PORT`, and walks forward off a busy default). You do not need to
+note it: the bridge reads it from the workspace.
 
 In terminal B, start ngrok (if not already running):
 

@@ -60,7 +60,9 @@ PC を閉じたりネットを切ったりすると bot は沈黙します。
 yarn dev
 ```
 
-`[server] listening port=3001` が出るまで待つ。
+`[server] listening port=…` が出るまで待つ。番号はサーバが実際に bind した
+ポートです — `PORT` を尊重し、既定値が塞がっていれば先へ進みます。控えて
+おく必要はありません。ブリッジが workspace から読みます。
 
 ターミナル B で Telegram ブリッジを起動する。allowlist は **最初は
 わざと空** にしておく (次ステップで自分の chat ID を取得するため):
@@ -76,6 +78,7 @@ yarn telegram
 ```
 MulmoClaude Telegram bridge
 Allowlist: (empty — all chats will be denied)
+Connecting to http://127.0.0.1:<port>
 Connected (<socket id>).
 ```
 

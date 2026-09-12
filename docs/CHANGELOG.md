@@ -37,6 +37,14 @@ therefore needs both `MULMOCLAUDE_API_URL` and `MULMOCLAUDE_AUTH_TOKEN`.
 It opens by saying what NOT to advise: "restart the bridge" after a server restart has been
 wrong since #3078.
 
+The same claims live outside the bundle, where the agent never reads them but an operator does.
+`docs/message_apps/{telegram,line}/README{,.ja}.md` each told the reader to wait for `[server]
+listening port=3001`, the Telegram pair told them to restart the bridge when the token is
+rejected, and `docs/troubleshooting.md` framed `MULMOCLAUDE_AUTH_TOKEN` as what a long-running
+bridge needs — it is what a client that cannot read `<workspace>/.session-token` needs, which is
+a different set. The Telegram guides' quoted startup output also gained the `Connecting to …`
+line the shared client now prints, so what the guide shows is what the operator sees.
+
 The version bump is not ceremony. `@mulmoclaude/core@2.0.1` exists because 2.0.0 shipped
 without 32 lines of this same file, and the note on it puts the reason better than a rule
 would: a section that never reaches npm is a section the agent never has. 4.8.0 is what npm

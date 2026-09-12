@@ -115,7 +115,9 @@ LINE_CHANNEL_ACCESS_TOKEN=xxxxxx
 yarn dev
 ```
 
-`[server] listening port=3001` が出るまで待つ。
+`[server] listening port=…` が出るまで待つ。番号はサーバが実際に bind した
+ポートです — `PORT` を尊重し、既定値が塞がっていれば先へ進みます。控えて
+おく必要はありません。ブリッジが workspace から読みます。
 
 ターミナル B で ngrok を起動（まだ起動していなければ）:
 

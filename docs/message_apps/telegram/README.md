@@ -60,7 +60,9 @@ In one terminal, start MulmoClaude as usual:
 yarn dev
 ```
 
-Wait until you see `[server] listening port=3001`.
+Wait until you see `[server] listening port=…`. The number is whatever the server
+bound — it honours `PORT`, and an implicit default that is already busy walks
+forward. You do not need to note it: the bridge reads it from the workspace.
 
 In a second terminal, run the Telegram bridge with your token. The
 allowlist is **empty on purpose** the first time — we'll fill it in
@@ -77,6 +79,7 @@ You should see:
 ```
 MulmoClaude Telegram bridge
 Allowlist: (empty — all chats will be denied)
+Connecting to http://127.0.0.1:<port>
 Connected (<socket id>).
 ```
 
