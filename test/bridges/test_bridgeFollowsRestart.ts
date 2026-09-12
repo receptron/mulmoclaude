@@ -119,8 +119,12 @@ beforeEach(unpublish);
  *  properties are observable (see the fixture). */
 function spawnBridge(args: string[]): ReturnType<typeof spawn> {
   const fixture = fileURLToPath(new URL("./fixtures/minimal-bridge.mjs", import.meta.url));
-  const loader = fileURLToPath(new URL("../../node_modules/tsx/dist/loader.mjs", import.meta.url));
-  return spawn("node", ["--import", `file://${loader}`, fixture, ...args], {
+  // Plain `node`, no tsx loader: the fixture is `.mjs` and the client it imports
+  // resolves to the BUILT package, so the loader only added a compile step — and
+  // its on-disk cache is one more thing a restricted sandbox can deny. A child
+  // that starts in 0.1s instead of waiting on a transform is also a child whose
+  // budget below means what it says.
+  return spawn("node", [fixture, ...args], {
     env: { ...process.env, MULMOCLAUDE_WORKSPACE_PATH: workspace, MULMOCLAUDE_API_URL: "" },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -422,8 +426,11 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
 // and a bridge's stdout is its transcript. Asserting on the child's STDERR is
 // what pins that.
 describe("the bridge prints the address the help tells you to read (#3085)", () => {
-  /** Poll the child's accumulated stderr until `wanted` shows up. */
-  async function waitForLine(read: () => string, wanted: string, budgetMs: number): Promise<string> {
+  /** Poll the child's accumulated stderr until `wanted` shows up. `fate` is
+   *  whether the child is still alive — without it a timeout reads the same
+   *  whether the diagnostic is missing or the process never started at all,
+   *  which is the difference between a real finding and a sandbox. */
+  async function waitForLine(read: () => string, wanted: string, budgetMs: number, fate: () => string): Promise<string> {
     const deadline = Date.now() + budgetMs;
     while (Date.now() < deadline) {
       if (read().includes(wanted)) return read();
@@ -432,7 +439,7 @@ describe("the bridge prints the address the help tells you to read (#3085)", () 
     // `throw` rather than `assert.fail`: the latter is `never` to TypeScript but
     // a plain call to eslint, which then reads the function as falling off its
     // end (`consistent-return`).
-    throw new Error(`never printed ${JSON.stringify(wanted)}. stderr so far:\n${read()}`);
+    throw new Error(`never printed ${JSON.stringify(wanted)} in ${budgetMs}ms. Child: ${fate()}. Its stderr:\n${read()}`);
   }
 
   it("names the published address on startup, and again after it follows a restart", async () => {
@@ -442,8 +449,16 @@ describe("the bridge prints the address the help tells you to read (#3085)", () 
     const chunks: string[] = [];
     child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk.toString()));
     const stderr = (): string => chunks.join("");
+    const ended: { how: string | null } = { how: null };
+    child.on("error", (error: Error) => {
+      ended.how = `failed to start (${error.message})`;
+    });
+    child.on("exit", (code, signal) => {
+      ended.how = `exited code=${String(code)} signal=${String(signal)}`;
+    });
+    const fate = (): string => ended.how ?? "still running";
     try {
-      const atStartup = await waitForLine(stderr, `Connecting to http://127.0.0.1:${first.port}`, RECONNECT_BUDGET_MS);
+      const atStartup = await waitForLine(stderr, `Connecting to http://127.0.0.1:${first.port}`, RECONNECT_BUDGET_MS, fate);
       assert.equal(atStartup.includes("localhost:3001"), false, "the bridge announced a hardcoded address");
 
       // The restart the help's "compare the LAST one" sentence is about. Both
@@ -453,7 +468,7 @@ describe("the bridge prints the address the help tells you to read (#3085)", () 
       const second = await startGeneration("gen-say-b", "token-say-b");
       publish(second);
       try {
-        const afterRestart = await waitForLine(stderr, `Connecting to http://127.0.0.1:${second.port}`, RECONNECT_BUDGET_MS);
+        const afterRestart = await waitForLine(stderr, `Connecting to http://127.0.0.1:${second.port}`, RECONNECT_BUDGET_MS, fate);
         assert.ok(
           afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${second.port}`) > afterRestart.lastIndexOf(`Connecting to http://127.0.0.1:${first.port}`),
           "the last address printed must be where the bridge is now, not where it was",
