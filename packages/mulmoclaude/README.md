@@ -32,6 +32,7 @@ Your browser opens to `http://localhost:3001`. That's it.
 | "Add this to my calendar"       | Event in your Google Calendar (sign in, no setup)     |
 | "Put that on my task list"      | Task in Google Tasks, with notes and a due date       |
 | "Subscribe to this RSS feed"    | Data feed on `/feeds`, fetched on a schedule          |
+| "Model a chess piece in 3D"     | Interactive ShapeScript scene, exportable to USDZ     |
 
 **Pages you can visit directly**: `/wiki` (browse + lint), `/feeds` (data feeds), `/collections` (data apps — Discover tab to import community collections, Contribute to share your own), `/automations` (recurring tasks), `/files` (drop files onto a folder row to save them straight into it), `/skills`, `/roles`. Each page has its own chat composer that spawns a fresh chat already aware of the page context.
 

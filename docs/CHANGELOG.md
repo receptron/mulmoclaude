@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-12
+
+**3D models became a first-class canvas view, and a MulmoScript deck can now live in a registered stories root instead of only the workspace.**
+
 ### Changed
 
 #### `@mulmoclaude/shapescript-plugin@2.5.0` — one statement per line, no `tau`
@@ -42,6 +46,40 @@ Helvetiker (a Helvetica look-alike, licensed for redistribution) scaled to Helve
 warning naming it. Text is capped at 2000 characters before the vertex budget applies.
 
 ### Fixed
+
+#### The mulmoScript REST routes addressed a story by its path alone (#3077, PR #3083)
+
+The host's REST adapter pointed at a story with `filePath` and nothing else. `stories/deck.json`
+exists in EVERY registered root, so a host with more than one read and wrote the DEFAULT root's
+file of that name — silently, because that path is well-formed in both. Thirteen routes were
+affected: the beat image / audio / movie reads, movie and PDF status, character images, the three
+uploads, both beat generation ops behind the handler factory, and the two writes.
+
+A malformed root is now REFUSED with a 400 rather than folded into the default. Folding it is the
+defect #3015 fixed at the dispatch entry: the caller believes it named a root while the write
+lands in another. A repeated `?root=` produces an array, so that shape arrives by accident.
+
+The SSE generation routes (`generateMovie`, `generatePdf`) were bypassing the package's own
+`guardStoryGenerationRoot`, which refuses a named root on a host that cannot tell two roots'
+generations apart (#3020) — so rooted generation had been running unguarded.
+
+#### An unparsed story root no longer compiles (#3086, PR #3090)
+
+The same class of bug appeared four times across #3076 and #3077, and the guard against it was a
+textual sweep that a review spent five rounds on — because a textual rule has infinitely many
+blind spellings. `ParsedStoryRoot` is a branded string that only `parseSuppliedRoot` can mint (via
+a type guard, not `as`), and the host stops exporting the raw ops object: it is seen through a
+type that requires a parsed root on all 26 root-taking members, with no runtime wrapper. The root
+is REQUIRED rather than optional, so a call that omits it — directly, through an alias, or
+destructured — is a compile error.
+
+The package's own signatures are unchanged, so this breaks no published API and MulmoTerminal
+needs no edit.
+
+#### Shared `shortcuts.json` dropped keys the running build did not know (#3055, PR #3057)
+
+A shortcuts file written by a newer build lost its unrecognised keys the moment an older one saved
+over it. Unknown keys are now preserved through a read-modify-write.
 
 #### `@mulmoclaude/mulmoscript-plugin@4.8.0` — the View sends the root its card names (#3014, PR #3076)
 
