@@ -193,6 +193,76 @@ describe("checkPackageDrift", () => {
   });
 });
 
+/**
+ * What the operator actually reads.
+ *
+ * `pending-publish` used to fall through to the `✓ … (src == published)` branch,
+ * so a package that was bumped but never published printed as fully clean — and
+ * the one number it showed was the LOCAL count, so the published side never
+ * appeared at all. That line was on screen during the 1.16.0 release while
+ * `@mulmobridge/client` sat at 1.1.0 with 1.0.2 on npm (#3099).
+ *
+ * These assert the PROPERTIES a reader depends on, not the exact wording: a
+ * test pinned to the sentence goes red on a reworded message and green on a
+ * wrong one.
+ */
+describe("formatLine", () => {
+  const result = (status: drift.PackageDriftResult["status"], extra: Record<string, unknown> = {}) => ({
+    packageBaseName: "client",
+    localVersion: "1.1.0",
+    publishedVersion: "1.0.2",
+    status,
+    localCount: 9,
+    distCount: 8,
+    ...extra,
+  });
+
+  it("renders every status the audit can return", () => {
+    const statuses: drift.PackageDriftResult["status"][] = ["ok", "drifted", "pending-publish", "skipped"];
+    statuses.forEach((status) => {
+      const line = drift.formatLine(result(status, { reason: "no dist" }));
+      assert.match(line, /client/, `${status} names the package`);
+    });
+  });
+
+  it("shows BOTH counts for pending-publish — the published side is the missing half", () => {
+    const line = drift.formatLine(result("pending-publish"));
+    assert.match(line, /\b9\b/, "the local count");
+    assert.match(line, /\b8\b/, "the published count");
+  });
+
+  it("never claims a pending-publish package matches what is published", () => {
+    const line = drift.formatLine(result("pending-publish"));
+    assert.equal(line.includes("src == published"), false, "the counts differ — saying they match is the bug");
+    assert.equal(line.includes("✓"), false, "a clean tick reads as nothing to do");
+  });
+
+  it("says a pending-publish package is NOT on the registry yet", () => {
+    assert.match(drift.formatLine(result("pending-publish")), /not published/i);
+  });
+
+  it("tells pending-publish, drifted and ok apart", () => {
+    const verdicts: drift.PackageDriftResult["status"][] = ["ok", "drifted", "pending-publish"];
+    const lines = verdicts.map((status) => drift.formatLine(result(status)));
+    assert.equal(new Set(lines).size, 3, "each verdict reads differently");
+  });
+
+  it("keeps ok and skipped as they were", () => {
+    const ok = drift.formatLine(result("ok"));
+    assert.ok(ok.includes("✓"), "the clean tick");
+    assert.ok(ok.includes("src == published"), "and the wording it has always had");
+    assert.match(drift.formatLine(result("skipped", { reason: "local src not found" })), /skipped — local src not found/);
+  });
+
+  it("carries the registry-fallback note through every verdict that has one", () => {
+    const verdicts: drift.PackageDriftResult["status"][] = ["ok", "drifted", "pending-publish"];
+    verdicts.forEach((status) => {
+      const line = drift.formatLine(result(status, { fallbackReason: "registry unreachable" }));
+      assert.match(line, /registry unreachable/, `${status} keeps the note`);
+    });
+  });
+});
+
 describe("isLocalVersionAhead", () => {
   it("returns true when any component is strictly greater", () => {
     assert.equal(drift.isLocalVersionAhead("0.1.3", "0.1.2"), true);
