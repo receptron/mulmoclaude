@@ -33,6 +33,13 @@ flush are now the `onShutdown` they pass, and telegram gains `SIGTERM`, which it
 `cli` is deliberately out of scope — it is an interactive readline REPL, not a resident process,
 and Ctrl-C there belongs to readline.
 
+`@mulmobridge/client` goes to 1.2.0 with the new export, and all 28 declared ranges on it are swept
+to `^1.2.0`. That is not tidiness: `scripts/mulmoclaude/drift.mjs` (the `smoke` job's drift stage)
+counts value-export lines in `src/index.ts` against the published tarball's, and a new export at an
+unchanged version is exactly the failure it exists to catch — npm still ships the old dist, so a
+consumer would crash with "does not provide an export named installProcessGuards". A bumped version
+reads as `pending-publish` instead, which is the honest state until the cascade publish lands.
+
 No restart logic: a supervisor belongs to whatever started the bridge (#3080), and two would fight.
 Verified on a running bridge process — `SIGINT` and `SIGTERM` each print their line and exit 0, and
 a stray rejection prints the transport-named line where Node alone printed an anonymous stack.
