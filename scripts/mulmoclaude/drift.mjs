@@ -352,6 +352,15 @@ export async function checkPackageDrift({
   let compared = 0;
 
   for (const [subpath, entryPath] of entries) {
+    if (!/\.(?:js|mjs|cjs)$/.test(entryPath)) {
+      // A `./style.css` or `./package.json` entry carries no export surface this
+      // metric can speak about, and counting it as a successful comparison is
+      // worse than useless: eight of the scanned packages export a stylesheet, so
+      // a package whose JS dist was never built would have had its `.` entry
+      // skipped, its CSS entry "compared", and the whole package reported `ok`.
+      skipped.push(`${subpath} (${entryPath} is not a JS module — no export surface to compare)`);
+      continue;
+    }
     if (subpath.includes("*") || entryPath.includes("*")) {
       // A wildcard subpath (`"./*": "./dist/*.js"`) names a family, not a file.
       // Enumerating it would mean walking the published tarball; say so rather

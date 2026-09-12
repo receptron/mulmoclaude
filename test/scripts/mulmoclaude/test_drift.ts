@@ -329,6 +329,28 @@ describe("checkPackageDrift — against a fake workspace and a stubbed registry"
     assert.equal(result.status, "skipped");
   });
 
+  // Raised by Codex as a P2: eight of the twenty scanned packages export a
+  // `./style.css`, so a non-JS entry counting as a successful comparison meant an
+  // unbuilt package could report `ok` — its JS entry skipped, its stylesheet
+  // "compared", and the verdict clean.
+  it("does not let a non-JS entry stand in for a missing JS build", async () => {
+    writeWorkspace(
+      "@scope/j",
+      "packages/j",
+      "1.0.0",
+      { "dist/style.css": ".a { color: red }\n" }, // note: no dist/index.js
+      { ".": "./dist/index.js", "./style.css": "./dist/style.css" },
+    );
+    const result = await drift.checkPackageDrift({
+      root,
+      name: "@scope/j",
+      dir: "packages/j",
+      ...published("1.0.0", { "dist/index.js": "export { one };\n", "dist/style.css": ".a { color: red }\n" }),
+    });
+    assert.equal(result.status, "skipped", `expected skipped, got ${result.status}`);
+    assert.match(result.reason ?? "", /not a JS module|build first/);
+  });
+
   it("skips when the package is not on the registry", async () => {
     writeWorkspace("@scope/g", "packages/g", "1.0.0", { "dist/index.js": "export { one };\n" });
     const result = await drift.checkPackageDrift({
