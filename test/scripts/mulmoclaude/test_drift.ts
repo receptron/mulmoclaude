@@ -202,9 +202,15 @@ describe("checkPackageDrift", () => {
  * appeared at all. That line was on screen during the 1.16.0 release while
  * `@mulmobridge/client` sat at 1.1.0 with 1.0.2 on npm (#3099).
  *
- * These assert the PROPERTIES a reader depends on, not the exact wording: a
- * test pinned to the sentence goes red on a reworded message and green on a
- * wrong one.
+ * These assert the EXACT line, built from the fixture. That is the opposite of
+ * where this started — the first version asserted properties, on the reasoning
+ * that pinning the sentence goes red on a reword. Four review rounds then found
+ * four different wrong formatters that satisfied properties: labels swapped, the
+ * fixture pair hard-coded, a swap with the correct counts appended, and ` EXTRA`
+ * on the two statuses checked loosely. Presence can always be satisfied by adding
+ * text, so the property rule had no last case. Going red on a reword is the price,
+ * and it is the right one here: these lines are what an operator reads to decide
+ * whether publishing is safe.
  */
 describe("formatLine", () => {
   const result = (status: drift.PackageDriftResult["status"], extra: Record<string, unknown> = {}) => ({
