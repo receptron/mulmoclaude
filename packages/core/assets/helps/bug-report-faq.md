@@ -56,6 +56,18 @@ settings is the user's opt-in. The RemoteHost channel must also be connected —
 what supplies the Firebase auth, so with the phone link down the send is a no-op by design. A user
 who never connected a phone has nothing to receive the push regardless of the setting.
 
+## MulmoClaude is answering with a different model than I expected
+
+configKey: chatModel
+source: server/agent/config.ts
+
+Read `chatModel` from the live settings. Absent means MulmoClaude passes no `--model` at all and the
+CLI resolves the model from `~/.claude/settings.json` — the same file the VS Code and Cursor Claude
+Code extensions write their `/model` pick to, so a switch made in another editor changes MulmoClaude
+too, with nothing on screen to say so. Setting the key from Settings → Model is what pins MulmoClaude
+independently of that shared file. A session already running keeps its model until the next turn, so
+"it changed partway through a conversation" is the expected shape of this, not a second bug.
+
 ## My chats never get titles or summaries
 
 configKey: chatIndex

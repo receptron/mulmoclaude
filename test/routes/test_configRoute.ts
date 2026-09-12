@@ -245,6 +245,46 @@ describe("PUT /config/settings", () => {
     assert.deepEqual(persisted.extraAllowedTools, ["mcp__keep"]);
   });
 
+  // #2923: the chatModel patch lifecycle mirrors effortLevel's — set,
+  // clear via the null sentinel, reject anything outside the alias set.
+  it("sets chatModel from a patch", () => {
+    configMod.saveSettings({ extraAllowedTools: ["mcp__keep"] });
+    const { state, res } = mockRes();
+    putSettingsHandler({ body: { chatModel: "sonnet" } } as Request, res);
+    assert.equal(state.status, 200);
+    const persisted = configMod.loadSettings();
+    assert.equal(persisted.chatModel, "sonnet");
+    assert.deepEqual(persisted.extraAllowedTools, ["mcp__keep"]);
+  });
+
+  it("clears chatModel when patch sends null", () => {
+    configMod.saveSettings({ extraAllowedTools: ["mcp__keep"], chatModel: "opus" });
+    const { state, res } = mockRes();
+    putSettingsHandler({ body: { chatModel: null } } as Request, res);
+    assert.equal(state.status, 200);
+    const persisted = configMod.loadSettings();
+    assert.equal(persisted.chatModel, undefined);
+    assert.deepEqual(persisted.extraAllowedTools, ["mcp__keep"]);
+  });
+
+  it("rejects pinned model ids with 400", () => {
+    const { state, res } = mockRes();
+    putSettingsHandler({ body: { chatModel: "claude-opus-4-8" } } as Request, res);
+    assert.equal(state.status, 400);
+  });
+
+  // The two selects live in one tab but patch independently, so saving one
+  // must not disturb the other (the Model tab sends a single-key payload).
+  it("leaves effortLevel untouched when only chatModel is patched", () => {
+    configMod.saveSettings({ extraAllowedTools: [], effortLevel: "high" });
+    const { state, res } = mockRes();
+    putSettingsHandler({ body: { chatModel: "haiku" } } as Request, res);
+    assert.equal(state.status, 200);
+    const persisted = configMod.loadSettings();
+    assert.equal(persisted.effortLevel, "high");
+    assert.equal(persisted.chatModel, "haiku");
+  });
+
   it("rejects unknown effortLevel values with 400", () => {
     const { state, res } = mockRes();
     putSettingsHandler({ body: { effortLevel: "ultra" } } as Request, res);

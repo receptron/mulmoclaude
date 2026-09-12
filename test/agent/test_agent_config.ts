@@ -289,6 +289,44 @@ describe("buildCliArgs", () => {
 
     assert.ok(!args.includes("--effort"));
   });
+
+  // #2923: without the flag the CLI resolves the model from
+  // ~/.claude/settings.json, which other Claude Code clients also write
+  // their /model pick to — so "omitted when unset" is the behaviour that
+  // keeps the default unchanged, and "present when set" is what pins
+  // MulmoClaude independently of that shared file.
+  it("includes --model when chatModel is set", async () => {
+    const args = buildCliArgs({
+      systemPromptPath: "/tmp/sp.md",
+      activePlugins: [],
+      chatModel: "sonnet",
+    });
+
+    const modelIdx = args.indexOf("--model");
+    assert.ok(modelIdx >= 0, "--model flag must exist");
+    assert.equal(args[modelIdx + 1], "sonnet");
+  });
+
+  it("omits --model when chatModel is unset", async () => {
+    const args = buildCliArgs({
+      systemPromptPath: "/tmp/sp.md",
+      activePlugins: [],
+    });
+
+    assert.ok(!args.includes("--model"));
+  });
+
+  it("carries --model and --effort together", async () => {
+    const args = buildCliArgs({
+      systemPromptPath: "/tmp/sp.md",
+      activePlugins: [],
+      effortLevel: "high",
+      chatModel: "haiku",
+    });
+
+    assert.equal(args[args.indexOf("--effort") + 1], "high");
+    assert.equal(args[args.indexOf("--model") + 1], "haiku");
+  });
 });
 
 describe("resolveMcpConfigPaths", () => {

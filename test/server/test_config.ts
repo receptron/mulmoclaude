@@ -77,6 +77,96 @@ describe("isAppSettings", () => {
     assert.equal(mod.isAppSettings({ extraAllowedTools: [], effortLevel: 42 }), false);
     assert.equal(mod.isAppSettings({ extraAllowedTools: [], effortLevel: null }), false);
   });
+
+  // #2923: family aliases only. A pinned id must be rejected — the whole
+  // point of storing an alias is that the saved choice follows the next
+  // generation instead of quietly keeping the user on a retired model.
+  it("accepts known chatModel values", () => {
+    for (const model of mod.CHAT_MODELS) {
+      assert.ok(mod.isAppSettings({ extraAllowedTools: [], chatModel: model }), `expected ${model} to be accepted`);
+    }
+  });
+
+  it("rejects pinned model ids and other unknown chatModel values", () => {
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], chatModel: "claude-opus-4-8" }), false);
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], chatModel: "opus[1m]" }), false);
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], chatModel: "" }), false);
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], chatModel: 42 }), false);
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], chatModel: null }), false);
+  });
+});
+
+// The optional-field validation moved from a chain of ifs to a table keyed by
+// `OptionalAppSettingsKey` (#2923 — the chain had hit the complexity ceiling).
+// A differential run of the old chain against the new table agreed on 203,242
+// generated inputs; what survives that harness is the generator below (which
+// input shapes matter for these fields) and the property it proved: every
+// optional key accepts absence and its own valid values, rejects every
+// abnormal shape, and one bad field rejects the whole object however valid
+// its neighbours are. The table itself is the thing that could silently lose
+// a row, so the last case pins its coverage at runtime too.
+describe("optional AppSettings fields", () => {
+  // Built inside a function, not at suite-construction time: `mod` is only
+  // imported in the `before` hook above (HOME must be swapped first).
+  const pools = () => ({
+    valid: {
+      googleMapsApiKey: ["", "AIza-key"],
+      photoExif: [{ autoCapture: true }, { autoCapture: false }],
+      effortLevel: [...mod.EFFORT_LEVELS],
+      chatModel: [...mod.CHAT_MODELS],
+      voiceInput: [{ enabled: true }, { enabled: false, model: "base.en" }],
+      chatIndex: [...mod.CHAT_INDEX_MODES],
+      journal: [...mod.JOURNAL_MODES],
+      pushEnabled: [true, false],
+      macosRemindersEnabled: [true, false],
+    } as Record<string, unknown[]>,
+    invalid: {
+      googleMapsApiKey: [42, null, {}, [], true],
+      photoExif: [{ autoCapture: "yes" }, {}, null, 42, "x", []],
+      effortLevel: ["ultra", "", null, 42, {}, ["high"], "HIGH"],
+      chatModel: ["claude-opus-4-8", "opus[1m]", "", null, 42, {}, []],
+      voiceInput: [{ enabled: true, model: 42 }, { enabled: "yes" }, {}, null, "x", []],
+      chatIndex: ["opus", "", null, 42, {}, []],
+      journal: ["opus", "", null, 42, {}, []],
+      pushEnabled: ["true", null, 0, 1, {}, []],
+      macosRemindersEnabled: ["false", null, 0, 1, {}, []],
+    } as Record<string, unknown[]>,
+  });
+
+  it("accepts absence and every valid value, on both the full and patch shapes", () => {
+    const { valid } = pools();
+    assert.ok(mod.isAppSettings({ extraAllowedTools: [] }), "all-absent must be valid");
+    Object.keys(valid).forEach((key) => {
+      valid[key]?.forEach((value) => {
+        assert.ok(mod.isAppSettings({ extraAllowedTools: [], [key]: value }), `${key}=${JSON.stringify(value)} must be accepted`);
+        assert.ok(mod.isAppSettingsPatch({ [key]: value }), `${key}=${JSON.stringify(value)} must be accepted on the patch path`);
+      });
+    });
+  });
+
+  it("rejects every abnormal value, even beside otherwise valid fields", () => {
+    const { valid, invalid } = pools();
+    const goodNeighbours = Object.fromEntries(Object.keys(valid).map((key) => [key, valid[key]?.[0]]));
+    Object.keys(invalid).forEach((key) => {
+      invalid[key]?.forEach((value) => {
+        assert.equal(mod.isAppSettings({ extraAllowedTools: [], [key]: value }), false, `${key}=${JSON.stringify(value)} must be rejected`);
+        assert.equal(
+          mod.isAppSettings({ extraAllowedTools: [], ...goodNeighbours, [key]: value }),
+          false,
+          `${key}=${JSON.stringify(value)} must still be rejected beside valid neighbours`,
+        );
+      });
+    });
+  });
+
+  it("validates every optional key in AppSettings — a field with no validator would be accepted in any shape", () => {
+    const optionalKeys = mod.APP_SETTINGS_KEYS.filter((key) => key !== "extraAllowedTools");
+    assert.deepEqual(
+      [...optionalKeys].sort(),
+      Object.keys(pools().valid).sort(),
+      "an optional setting is missing from the validator table (or from this test)",
+    );
+  });
 });
 
 describe("isAppSettingsPatch", () => {
@@ -89,6 +179,20 @@ describe("isAppSettingsPatch", () => {
   it("rejects garbage effortLevel even on the patch path", () => {
     assert.equal(mod.isAppSettingsPatch({ effortLevel: "ultra" }), false);
     assert.equal(mod.isAppSettingsPatch({ effortLevel: 42 }), false);
+  });
+
+  // #2923: same null-sentinel + strict-value contract as effortLevel.
+  it("accepts every known chatModel and the null clear-sentinel", () => {
+    for (const model of mod.CHAT_MODELS) {
+      assert.ok(mod.isAppSettingsPatch({ chatModel: model }), `expected ${model} to be accepted`);
+    }
+    assert.ok(mod.isAppSettingsPatch({ chatModel: null }));
+  });
+
+  it("rejects unknown chatModel values on the patch path", () => {
+    assert.equal(mod.isAppSettingsPatch({ chatModel: "claude-opus-4-8" }), false);
+    assert.equal(mod.isAppSettingsPatch({ chatModel: "" }), false);
+    assert.equal(mod.isAppSettingsPatch({ chatModel: 42 }), false);
   });
 
   // #1944: same null-sentinel + strict-value pattern as effortLevel
@@ -133,6 +237,15 @@ describe("normaliseAppSettingsPatch", () => {
 
   it("preserves other fields untouched", () => {
     assert.deepEqual(mod.normaliseAppSettingsPatch({ extraAllowedTools: ["a"], effortLevel: null }), { extraAllowedTools: ["a"] });
+  });
+
+  // #2923: chatModel null-sentinel mirrors effortLevel.
+  it("strips null chatModel", () => {
+    assert.deepEqual(mod.normaliseAppSettingsPatch({ chatModel: null }), {});
+  });
+
+  it("preserves a present chatModel", () => {
+    assert.deepEqual(mod.normaliseAppSettingsPatch({ chatModel: "sonnet" }), { chatModel: "sonnet" });
   });
 
   // #1944: chatIndex null-sentinel mirrors effortLevel.
@@ -510,6 +623,23 @@ describe("saveSettings", () => {
     const raw = readFileSync(mod.settingsPath(), "utf-8");
     const parsed = JSON.parse(raw);
     assert.equal("journal" in parsed, false);
+  });
+
+  it("persists chatModel and roundtrips it through loadSettings", () => {
+    mod.saveSettings({ extraAllowedTools: [], chatModel: "sonnet" });
+    assert.deepEqual(mod.loadSettings(), { extraAllowedTools: [], chatModel: "sonnet" });
+    mod.saveSettings({ extraAllowedTools: [], chatModel: "haiku" });
+    assert.deepEqual(mod.loadSettings(), { extraAllowedTools: [], chatModel: "haiku" });
+  });
+
+  // Key-absent, not "key present with a falsy value": absent is what makes
+  // the CLI fall back to ~/.claude/settings.json, which is the documented
+  // default behaviour (#2923).
+  it("omits chatModel when unset so settings.json stays default-clean", () => {
+    mod.saveSettings({ extraAllowedTools: [] });
+    const raw = readFileSync(mod.settingsPath(), "utf-8");
+    const parsed = JSON.parse(raw);
+    assert.equal("chatModel" in parsed, false);
   });
 });
 

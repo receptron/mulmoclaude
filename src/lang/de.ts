@@ -351,7 +351,14 @@ const deMessages = {
       saveError: "Speichern fehlgeschlagen",
     },
     modelTab: {
-      description: "Steuert den Reasoning-Effort, den Claude Code pro Zug verwendet. Ohne Einstellung wird der Standard von Claude verwendet.",
+      description:
+        "Wählt das Modell und den Reasoning-Effort, die Claude Code pro Zug verwendet. Ohne Einstellung bleibt die Auflösung durch Claude selbst bestehen.",
+      modelLabel: "Modell",
+      modelUnset: "(nicht gesetzt — ~/.claude/settings.json folgen)",
+      modelHelperText:
+        "Ohne Einstellung stammt das Modell aus ~/.claude/settings.json — dieselbe Datei, in die andere Claude-Code-Clients (VS Code, Cursor) ihre /model-Auswahl schreiben; eine Umstellung dort ändert also auch MulmoClaude. Aliase folgen der jeweils neuesten Generation einer Familie.",
+      modelConfigured: "Modell: {model}",
+      modelNotConfigured: "Nicht gesetzt (geteilt)",
       effortLabel: "Reasoning-Effort",
       effortUnset: "(nicht gesetzt — Standard von Claude verwenden)",
       helperText: "Höhere Stufen erlauben mehr Denkzeit, erhöhen aber Latenz und Token-Verbrauch.",

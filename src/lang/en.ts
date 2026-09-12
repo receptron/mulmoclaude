@@ -367,7 +367,13 @@ const enMessages = {
       saveError: "Failed to save",
     },
     modelTab: {
-      description: "Control the reasoning effort Claude Code uses for each turn. Leave unset to use Claude's default.",
+      description: "Choose the model and the reasoning effort Claude Code uses for each turn. Leave either unset to keep Claude's own resolution.",
+      modelLabel: "Model",
+      modelUnset: "(unset — follow ~/.claude/settings.json)",
+      modelHelperText:
+        "Unset means the model comes from ~/.claude/settings.json, which other Claude Code clients (VS Code, Cursor) also write their /model pick to — so a switch made there changes MulmoClaude too. Aliases follow the latest generation of each family.",
+      modelConfigured: "Model: {model}",
+      modelNotConfigured: "Not set (shared)",
       effortLabel: "Reasoning effort",
       effortUnset: "(unset — use Claude's default)",
       helperText: "Higher levels allow more thinking time but increase latency and token usage.",
