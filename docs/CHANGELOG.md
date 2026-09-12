@@ -30,9 +30,20 @@ of in sentences:
 | `@mulmoclaude/core`            | 4.9.0 → **4.9.1** | patch | no export and no behaviour change: the new `assets/helps/error-recovery.md` sections (which reach npm users only through a core publish, since the agent reads that file before asking the user anything on a tool failure) and #3106's comment-only edits under `src/notifier/` | **17** / 9 — the launcher's `dependencies` plus eight plugins' `devDependencies` AND `peerDependencies`; the same 17 the `4.9.0` release swept |
 | `@mulmobridge/client`          | already 1.2.0     | —     | **two** things, not one: `installProcessGuards` + `SHUTDOWN_GRACE_MS` (from #3110, which bumped it — nothing to do here) **and `resolvePublishedApiUrl`**, another PR's unpublished work (`18b8c5ea3`) that rides along in 1.2.0                                                 | —                                                                                                                                              |
 
-A caret range on an internal package does not float a consumer forward on its own, so a range left
-behind pins that consumer to the old line. **The launcher's OWN `version` is untouched** (still
-1.16.0); that field belongs to `/publish-mulmoclaude`.
+Why sweep at all, when these are `1.x` lines? **Not** to unpin anyone: `^1.2.0` does admit 1.3.0
+(`semver.satisfies("1.3.0", "^1.2.0")` is `true`), and `docs/package-releases.md` says so — a caret
+floats across minors at or above 1.0. The `0.x` case in CLAUDE.md's rationale is the one where a stale
+range pins a consumer (`^0.23.0` excludes 0.24.0), and none of these three are on a `0.x` line. What a
+stale range costs here is the **floor**: `^1.2.0` permits a resolver to land on 1.2.x — an existing
+lockfile, `npm ci`, `--prefer-offline`, another constraint in the tree — and that copy has no `asInt`, so
+the failure arrives at runtime. `^1.3.0` turns it into an install-time resolution error. The sweep is
+also a hard gate for the launcher specifically: `check:launcher-sync` requires its declared lower bound
+to equal the workspace version. This is the same reading the `2026-07-25` entry in this file already
+took ("a caret on a `1.x` package floats, so the published `^1.2.x` ranges already resolved core
+1.3.0 … the bump only makes each declared floor match what the source actually requires").
+
+**The launcher's OWN `version` is untouched** (still 1.16.0); that field belongs to
+`/publish-mulmoclaude`.
 
 The drift gate caught one of the four and could not have caught the others: it scans the
 `@mulmobridge/*` packages the launcher depends on, so `@mulmobridge/client` failed the check while
