@@ -108,13 +108,22 @@ function unpublish(): void {
 
 const sleep = (delayMs: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, delayMs));
 
-/** Fail loudly rather than let the 6-minute ack timeout decide the test. */
+/**
+ * Fail loudly rather than let the 6-minute ack timeout decide the test.
+ *
+ * The timer MUST be cleared when `work` wins. `Promise.race` settles, but the
+ * losing promise stays alive — so an uncleared timer rejects later with nobody
+ * listening, and node:test ends the file with "Promise resolution is still
+ * pending but the event loop has already resolved". `unref()` hid that when
+ * this file ran alone (the process exited first) and not when it ran beside
+ * another (Codex, found by running the combined command).
+ */
 function withDeadline<T>(work: Promise<T>, budgetMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`still unsettled after ${budgetMs}ms`)), budgetMs);
-    timer.unref?.();
+    timer = setTimeout(() => reject(new Error(`still unsettled after ${budgetMs}ms`)), budgetMs);
   });
-  return Promise.race([work, expiry]);
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
 }
 
 /** Poll `send` until the answer names the generation we are waiting for. */
