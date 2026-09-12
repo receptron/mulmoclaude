@@ -10,6 +10,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)
+
+Two mismatches with the upstream app, both in `loft`. A `fill { path … }` as a section rendered
+here but is refused upstream ("A mesh value was not expected in this context"): the builder built
+every child into a mesh and read the outline back, so a filled face passed for the path it was
+made from, and a generated F-22 that previewed fine failed in the app. `loft` now refuses a mesh
+section with a message naming the fix, checked on the evaluated value so a `define`d `fill` is
+refused too, while `fill` on its own and inside `hull` stay legal. And a section whose last point
+did not repeat its first was dropped as an open stroke, so a two-section loft failed with "requires
+at least two cross-sections"; upstream closes such a section implicitly and so does this builder
+now. Sections keep their written order when open and closed ones mix.
+
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+
 #### A bridge no longer has to be restarted every time the server is (#3078)
 
 `@mulmobridge/client` resolved the token and the port once, at construction, and a socket's URL
