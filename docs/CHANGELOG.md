@@ -26,6 +26,14 @@ Seeding now re-keys the blob to the app about to be opened, so a parked session 
 depends on the sequence number it happened to be saved under. Sessions already parked under a
 later name restore without a new sign-in.
 
+The re-key refuses to guess. A blob can carry two app names — `open` keeps the previous app
+alive until the fresh one has validated, and both share one store, so a token refresh in that
+window writes the old name back beside the new one. Collapsing both onto one target would pick
+a winner by JSON order, and the stale app is the one that writes last, so a restart could come
+back as the account the user had just signed out of. An ambiguous target is dropped instead:
+the restore finds no user and the client is asked to sign in once, which is what happened
+before re-keying existed.
+
 #### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)
 
 Two mismatches with the upstream app, both in `loft`. A `fill { path … }` as a section rendered

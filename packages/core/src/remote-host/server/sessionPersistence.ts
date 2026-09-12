@@ -97,6 +97,25 @@ const rekeyForApp = (key: string, appName: string): string => {
   return [...segments.slice(0, FIREBASE_KEY_SEGMENTS - 1), appName].join(":");
 };
 
+// Re-keying is only safe while it is unambiguous, and a blob CAN carry two app
+// names: `open` keeps the previous app alive until the fresh one has validated,
+// and that app shares this store, so a token refresh in the meantime writes its
+// own key back beside the new one. Collapsing both onto one target would pick a
+// winner by JSON order — the stale app writes last — and a host would come back
+// as the account the user had just signed out of. So an ambiguous target is
+// dropped: the restore finds no user, the client is told to sign in again, and
+// that is what happened before re-keying existed.
+const resolveKeys = (keys: string[], appName: string | undefined): Map<string, string> => {
+  if (!appName) return new Map(keys.map((key) => [key, key]));
+  const targets = keys.map((key) => rekeyForApp(key, appName));
+  const contested = new Set(targets.filter((target, index) => targets.indexOf(target) !== index));
+  return keys.reduce((resolved, key, index) => {
+    const target = targets[index];
+    if (target !== undefined && !contested.has(target)) resolved.set(key, target);
+    return resolved;
+  }, new Map<string, string>());
+};
+
 // A class (constructor) so the SDK's `_getInstance` accepts it (it asserts
 // `cls instanceof Function`, then `new cls()`); instances hold the shared
 // `store`/`notify`, so a fresh `new` still sees the seeded/live data. `static
@@ -152,8 +171,10 @@ export const createHostSessionPersistence = (): HostSessionPersistence => {
     const parsed: unknown = JSON.parse(blob);
     if (!isRecord(parsed)) throw new Error("host session blob must be a JSON object");
     store.clear();
+    const resolved = resolveKeys(Object.keys(parsed), appName);
     for (const [key, value] of Object.entries(parsed)) {
-      if (isPersistenceValue(value)) store.set(appName ? rekeyForApp(key, appName) : key, value);
+      const target = resolved.get(key);
+      if (target !== undefined && isPersistenceValue(value)) store.set(target, value);
     }
   };
 

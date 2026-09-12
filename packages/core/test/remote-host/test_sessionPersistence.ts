@@ -119,6 +119,25 @@ describe("createHostSessionPersistence", () => {
     });
   });
 
+  it("seed drops a re-key target that two source keys claim, rather than picking one", () => {
+    // A blob can carry two app names: `open` keeps the previous app alive until
+    // the fresh one validates, and that app shares this store. Collapsing both
+    // onto one target would pick a winner by JSON order — the stale app writes
+    // last — so the host would come back as the account the user just left.
+    const { seed, exportBlob } = createHostSessionPersistence();
+    seed(
+      JSON.stringify({
+        "firebase:authUser:apiKey:remote-host-3": { uid: "current" },
+        "firebase:authUser:apiKey:remote-host-2": { uid: "stale" },
+        "firebase:persistence:apiKey:remote-host-2": "LOCAL",
+      }),
+      "remote-host-1",
+    );
+
+    // The contested authUser target is dropped; the uncontested one still re-keys.
+    assert.deepEqual(JSON.parse(exportBlob() ?? "null"), { "firebase:persistence:apiKey:remote-host-1": "LOCAL" });
+  });
+
   it("seed without an app name restores keys verbatim (the rollback path)", () => {
     // `open` rolls back to a still-live app, which reads the keys its own blob
     // already carries — re-keying there would hide its session from it.

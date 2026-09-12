@@ -9,19 +9,27 @@
 // credentials: `globalThis.fetch` is replaced BEFORE firebase is loaded, because
 // @firebase/auth captures the global in `FetchProvider.initialize(fetch, …)` at
 // module-eval time. Every auth API call then fails as `network-request-failed`,
-// which the SDK treats as "keep the stored user" rather than "sign out". That is
-// why this lives in its own file: `test_session.ts` imports firebase statically,
-// so the stub could not be installed first there.
+// which is the ONE error the SDK answers by keeping the stored user rather than
+// signing it out (`reloadAndSetCurrentUserOrClear`). That is why this lives in
+// its own file: `test_session.ts` imports firebase statically, so the stub could
+// not be installed first there.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
+// The stub RESOLVES with an unparsable body rather than rejecting. Both end in
+// `network-request-failed`, but `_performFetchWithErrorHandling` races the fetch
+// against a 30-second `NetworkTimeout` and clears that timer only after the race
+// RESOLVES — a rejecting stub leaves it pending and the test process idles for 30
+// seconds before exiting. Resolving gets the timer cleared, then `response.json()`
+// throws and the SDK reports the network error the restore path needs.
 const fetchCalls: string[] = [];
 globalThis.fetch = (input: Parameters<typeof fetch>[0]): Promise<Response> => {
   fetchCalls.push(String(input).split("?")[0] ?? "");
-  return Promise.reject(new TypeError("offline (test stub)"));
+  return Promise.resolve(new Response("offline (test stub): not json"));
 };
 
 const { createRemoteHostSession } = await import("../../src/remote-host/server/firebase.js");
+const { updateCurrentUser } = await import("firebase/auth");
 
 const CONFIG = { apiKey: "test-api-key", authDomain: "test.firebaseapp.com", projectId: "test", appId: "1:0:web:test" };
 const UID = "parked-uid";
@@ -30,10 +38,10 @@ const TOKEN_LIFETIME_MS = 60 * 60 * 1000;
 // Shaped like what `UserImpl.toJSON()` writes; `_fromJSON` asserts on these
 // fields. The `appName` INSIDE the user is written by the SDK but never read
 // back, so leaving it stale is deliberate — only the key has to line up.
-const blobFor = (appName: string): string =>
+const blobFor = (appName: string, uid: string = UID): string =>
   JSON.stringify({
     [`firebase:authUser:${CONFIG.apiKey}:${appName}`]: {
-      uid: UID,
+      uid,
       emailVerified: false,
       isAnonymous: false,
       providerData: [],
@@ -87,6 +95,34 @@ describe("createRemoteHostSession.open (restore a parked blob after a restart)",
       assert.equal(second.uid, UID);
     } finally {
       await session.close();
+    }
+  });
+
+  it("refuses to restore a blob that carries two app names, instead of adopting the stale one", async () => {
+    // `open` keeps the previous app alive until the fresh one validates, and both
+    // apps share one store — so a write from the previous app during that window
+    // parks a blob holding BOTH names. `validate` runs inside exactly that window,
+    // which is how this drives it without waiting for a real token refresh.
+    const session = createRemoteHostSession(CONFIG);
+    const parked = await (async () => {
+      try {
+        const first = await session.open(blobFor("remote-host-1", "stale-uid"));
+        await session.open(blobFor("remote-host-9", "current-uid"), async () => {
+          if (first.auth.currentUser) await updateCurrentUser(first.auth, first.auth.currentUser);
+        });
+        return session.exportSession();
+      } finally {
+        await session.close();
+      }
+    })();
+    assert.equal(Object.keys(JSON.parse(parked ?? "{}")).length, 2, "the window must actually have produced a two-name blob");
+
+    const restarted = createRemoteHostSession(CONFIG);
+    try {
+      const opened = await restarted.open(parked ?? "{}");
+      assert.equal(opened.uid, null, "an ambiguous blob must restore nobody — never the account the user signed out of");
+    } finally {
+      await restarted.close();
     }
   });
 
