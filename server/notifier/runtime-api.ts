@@ -29,7 +29,8 @@ export type { ChatRuntimeApi, ChatStartInput, ChatStartResult } from "../plugins
  *  automatically from the calling plugin's pkg name.
  *
  *  Two publish-time rules apply to `action` lifecycle, enforced by the
- *  engine (and also by the HTTP layer for parity):
+ *  engine — the only place they can be, since publish has no HTTP
+ *  surface (see `server/api/routes/notifier.ts`):
  *
  *    - `navigateTarget` MUST be a non-empty string.
  *    - `severity` MUST NOT be `"info"`.

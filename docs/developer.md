@@ -364,11 +364,14 @@ namespace. Publishers are in-process:
   (`server/plugins/runtime.ts`) binds to the calling plugin's own `pluginPkg` — a plugin
   literally cannot publish under another's namespace.
 - **Most host code** calls `publishNotification()` in `server/events/notifications.ts`, the
-  legacy wrapper below — nine call sites at the time of writing, among them
-  `server/agent/mcp-tools/notify.ts`, `server/plugins/diagnostics.ts`,
+  legacy wrapper below — `server/agent/mcp-tools/notify.ts`, `server/plugins/diagnostics.ts`,
   `server/agent/mcpFailureMonitor.ts`, `server/system/shadowedEnv.ts` and
-  `server/workspace/billing-migration.ts`. `grep -rl publishNotification server/` is the current
-  list; this one will rot.
+  `server/workspace/billing-migration.ts` among them. Do not trust that list to stay complete;
+  the callers are whatever this prints:
+
+  ```bash
+  grep -rl publishNotification server/ | grep -v events/notifications.ts | grep -v server/build/
+  ```
 - **A few call `engine.publish` directly**, with every namespace-bearing field fixed at the call
   site rather than taken from a request: `server/api/routes/collectionAgentActions.ts` publishes
   an action-failure notice as `pluginPkg: "host"`.
