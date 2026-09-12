@@ -227,13 +227,26 @@ describe("formatLine", () => {
     });
   });
 
-  it("attaches each count to its OWN side — both numbers present is not enough", () => {
-    const line = drift.formatLine(result("pending-publish"));
-    // Swapping the two labels keeps both numbers on the line and tells the operator the
-    // opposite story — published ahead of src. Asserting mere presence passes that
-    // implementation, so pin the association instead (#3101 round 1, found by both reviewers).
-    assert.match(line, /src\D*17/, "the local count sits with `src`");
-    assert.match(line, /dist\D*4/, "the published count sits with `dist`");
+  it("renders the counts it was GIVEN, on their own sides, for every pair", () => {
+    // Two rounds each found a different wrong formatter that passed: one swapped the
+    // labels (both numbers present, opposite story), one hard-coded the single pair the
+    // test used. Enumerating wrong implementations is a queue, so this asserts the
+    // property that kills all of them at once — the line is a FUNCTION of its counts,
+    // with each on its own side. A constant fails it, a swap fails it, and so does the
+    // next variant nobody has thought of (#3101 rounds 1-2).
+    const pairs = [
+      { localCount: 17, distCount: 4 },
+      { localCount: 9, distCount: 8 },
+      { localCount: 231, distCount: 5 },
+    ];
+    const carriesCounts: drift.PackageDriftResult["status"][] = ["pending-publish", "drifted"];
+    carriesCounts.forEach((status) => {
+      pairs.forEach(({ localCount, distCount }) => {
+        const line = drift.formatLine(result(status, { localCount, distCount }));
+        assert.match(line, new RegExp(`src\\D*${localCount}`), `${status}: src side carries ${localCount}`);
+        assert.match(line, new RegExp(`dist\\D*${distCount}`), `${status}: published side carries ${distCount}`);
+      });
+    });
   });
 
   it("never claims a pending-publish package matches what is published", () => {
