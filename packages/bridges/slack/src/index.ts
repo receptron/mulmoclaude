@@ -23,13 +23,15 @@
 import "dotenv/config";
 import { SocketModeClient } from "@slack/socket-mode";
 import { WebClient } from "@slack/web-api";
-import { createBridgeClient, formatAckReply } from "@mulmobridge/client";
+import { createBridgeClient, formatAckReply, installProcessGuards } from "@mulmobridge/client";
 import { parseCsvSet } from "@mulmoclaude/common";
 import { buildExternalChatId, effectiveThreadTs, parseExternalChatId, parseGranularity } from "./sessionId.js";
 import { parseAckReaction } from "./ackReaction.js";
 import { redactUser } from "./redactUser.js";
 
 const TRANSPORT_ID = "slack";
+
+installProcessGuards({ name: TRANSPORT_ID });
 
 const botToken = process.env.SLACK_BOT_TOKEN;
 const appToken = process.env.SLACK_APP_TOKEN;

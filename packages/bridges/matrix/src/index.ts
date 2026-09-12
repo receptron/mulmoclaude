@@ -14,10 +14,12 @@
 
 import "dotenv/config";
 import { createClient, RoomEvent, type MatrixClient, type MatrixEvent, type Room } from "matrix-js-sdk";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 import { parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "matrix";
+
+installProcessGuards({ name: TRANSPORT_ID });
 
 const homeserverUrl = process.env.MATRIX_HOMESERVER_URL;
 const accessToken = process.env.MATRIX_ACCESS_TOKEN;

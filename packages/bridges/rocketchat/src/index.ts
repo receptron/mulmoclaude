@@ -17,10 +17,12 @@
 //   ROCKETCHAT_POLL_INTERVAL_SEC  — poll interval seconds (default 5)
 
 import "dotenv/config";
-import { createBridgeClient, chunkText, fetchJsonRecord, type JsonRecord } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, fetchJsonRecord, type JsonRecord, installProcessGuards } from "@mulmobridge/client";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "rocketchat";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_MSG_LEN = 4_000;
 const FETCH_TIMEOUT_MS = 15_000;
 

@@ -16,11 +16,13 @@
 
 import "dotenv/config";
 import type { Request, Response } from "express";
-import { createBridgeClient, chunkText, formatAckReply } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, formatAckReply, installProcessGuards } from "@mulmobridge/client";
 import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { extractIncomingLineMessage, parseLineWebhookBody } from "./parse.js";
 
 const TRANSPORT_ID = "line";
+
+installProcessGuards({ name: TRANSPORT_ID });
 
 function readRequiredEnv(): { channelSecret: string; channelAccessToken: string } {
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
