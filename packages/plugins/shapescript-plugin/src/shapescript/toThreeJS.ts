@@ -714,7 +714,8 @@ export class Converter {
   }
 
   private convertShape(node: ShapeNode): THREE.Mesh | null {
-    if (node.points !== undefined) return this.placeValue(this.polygonValue(node));
+    // Charged already, as a `shape` node in `convertNode`.
+    if (node.points !== undefined) return this.placeValue(this.polygonValue(node), { charged: true });
     return this.withShapeOptions(node.properties, () => {
       const mesh = this.finishMesh(this.createGeometry(node), node, false);
       return FLAT_PRIMITIVES.has(node.primitive) ? markPathValue(mesh) : mesh;
@@ -734,8 +735,14 @@ export class Converter {
 
   /** A value a statement produced: collected when a sink is open, otherwise
    *  a shape is placed in the scene and anything else is an error, as
-   *  upstream's "unused value" is. */
-  private placeValue(value: Value): THREE.Mesh | null {
+   *  upstream's "unused value" is.
+   *
+   *  A value placed here is usually an object the statement list did not
+   *  charge for — a defined shape used by name (`define ico icosphere { … }`
+   *  then `ico`), a function's result, a bare symbol — so it costs the same
+   *  as a primitive statement. `charged` is for the one caller that is a
+   *  `shape` node itself, which `convertNode` charged on the way in. */
+  private placeValue(value: Value, { charged = false } = {}): THREE.Mesh | null {
     if (this.valueSink) {
       // Captured in the current frame, as a placed shape would be: a
       // `translate` before a polygon inside `mesh { }` moves that polygon.
@@ -743,10 +750,7 @@ export class Converter {
       this.valueSink.push(this.transformedForCapture(value));
       return null;
     }
-    // A value placed here is an object the statement list did not charge for:
-    // a defined shape used by name (`define ico icosphere { … }` then `ico`),
-    // a function's result, a bare symbol. Same budget as a primitive statement.
-    if (isShapeValue(value) || (Array.isArray(value) && value.length > 0 && value.every(isShapeValue))) this.chargeNode();
+    if (!charged && isShapeLikeValue(value)) this.chargeNode();
     if (isObjectValue(value) && value.kind === "mesh") return this.placeMesh(value);
     if (isObjectValue(value) && value.kind === "polygon") return this.placePolygons([value]);
     if (Array.isArray(value) && value.length > 0 && value.every((item) => isObjectValue(item) && (item.kind === "mesh" || item.kind === "polygon"))) {
@@ -2363,6 +2367,11 @@ function flattenShapeValues(values: readonly Value[]): (MeshValue | PolygonValue
     else if (isShapeValue(value)) shapes.push(value);
   }
   return shapes;
+}
+
+/** A shape value, or a tuple of them: what `placeValue` puts in the scene. */
+function isShapeLikeValue(value: Value): boolean {
+  return isShapeValue(value) || (Array.isArray(value) && value.length > 0 && value.every(isShapeValue));
 }
 
 function isShapeValue(value: Value): value is MeshValue | PolygonValue {

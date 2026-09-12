@@ -278,6 +278,11 @@ describe("conversion budgets", () => {
     const script = "define ico icosphere { size 1 }\nfor i in 1 to 5 {\n ico { position i 0 0 }\n}";
     disposeObject3D(astToThreeJS(parseShapeScript(script), { maxNodes: 6 }));
     assert.throws(() => astToThreeJS(parseShapeScript(script), { maxNodes: 5 }), /more than 5 objects/);
+    // A `polygon { point … }` is a `shape` node that is placed as a value:
+    // charged once, not twice.
+    const polygons = "for i in 1 to 3 {\n polygon {\n  point 0 0 0\n  point 1 0 0\n  point 0 1 0\n }\n}";
+    disposeObject3D(astToThreeJS(parseShapeScript(polygons), { maxNodes: 3 }));
+    assert.throws(() => astToThreeJS(parseShapeScript(polygons), { maxNodes: 2 }), /more than 2 objects/);
     // A `mesh { }` block collects its children into one object, but each child
     // allocates geometry until the merge, so each is charged.
     assert.throws(() => astToThreeJS(parseShapeScript("mesh {\n cube\n cube\n}"), { maxNodes: 2 }), /more than 2 objects/);
