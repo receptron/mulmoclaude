@@ -108,10 +108,12 @@ function linePoints(line: THREE.Line): THREE.Vector3[] {
  *  `square` / `circle` / `roundrect` / `polygon`, `text`) are marked, and
  *  `loft` refuses anything else. */
 const PATH_VALUE_KEY = "pathValue";
+/** Mark `object` as standing in for a path value, and hand it back. */
 function markPathValue<T extends THREE.Object3D>(object: T): T {
   object.userData[PATH_VALUE_KEY] = true;
   return object;
 }
+/** Whether `object` stands in for a path value (see `markPathValue`). */
 function isPathValue(object: THREE.Object3D): boolean {
   return object.userData[PATH_VALUE_KEY] === true;
 }
@@ -737,8 +739,10 @@ export class Converter {
         : undefined;
       const geometry = mergeMeshGeometries([...meshes.map((mesh) => mesh.geometry), ...(faces ? [faces] : [])]);
       faces?.dispose();
-      // `placeMesh` clones, so the merged geometry is an intermediate too.
-      const placed = this.placeMesh({ kind: "mesh", geometry });
+      // `placeMesh` clones, so the merged geometry is an intermediate too. A
+      // tuple of paths alone is still a path (a builder then judges its outline).
+      const path = polygons.length === 0 && meshes.every((mesh) => mesh.path);
+      const placed = this.placeMesh({ kind: "mesh", geometry, ...(path ? { path } : {}) });
       geometry.dispose();
       return placed;
     }

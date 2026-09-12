@@ -471,6 +471,10 @@ describe("path transform options", () => {
     withMesh('define bar text "I"\nloft {\n bar\n translate 0 0 1\n bar\n}', (mesh) => assert.ok(extent(mesh).z > 0.99));
     // A defined solid is still not a path.
     assert.throws(() => astToThreeJS(parseShapeScript("define c cube\nloft {\n c\n translate 0 0 1\n c\n}")), /`loft` expects `path`/);
+    // A function returning a tuple of paths is placed as a path too: the
+    // builder then judges its outline (here two perimeters), not its kind.
+    const two = "define pair() {\n square\n translate 2 0 0\n square\n}\nloft {\n pair()\n translate 0 0 1\n pair()\n}";
+    assert.throws(() => astToThreeJS(parseShapeScript(two)), /multiple perimeters/);
   });
 
   it("lofts open paths, closing each section implicitly as upstream does", () => {
