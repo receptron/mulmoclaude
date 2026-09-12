@@ -67,7 +67,7 @@ See [Wiki](config/helps/wiki.md) for details on how it works.
 - [Spreadsheet](config/helps/spreadsheet.md) — cell format, formulas, date handling, and format codes for the presentSpreadsheet plugin
 - [presentHtml](config/helps/presenthtml.md) — self-contained HTML rules and the three-`../` relative-path convention used by the presentHtml plugin to keep generated files portable under `file://`
 - [Sandbox](config/helps/sandbox.md) — how the Docker sandbox isolates the agent, what it can access, and how to disable it
-- [Error recovery](config/helps/error-recovery.md) — the lookup the agent reads on tool failures (gh/git/SSH in the sandbox, Marp PDF, registry import, build/workspace, plugin runtime), plus the four-step triage for when a user reports something broken
+- [Error recovery](config/helps/error-recovery.md) — the lookup the agent reads on tool failures (gh/git/SSH in the sandbox, Marp PDF, registry import, build/workspace, plugin runtime, a messaging bridge whose bot goes quiet), plus the four-step triage for when a user reports something broken
 - [Bug-report FAQ](config/helps/bug-report-faq.md) — symptoms that turn out to be configuration or by design (voice input, push, chat titles, journal, connector tools, preset skills, custom views); says where to read the live value, never what it is
 - [Telegram Bridge](config/helps/telegram.md) — how to talk to MulmoClaude from the Telegram app: creating a bot, starting the bridge, allowlisting chat IDs, commands, and troubleshooting
 - [Remote host](config/helps/remote-host.md) — drive MulmoClaude from a phone at mulmoserver.web.app: Google sign-in connect, host online vs. offline (queued chats, 7-day expiry), photo attachments, and the security model

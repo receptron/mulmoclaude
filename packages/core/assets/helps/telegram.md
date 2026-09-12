@@ -7,7 +7,7 @@ This is useful when you want to reach your MulmoClaude away from your computer �
 ## How It Works
 
 - You create a **bot** with Telegram's BotFather; it gives you a token.
-- You run a **bridge process** (`yarn telegram`) on the same machine as the MulmoClaude server. The bridge uses your bot token to receive messages from Telegram, forwards them to MulmoClaude over `localhost:3001`, and sends the replies back to the Telegram user.
+- You run a **bridge process** (`yarn telegram`) on the same machine as the MulmoClaude server. The bridge uses your bot token to receive messages from Telegram, forwards them to MulmoClaude over the loopback port the server actually bound, and sends the replies back to the Telegram user. It finds that port itself — see "Restarting the server" below.
 - A short **allowlist** of Telegram chat IDs controls who can talk to the bot. Everyone else gets `"Access denied"`.
 
 Your computer has to be on and connected to the internet for the bot to respond. Close the laptop → the bot goes silent.
@@ -41,7 +41,7 @@ In terminal A, start MulmoClaude:
 yarn dev
 ```
 
-Wait until you see `[server] listening port=3001`.
+Wait until you see `[server] listening port=…`. The number is whatever the server bound: it honours `PORT`, and an implicit default that is already busy walks forward. You do not need to note it — the bridge reads it from the workspace.
 
 In terminal B, start the bridge. Leave the allowlist **empty on purpose** for the first run — you will need to discover your own chat ID before you can add it.
 
@@ -129,7 +129,7 @@ Any other text is treated as a message to the assistant.
 - The bot token is a password. If it leaks, regenerate it via BotFather's `/revoke`.
 - The allowlist is the only thing standing between "my friends" and "every Telegram user on Earth". Keep it current — remove chat IDs when you no longer want that person to have access, and restart the bridge.
 - The bridge logs chat IDs, usernames, and message lengths, but **not** message contents or the bot token. If you need a full audit trail, record it separately.
-- The MulmoClaude bearer token never leaves your machine. The bridge only talks to `localhost:3001`; your friends talk to Telegram's servers, which then talk to your bridge.
+- The MulmoClaude bearer token never leaves your machine. The bridge only ever talks to the IPv4 loopback (`127.0.0.1`), whatever port the server bound; your friends talk to Telegram's servers, which then talk to your bridge.
 
 ## Full Operator Guide
 

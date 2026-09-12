@@ -10,6 +10,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### `@mulmoclaude/core@4.9.0` — the bundled help stopped telling the agent that the server is on 3001 (#3085)
+
+`assets/helps/*` still described a server pinned to `localhost:3001` after #3081 and #3092 had
+made every bridge follow the port the server actually bound. That is not merely a stale
+document: the agent reads `error-recovery.md` BEFORE asking the user a clarifying question on a
+tool failure, so a stale help means the agent gives stale advice.
+
+`telegram.md` had three. Two were the port number, and one was an instruction — "wait until you
+see `[server] listening port=3001`" told the reader to wait for the wrong thing, since `PORT`
+and the busy-default walk both change it. Its security note ("the bridge only talks to
+`localhost:3001`") stays true in substance — the bridge only ever reaches the IPv4 loopback —
+and now says that rather than a number. `custom-view.md`'s sample `dataUrl` is a value the HOST
+injects, so it reads as host-provided instead of naming a port a view never picks.
+
+`error-recovery.md` had no messaging-bridge section at all, which left the single most common
+report — "the bot does not reply and nothing errors" — with nothing to work from. The new
+section starts where the answer usually is: every bridge prints the address it resolved, so
+comparing that banner against `<workspace>/.server-port` separates "an old npm build that
+hardcodes 3001" from "the address is right, look further in" without needing a version number
+to be current. It also covers the two states that look like faults and are not — a bridge
+WAITING because the server has not published its port (a cold start builds the sandbox image
+between writing the token and binding), and a bridge that cannot see the workspace at all and
+therefore needs both `MULMOCLAUDE_API_URL` and `MULMOCLAUDE_AUTH_TOKEN`.
+
+It opens by saying what NOT to advise: "restart the bridge" after a server restart has been
+wrong since #3078.
+
+### Fixed
+
 #### `@mulmoclaude/shapescript-plugin@2.5.1` — `loft` takes path sections only, and lofts open paths (PR #3094)
 
 Two mismatches with the upstream app, both in `loft`. A `fill { path … }` as a section rendered
@@ -22,7 +51,7 @@ did not repeat its first was dropped as an open stroke, so a two-section loft fa
 at least two cross-sections"; upstream closes such a section implicitly and so does this builder
 now. Sections keep their written order when open and closed ones mix.
 
-Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.8.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.2.0`, `@mulmoclaude/core@4.9.0`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.5.1`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
 
 #### A bridge no longer has to be restarted every time the server is (#3078)
 

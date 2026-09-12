@@ -1297,6 +1297,84 @@ nor remove documents that other members also read, and removing its records
 first does not unlock it. Retiring the whole app is a Firestore project
 administrator's recursive delete, not something this app does.
 
+## A messaging bridge's bot does not reply, and nothing errors
+
+### Symptoms
+
+The user talks to the bot on Telegram / Slack / LINE / Discord / …, and nothing
+comes back. No error in the server log, none from the bridge. Sending again does
+nothing either.
+
+### First, do NOT say "restart the bridge"
+
+That advice is out of date. Since #3078 the shared client re-reads the token and
+the port after **every failed connection** and rebuilds its socket when the
+server has come back as a different generation. A server restart — new token,
+new port, or both — is handled without touching the bridge.
+
+### The bridge tells you where it went — start there
+
+Every bridge prints its target as it starts:
+
+```text
+Connecting to http://127.0.0.1:3099
+```
+
+Compare that with what the server published:
+
+```bash
+cat "${MULMOCLAUDE_WORKSPACE_PATH:-$HOME/mulmoclaude}/.server-port"
+```
+
+- **They agree** → the address is right; the problem is further in (see below).
+- **They disagree**, and the bridge says `http://localhost:3001` → that bridge
+  is an npm build from before the port-following fix. Reinstall it
+  (`npm i -g @mulmobridge/<platform>@latest`, or `npx @mulmobridge/<platform>@latest`).
+  Check the banner rather than a version number: the banner is the behaviour,
+  and a version is one more thing to keep current.
+
+### `The server has not published a port yet` is waiting, not failing
+
+```text
+The server has not published a port yet — waiting for it rather than guessing.
+```
+
+The server writes `.session-token` before it binds its port, and sandbox setup
+sits in between — a cold start that builds the Docker image can hold there for
+minutes. The bridge deliberately refuses to guess `localhost:3001` while holding
+a freshly minted token, and joins on its own once the port appears. Wait, or
+check that the server is actually starting.
+
+### A bridge that cannot see the workspace needs both variables
+
+Running on another machine, or in a container without the workspace mounted,
+means no `.server-port` and no `.session-token`. Such a bridge needs BOTH:
+
+```bash
+MULMOCLAUDE_API_URL=http://<host>:<port> \
+MULMOCLAUDE_AUTH_TOKEN=<the same value the server was given> \
+  npx @mulmobridge/<platform>
+```
+
+`MULMOCLAUDE_AUTH_TOKEN` must be set on the SERVER too, or it regenerates a new
+token on every start and the pinned one stops matching.
+
+### Only then, the platform side
+
+- The chat ID is not on the bridge's allowlist — the bot answers
+  `"Access denied"` to a stranger, but an allowlist typo simply drops the
+  message.
+- The platform token (bot token, app token) was revoked or regenerated.
+- The bridge process is not running at all. Check before assuming anything above.
+
+### What to collect if none of it explains the silence
+
+The bridge's first three lines (they name the transport and the resolved URL),
+the server's `[server] listening port=…` line, and whether
+`<workspace>/.server-port` exists. Those three answer "which server, on which
+port, and did the bridge agree" — which is what every one of these turns out to
+be.
+
 ## `renderShapeScript` says Chromium is not installed
 
 `renderShapeScript` rasterises a ShapeScript model by driving Puppeteer's

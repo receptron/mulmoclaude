@@ -41,14 +41,14 @@
     "zod": "^4.6.2"
   },
   "peerDependencies": {
-    "@mulmoclaude/core": "^4.8.0",
+    "@mulmoclaude/core": "^4.9.0",
     "echarts": "^6.0.0",
     "gui-chat-protocol": "^2.0.0",
     "vue": "^3.5.0",
     "vue-i18n": "^11.4.4"
   },
   "devDependencies": {
-    "@mulmoclaude/core": "^4.8.0",
+    "@mulmoclaude/core": "^4.9.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
     "@vitejs/plugin-vue": "^6.0.8",
