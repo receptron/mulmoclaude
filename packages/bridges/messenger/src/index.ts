@@ -13,10 +13,12 @@
 
 import "dotenv/config";
 import { createWebhookApp, registerMetaWebhook, listenWebhook } from "@mulmobridge/webhook-runtime";
-import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, installProcessGuards } from "@mulmobridge/client";
 import { extractMessengerMessages, type MessengerTextMessage } from "@mulmoclaude/common/meta-webhook";
 
 const TRANSPORT_ID = "messenger";
+
+installProcessGuards({ name: TRANSPORT_ID });
 
 function readRequiredEnv(): { pageAccessToken: string; verifyToken: string; appSecret: string } {
   const pageAccessToken = process.env.MESSENGER_PAGE_ACCESS_TOKEN;

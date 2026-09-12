@@ -13,9 +13,11 @@
 
 import "dotenv/config";
 import { Client as IrcClient } from "irc-framework";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 
 const TRANSPORT_ID = "irc";
+
+installProcessGuards({ name: TRANSPORT_ID });
 
 const server = process.env.IRC_SERVER;
 const nick = process.env.IRC_NICK;

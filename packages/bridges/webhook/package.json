@@ -22,7 +22,7 @@
   "license": "MIT",
   "author": "Receptron Team",
   "dependencies": {
-    "@mulmobridge/client": "^1.1.0",
+    "@mulmobridge/client": "^1.2.0",
     "@mulmobridge/protocol": "^1.0.1",
     "@mulmobridge/webhook-runtime": "^1.2.0",
     "@mulmoclaude/common": "^1.3.0",

@@ -23,7 +23,7 @@
   "license": "MIT",
   "author": "Receptron Team",
   "dependencies": {
-    "@mulmobridge/client": "^1.1.0",
+    "@mulmobridge/client": "^1.2.0",
     "@mulmobridge/protocol": "^1.0.1",
     "@mulmoclaude/common": "^1.3.0",
     "@slack/socket-mode": "^3.0.1",

@@ -21,10 +21,12 @@ import "dotenv/config";
 import { ImapFlow } from "imapflow";
 import { simpleParser, type ParsedMail } from "mailparser";
 import nodemailer from "nodemailer";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 import { parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "email";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_BODY_LEN = 100_000; // truncate inbound email text before forwarding to MulmoClaude
 const MAX_REPLY_LEN = 100_000; // truncate outbound reply so SMTP servers don't bounce
 const DEFAULT_POLL_SEC = 30;

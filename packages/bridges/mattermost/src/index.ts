@@ -12,10 +12,12 @@
 
 import "dotenv/config";
 import WebSocket from "ws";
-import { createBridgeClient, chunkText, asJsonRecord } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, asJsonRecord, installProcessGuards } from "@mulmobridge/client";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "mattermost";
+
+installProcessGuards({ name: TRANSPORT_ID });
 
 function readRequiredEnv(): { mmUrl: string; botToken: string } {
   const mmUrl = process.env.MATTERMOST_URL;

@@ -12,11 +12,13 @@
 
 import "dotenv/config";
 import { Client, GatewayIntentBits, Partials, type Message } from "discord.js";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 import { parseCsvSet } from "@mulmoclaude/common";
 import { collectAttachments, resolveMessageText, type DiscordAttachmentLike } from "./attachments.js";
 
 const TRANSPORT_ID = "discord";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_DISCORD_LENGTH = 2000;
 
 const token = process.env.DISCORD_BOT_TOKEN;
