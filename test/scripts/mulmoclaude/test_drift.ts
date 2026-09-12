@@ -239,14 +239,23 @@ describe("formatLine", () => {
     // It DELIBERATELY goes red on a reworded message. These are the lines an operator
     // reads to decide whether publishing is safe; rewording one should be a decision, not
     // a side effect of an unrelated edit.
-    const head = "@mulmobridge/client v1.1.0 → published v1.0.2";
+    // Two identities as well as three count pairs: varying only the counts left the
+    // package/version head hard-codeable, which is round 2's finding in a different field
+    // (#3101 round 5). Every field the line interpolates is now varied.
+    const identities = [
+      { packageBaseName: "client", localVersion: "1.1.0", publishedVersion: "1.0.2" },
+      { packageBaseName: "protocol", localVersion: "2.0.0", publishedVersion: "1.9.4" },
+    ];
     const pairs = [
       { localCount: 17, distCount: 4 },
       { localCount: 9, distCount: 8 },
       { localCount: 231, distCount: 5 },
     ];
     const note = "registry unreachable";
-    pairs.forEach(({ localCount, distCount }) => {
+    const cases = identities.flatMap((identity) => pairs.map((pair) => ({ ...identity, ...pair })));
+    cases.forEach(({ packageBaseName, localVersion, publishedVersion, localCount, distCount }) => {
+      const identity = { packageBaseName, localVersion, publishedVersion };
+      const head = `@mulmobridge/${packageBaseName} v${localVersion} → published v${publishedVersion}`;
       const counts = `src has ${localCount} value-export lines, published dist has ${distCount}`;
       const expected: Record<string, string> = {
         "pending-publish": `  ⧗ ${head}: ${counts} — bumped but NOT published yet`,
@@ -254,7 +263,7 @@ describe("formatLine", () => {
         ok: `  ✓ ${head}: ${localCount} value-export lines (src == published)`,
       };
       Object.entries(expected).forEach(([status, line]) => {
-        const shape = { localCount, distCount };
+        const shape = { ...identity, localCount, distCount };
         assert.equal(drift.formatLine(result(status as drift.PackageDriftResult["status"], shape)), line, status);
         assert.equal(
           drift.formatLine(result(status as drift.PackageDriftResult["status"], { ...shape, fallbackReason: note })),
@@ -266,7 +275,10 @@ describe("formatLine", () => {
 
     // `skipped` is the odd one out by design: no counts, no published version, no
     // fallback note — it is the branch that ran before any of those were resolved.
-    assert.equal(drift.formatLine(result("skipped", { reason: "local src not found" })), "  · @mulmobridge/client v1.1.0: skipped — local src not found");
+    identities.forEach(({ packageBaseName, localVersion, publishedVersion }) => {
+      const skipped = result("skipped", { packageBaseName, localVersion, publishedVersion, reason: "local src not found" });
+      assert.equal(drift.formatLine(skipped), `  · @mulmobridge/${packageBaseName} v${localVersion}: skipped — local src not found`);
+    });
   });
 });
 
