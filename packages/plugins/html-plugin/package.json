@@ -38,14 +38,14 @@
     "@mulmoclaude/common": "^1.2.0"
   },
   "peerDependencies": {
-    "@mulmoclaude/core": "^4.8.1",
+    "@mulmoclaude/core": "^4.9.0",
     "gui-chat-protocol": "^2.0.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@mulmoclaude/common": "^1.2.0",
-    "@mulmoclaude/core": "^4.8.1",
+    "@mulmoclaude/core": "^4.9.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.4.1",
     "@typescript-eslint/eslint-plugin": "^8.70.0",

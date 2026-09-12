@@ -193,6 +193,101 @@ describe("checkPackageDrift", () => {
   });
 });
 
+/**
+ * What the operator actually reads.
+ *
+ * `pending-publish` used to fall through to the `✓ … (src == published)` branch,
+ * so a package that was bumped but never published printed as fully clean — and
+ * the one number it showed was the LOCAL count, so the published side never
+ * appeared at all. That line was on screen during the 1.16.0 release while
+ * `@mulmobridge/client` sat at 1.1.0 with 1.0.2 on npm (#3099).
+ *
+ * These assert the EXACT line, built from the fixture. That is the opposite of
+ * where this started — the first version asserted properties, on the reasoning
+ * that pinning the sentence goes red on a reword. Four review rounds then found
+ * four different wrong formatters that satisfied properties: labels swapped, the
+ * fixture pair hard-coded, a swap with the correct counts appended, and ` EXTRA`
+ * on the two statuses checked loosely. Presence can always be satisfied by adding
+ * text, so the property rule had no last case. Going red on a reword is the price,
+ * and it is the right one here: these lines are what an operator reads to decide
+ * whether publishing is safe.
+ */
+describe("formatLine", () => {
+  const result = (status: drift.PackageDriftResult["status"], extra: Record<string, unknown> = {}) => ({
+    packageBaseName: "client",
+    localVersion: "1.1.0",
+    publishedVersion: "1.0.2",
+    status,
+    // Asymmetric, and neither digit appears in the versions above — so a regex can tie
+    // each count to its own side of the line without matching "v1.1.0" by accident.
+    localCount: 17,
+    distCount: 4,
+    ...extra,
+  });
+
+  it("renders every status the audit can return", () => {
+    const statuses: drift.PackageDriftResult["status"][] = ["ok", "drifted", "pending-publish", "skipped"];
+    statuses.forEach((status) => {
+      const line = drift.formatLine(result(status, { reason: "no dist" }));
+      assert.match(line, /client/, `${status} names the package`);
+    });
+  });
+
+  it("renders EXACTLY these lines — every status, with and without the fallback note", () => {
+    // Four rounds, four wrong formatters that satisfied a presence-based property: labels
+    // swapped, the fixture pair hard-coded, a swap with the correct counts appended as a
+    // suffix, and ` EXTRA` tacked onto the two statuses this test used to check loosely.
+    // Presence can ALWAYS be satisfied by adding more text, so enumerating those is a
+    // queue rather than a rule. This states what is PERMITTED — the exact line, for every
+    // status, with the expected string BUILT FROM the fixture so a hard-coded formatter
+    // fails it too (#3101 rounds 1-4).
+    //
+    // It DELIBERATELY goes red on a reworded message. These are the lines an operator
+    // reads to decide whether publishing is safe; rewording one should be a decision, not
+    // a side effect of an unrelated edit.
+    // Two identities as well as three count pairs: varying only the counts left the
+    // package/version head hard-codeable, which is round 2's finding in a different field
+    // (#3101 round 5). Every field the line interpolates is now varied.
+    const identities = [
+      { packageBaseName: "client", localVersion: "1.1.0", publishedVersion: "1.0.2" },
+      { packageBaseName: "protocol", localVersion: "2.0.0", publishedVersion: "1.9.4" },
+    ];
+    const pairs = [
+      { localCount: 17, distCount: 4 },
+      { localCount: 9, distCount: 8 },
+      { localCount: 231, distCount: 5 },
+    ];
+    const note = "registry unreachable";
+    const cases = identities.flatMap((identity) => pairs.map((pair) => ({ ...identity, ...pair })));
+    cases.forEach(({ packageBaseName, localVersion, publishedVersion, localCount, distCount }) => {
+      const identity = { packageBaseName, localVersion, publishedVersion };
+      const head = `@mulmobridge/${packageBaseName} v${localVersion} → published v${publishedVersion}`;
+      const counts = `src has ${localCount} value-export lines, published dist has ${distCount}`;
+      const expected: Record<string, string> = {
+        "pending-publish": `  ⧗ ${head}: ${counts} — bumped but NOT published yet`,
+        drifted: `  ⚠ ${head}: ${counts}`,
+        ok: `  ✓ ${head}: ${localCount} value-export lines (src == published)`,
+      };
+      Object.entries(expected).forEach(([status, line]) => {
+        const shape = { ...identity, localCount, distCount };
+        assert.equal(drift.formatLine(result(status as drift.PackageDriftResult["status"], shape)), line, status);
+        assert.equal(
+          drift.formatLine(result(status as drift.PackageDriftResult["status"], { ...shape, fallbackReason: note })),
+          `${line} [${note}]`,
+          `${status} + fallback`,
+        );
+      });
+    });
+
+    // `skipped` is the odd one out by design: no counts, no published version, no
+    // fallback note — it is the branch that ran before any of those were resolved.
+    identities.forEach(({ packageBaseName, localVersion, publishedVersion }) => {
+      const skipped = result("skipped", { packageBaseName, localVersion, publishedVersion, reason: "local src not found" });
+      assert.equal(drift.formatLine(skipped), `  · @mulmobridge/${packageBaseName} v${localVersion}: skipped — local src not found`);
+    });
+  });
+});
+
 describe("isLocalVersionAhead", () => {
   it("returns true when any component is strictly greater", () => {
     assert.equal(drift.isLocalVersionAhead("0.1.3", "0.1.2"), true);

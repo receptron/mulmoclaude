@@ -115,7 +115,9 @@ LINE_CHANNEL_ACCESS_TOKEN=xxxxxx
 yarn dev
 ```
 
-`[server] listening port=3001` が出るまで待つ。
+`[server] listening port=…` が出るまで待つ。番号はサーバが実際に bind した
+ポートです — `PORT` を尊重し、既定値が塞がっていれば先へ進みます。控えて
+おく必要はありません。ブリッジが workspace から読みます。
 
 ターミナル B で ngrok を起動（まだ起動していなければ）:
 
@@ -152,7 +154,7 @@ LINE Developers Console → **Messaging API** タブの QR コードを
 | bot が二重に返信する | LINE の応答メッセージが ON | LINE 公式アカウント設定 → 応答メッセージ → OFF |
 | `LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN are required` | 環境変数が読めていない | `.env` に設定するか、環境変数として export |
 | `sh: mulmobridge-line: command not found` | `npx` がモノレポ内で bin を見つけられない | `node packages/bridges/line/dist/index.js` を使う |
-| ブリッジに `Connect error: bearer token rejected` | MulmoClaude サーバを再起動して token が変わった | LINE ブリッジを再起動 |
+| ブリッジに `Connect error: bearer token rejected` | MulmoClaude サーバを再起動して token が変わった | 何もしなくてよい — ブリッジが読み直して自力で再接続します (#3078)。出続けるならサーバがまだ起動中 |
 | 返信が来ない（エラーなし） | `yarn dev` が止まっている | MulmoClaude サーバの状態を確認 |
 
 ---
@@ -166,4 +168,4 @@ LINE Developers Console → **Messaging API** タブの QR コードを
 - Channel secret と Channel access token はパスワードと同じ扱い。
   漏れたら LINE Developers Console で再発行してください。
 - MulmoClaude の bearer token は外に出ません。LINE bridge は
-  `localhost:3001` にしか繋がりません。
+  IPv4 loopback にしか繋がりません。

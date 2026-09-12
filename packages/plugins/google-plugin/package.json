@@ -31,12 +31,12 @@
     "lint": "eslint src test"
   },
   "peerDependencies": {
-    "@mulmoclaude/core": "^4.8.1",
+    "@mulmoclaude/core": "^4.9.0",
     "gui-chat-protocol": "^2.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@mulmoclaude/core": "^4.8.1",
+    "@mulmoclaude/core": "^4.9.0",
     "@types/node": "^26.4.1",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",
