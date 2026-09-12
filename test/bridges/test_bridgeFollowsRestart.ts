@@ -15,6 +15,8 @@
 import { describe, it, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { mkdtempSync, rmSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -283,6 +285,28 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
       client.close();
       delete process.env.MULMOCLAUDE_AUTH_TOKEN;
       await onDefaultPort.stop();
+    }
+  });
+
+  // The wait has to hold the PROCESS open, and only a real process can show it:
+  // inside node:test the runner keeps the loop alive, so a client that gives the
+  // loop nothing to wait on still looks like it is waiting. Spawned as a child,
+  // with a workspace token and no port, an earlier version printed "waiting for
+  // it" and exited immediately (Codex).
+  it("keeps a bridge process alive while it waits for the port", async () => {
+    writeFileSync(path.join(workspace, ".session-token"), "token-alive\n", "utf-8");
+    const fixture = fileURLToPath(new URL("./fixtures/minimal-bridge.mjs", import.meta.url));
+    const loader = fileURLToPath(new URL("../../node_modules/tsx/dist/loader.mjs", import.meta.url));
+    const child = spawn("node", ["--import", `file://${loader}`, fixture], {
+      env: { ...process.env, MULMOCLAUDE_WORKSPACE_PATH: workspace, MULMOCLAUDE_API_URL: "" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
+    try {
+      const verdict = await Promise.race([exited, sleep(5000).then(() => "still running" as const)]);
+      assert.equal(verdict, "still running", "the bridge exited instead of waiting for the port");
+    } finally {
+      child.kill("SIGKILL");
     }
   });
 

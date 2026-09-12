@@ -250,8 +250,12 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
 
   function scheduleReresolve(): void {
     if (live.closed || live.retry !== null) return;
+    // NOT `unref()`ed. A bridge waiting for its server to publish a port is
+    // doing work, and while it waits the idle socket (`autoConnect: false`)
+    // holds nothing — so an unref'd timer let the process exit immediately
+    // after printing that it would wait. `close()` clears this, so holding the
+    // loop open costs nothing on the way out (Codex, #3078).
     live.retry = setTimeout(reresolve, backoffMs(live.attempt));
-    live.retry.unref?.();
   }
 
   return {
