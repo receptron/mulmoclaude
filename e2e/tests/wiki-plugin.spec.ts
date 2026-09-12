@@ -71,7 +71,7 @@ test.describe("wiki plugin — rendering", () => {
 
   test("renders a relative image ref via /api/files/raw", async ({ page }) => {
     await page.goto("/chat/wiki-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     // Select the wiki tool result in the sidebar → mounts the wiki View.
     // Preview renders as "Wiki: <title>".

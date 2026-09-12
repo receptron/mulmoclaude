@@ -99,19 +99,19 @@ test.describe("session navigation via URL", () => {
 test.describe("page routing — direct page loads", () => {
   test("/files loads the files page", async ({ page }) => {
     await page.goto("/files");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/files");
   });
 
   test("/automations loads the automations page", async ({ page }) => {
     await page.goto("/automations");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/automations");
   });
 
   test("/wiki loads the wiki page", async ({ page }) => {
     await page.goto("/wiki");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/wiki");
   });
 });

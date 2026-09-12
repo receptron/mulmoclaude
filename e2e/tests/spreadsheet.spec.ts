@@ -62,7 +62,7 @@ async function mockFileContent(page: Page, path: string, body: { kind?: string; 
 // View mounts. Returns only after the View is visible.
 async function openSpreadsheetView(page: Page, sessionId = "sheet-session", sidebarTitle = "Test Sheet") {
   await page.goto(`/chat/${sessionId}`);
-  await expect(page.getByText("MulmoClaude")).toBeVisible();
+  await expect(page.getByTestId("app-title")).toBeVisible();
   // Wait for the actual sidebar item rather than a fixed sleep —
   // page ready-state + element visibility is more reliable.
   const item = page.getByText(sidebarTitle).first();
@@ -110,7 +110,7 @@ test.describe("spreadsheet — rendering", () => {
     const sheets = [{ name: "Sheet1", data: [[{ v: "x" }]] }];
     await setupSpreadsheetSession(page, { sheets, title: "Q1 Revenue" });
     await page.goto("/chat/sheet-session");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     const item = page.getByText("Q1 Revenue").first();
     await expect(item).toBeVisible({ timeout: 5 * ONE_SECOND_MS });
     await item.click();

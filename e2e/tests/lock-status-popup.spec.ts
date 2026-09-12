@@ -8,7 +8,7 @@ test.describe("LockStatusPopup", () => {
 
   test("clicking the lock button opens the popup", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
 
     const lockBtn = page.getByTestId("sandbox-lock-button");
     await expect(lockBtn).toBeVisible();
@@ -35,7 +35,7 @@ test.describe("LockStatusPopup", () => {
     );
 
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByTestId("sandbox-lock-button").click();
 
     const firstQuery = page.getByTestId("sandbox-test-query").first();
@@ -47,7 +47,7 @@ test.describe("LockStatusPopup", () => {
 
   test("clicking outside closes the popup", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByTestId("sandbox-lock-button").click();
 
     const firstQuery = page.getByTestId("sandbox-test-query").first();
@@ -81,7 +81,7 @@ test.describe("LockStatusPopup", () => {
     );
 
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByTestId("sandbox-lock-button").click();
 
     // The credential block only renders when sandbox is enabled,
@@ -104,7 +104,7 @@ test.describe("LockStatusPopup", () => {
     // exactly this branch. Nothing to override; the popup just opens
     // and the credential block should be absent.
     await page.goto("/chat");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     await page.getByTestId("sandbox-lock-button").click();
 
     // Query buttons appear (sandbox-off popup still has them)…

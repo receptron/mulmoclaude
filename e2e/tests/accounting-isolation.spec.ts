@@ -17,7 +17,7 @@ test.describe("accounting plugin — UI entry point + tool isolation", () => {
   test("PluginLauncher renders an accounting button that navigates to /accounting", async ({ page }) => {
     await page.goto("/chat");
     await page.waitForURL(/\/chat\//);
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     // The launcher buttons use plugin-launcher-{key} testids; the
     // accounting plugin registers one in the first group.
     const accountingButton = page.getByTestId("plugin-launcher-accounting");
@@ -29,7 +29,7 @@ test.describe("accounting plugin — UI entry point + tool isolation", () => {
 
   test("/accounting URL resolves to the accounting view", async ({ page }) => {
     await page.goto("/accounting");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
+    await expect(page.getByTestId("app-title")).toBeVisible();
     const { pathname } = new URL(page.url());
     expect(pathname).toBe("/accounting");
     await expect(page.getByTestId("accounting-app")).toBeVisible();
