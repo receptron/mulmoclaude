@@ -48,9 +48,11 @@ export interface NotifierEntry<TPluginData = unknown> {
   title: string;
   body?: string;
   /** Optional in-app deep-link target (relative URL). The bell popup
-   *  routes here on row click, with `&notificationId=<id>` appended
-   *  so the landing page can identify which entry to clear. The
-   *  engine doesn't read this — it's a UI hint stored on the entry. */
+   *  routes here on row click, splicing in `notificationId=<id>` so the
+   *  landing page can identify which entry to clear — with `?` or `&`
+   *  as the target requires, and before any `#fragment`
+   *  (`appendNotificationId` in `NotificationBell.vue`). The engine
+   *  doesn't read this — it's a UI hint stored on the entry. */
   navigateTarget?: string;
   /** Opaque to the engine. Round-trips through JSON unchanged; only
    *  the originating plugin's UI knows the shape. */

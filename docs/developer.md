@@ -361,10 +361,14 @@ caller is plugin X", so an HTTP publish would let any token holder publish under
 namespace. Publishers are in-process:
 
 - **A plugin** calls `runtime.notifier.publish`, which `makeScopedNotifier`
-  (`server/plugins/runtime.ts`) binds to the calling plugin's own `pluginPkg`.
-- **Host modules** call `engine.publish` directly — `server/agent/mcp-tools/notify.ts`,
-  `server/plugins/diagnostics.ts`, `server/agent/mcpFailureMonitor.ts`,
-  `server/system/announceOptionalDeps.ts` and others.
+  (`server/plugins/runtime.ts`) binds to the calling plugin's own `pluginPkg` — a plugin
+  literally cannot publish under another's namespace.
+- **Most host code** calls `publishNotification()` in `server/events/notifications.ts`, the
+  legacy wrapper below — `server/agent/mcp-tools/notify.ts`, `server/plugins/diagnostics.ts`,
+  `server/agent/mcpFailureMonitor.ts`, `server/system/announceOptionalDeps.ts`.
+- **A few call `engine.publish` directly**, with every namespace-bearing field fixed at the call
+  site rather than taken from a request: `server/api/routes/collectionAgentActions.ts` publishes
+  an action-failure notice as `pluginPkg: "host"`.
 
 `server/events/notifications.ts` is a legacy wrapper kept so those older call sites did not have
 to change: it maps the old `kind` to a `pluginPkg`, the old `priority` to a `severity`, and
@@ -383,8 +387,9 @@ sees every plugin's entries, and must be able to dismiss any of them. Per-plugin
 `PUBSUB_CHANNELS.notifier`. Events are a discriminated union — `published`, `updated`, `cleared`,
 `cancelled` — and the composable rebuilds each payload field by field, because pub-sub JSON is
 untrusted. `src/components/NotificationBell.vue` renders the active list plus a read-only
-History section. Clicking a row routes to `navigateTarget` with `&notificationId=<id>` appended,
-so the landing page knows which entry to clear.
+History section. Clicking a row routes to `navigateTarget` with `notificationId=<id>` spliced
+in, so the landing page knows which entry to clear — `?` or `&` depending on what the target
+already has, and always before any `#fragment` rather than after it.
 
 ### Persistence
 
