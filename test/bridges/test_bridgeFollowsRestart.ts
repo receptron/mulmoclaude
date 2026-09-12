@@ -115,6 +115,17 @@ function unpublish(): void {
 // the combined run, reaching a dead port instead of the default.
 beforeEach(unpublish);
 
+/** The minimal bridge, as its own process — the only place these two
+ *  properties are observable (see the fixture). */
+function spawnBridge(args: string[]): ReturnType<typeof spawn> {
+  const fixture = fileURLToPath(new URL("./fixtures/minimal-bridge.mjs", import.meta.url));
+  const loader = fileURLToPath(new URL("../../node_modules/tsx/dist/loader.mjs", import.meta.url));
+  return spawn("node", ["--import", `file://${loader}`, fixture, ...args], {
+    env: { ...process.env, MULMOCLAUDE_WORKSPACE_PATH: workspace, MULMOCLAUDE_API_URL: "" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
 const sleep = (delayMs: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, delayMs));
 
 /**
@@ -295,16 +306,26 @@ describe("a bridge follows the server across a restart (#3078 A-3)", () => {
   // it" and exited immediately (Codex).
   it("keeps a bridge process alive while it waits for the port", async () => {
     writeFileSync(path.join(workspace, ".session-token"), "token-alive\n", "utf-8");
-    const fixture = fileURLToPath(new URL("./fixtures/minimal-bridge.mjs", import.meta.url));
-    const loader = fileURLToPath(new URL("../../node_modules/tsx/dist/loader.mjs", import.meta.url));
-    const child = spawn("node", ["--import", `file://${loader}`, fixture], {
-      env: { ...process.env, MULMOCLAUDE_WORKSPACE_PATH: workspace, MULMOCLAUDE_API_URL: "" },
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawnBridge([]);
     const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
     try {
       const verdict = await Promise.race([exited, sleep(5000).then(() => "still running" as const)]);
       assert.equal(verdict, "still running", "the bridge exited instead of waiting for the port");
+    } finally {
+      child.kill("SIGKILL");
+    }
+  });
+
+  // The complement, and the reason the timer above is safe to leave ref'd: a
+  // client that has been closed must let its process END. A bridge that cannot
+  // exit is as broken as one that will not wait.
+  it("lets a closed bridge's process exit", async () => {
+    writeFileSync(path.join(workspace, ".session-token"), "token-exit\n", "utf-8");
+    const child = spawnBridge(["close"]);
+    const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
+    try {
+      const verdict = await Promise.race([exited, sleep(8000).then(() => "still running" as const)]);
+      assert.notEqual(verdict, "still running", "close() left something holding the event loop");
     } finally {
       child.kill("SIGKILL");
     }
