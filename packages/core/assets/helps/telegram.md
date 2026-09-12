@@ -7,7 +7,7 @@ This is useful when you want to reach your MulmoClaude away from your computer �
 ## How It Works
 
 - You create a **bot** with Telegram's BotFather; it gives you a token.
-- You run a **bridge process** (`yarn telegram`) on the same machine as the MulmoClaude server. The bridge uses your bot token to receive messages from Telegram, forwards them to MulmoClaude over the loopback port the server actually bound, and sends the replies back to the Telegram user. It finds that port itself — see "Restarting the server" below.
+- You run a **bridge process** (`yarn telegram`) on the same machine as the MulmoClaude server. The bridge uses your bot token to receive messages from Telegram, forwards them to MulmoClaude over the loopback port the server actually bound, and sends the replies back to the Telegram user. It finds that port itself, and follows it when the server restarts.
 - A short **allowlist** of Telegram chat IDs controls who can talk to the bot. Everyone else gets `"Access denied"`.
 
 Your computer has to be on and connected to the internet for the bot to respond. Close the laptop → the bot goes silent.
@@ -114,7 +114,7 @@ Any other text is treated as a message to the assistant.
 
 ## Troubleshooting
 
-**`Connect error: bearer token rejected`** — MulmoClaude was restarted, so its bearer token changed. Restart `yarn telegram` to pick up the new one. To avoid this, pin `MULMOCLAUDE_AUTH_TOKEN` to the same value on both sides (see `docs/developer.md` §Auth).
+**`Connect error: bearer token rejected`** — MulmoClaude restarted and its bearer token changed. **Do not restart the bridge**: it re-reads the token and the port after a failed connection and reconnects on its own, usually within a second or two. If it is still saying this after that, the server has not finished starting (it writes the token before it binds its port, and a cold start builds the sandbox image in between) — wait for `[server] listening port=…`. Pinning `MULMOCLAUDE_AUTH_TOKEN` on both sides is for a bridge that cannot read the workspace at all, not for this.
 
 **`TELEGRAM_ALLOWED_CHAT_IDS: "foo" is not an integer chat id`** — typo in the allowlist. Chat IDs are plain integers only — no spaces, quotes, or `#` prefix. Negative integers (for group chats) are allowed.
 

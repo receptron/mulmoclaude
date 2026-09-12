@@ -1352,13 +1352,26 @@ Running on another machine, or in a container without the workspace mounted,
 means no `.server-port` and no `.session-token`. Such a bridge needs BOTH:
 
 ```bash
-MULMOCLAUDE_API_URL=http://<host>:<port> \
+MULMOCLAUDE_API_URL=http://127.0.0.1:<port> \
 MULMOCLAUDE_AUTH_TOKEN=<the same value the server was given> \
   npx @mulmobridge/<platform>
 ```
 
-`MULMOCLAUDE_AUTH_TOKEN` must be set on the SERVER too, or it regenerates a new
-token on every start and the pinned one stops matching.
+Two things make this narrower than it looks:
+
+- **The server binds the IPv4 loopback only** (`app.listen(port, "127.0.0.1")`),
+  so a bridge on another machine cannot reach it by naming the host. It needs a
+  tunnel — an SSH port-forward is the usual one — and then
+  `MULMOCLAUDE_API_URL` points at the LOCAL end of that tunnel, which is why the
+  recipe above still says `127.0.0.1`. Do not "fix" this by making the server
+  listen on `0.0.0.0`: there is no TLS on that port, and the bearer token would
+  cross the network in the clear.
+- **`MULMOCLAUDE_AUTH_TOKEN` must be set on the SERVER too**, or it regenerates a
+  new token on every start and the pinned one stops matching.
+
+In a container on the same host, `MULMOCLAUDE_HOST=host.docker.internal` is how
+the sandbox's own hooks reach the parent server; a bridge there needs the same
+treatment, and the workspace mounted if you want it to follow the port.
 
 ### Only then, the platform side
 
