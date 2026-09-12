@@ -18,10 +18,12 @@
 //   BLUESKY_ALLOWED_DIDS  — CSV of DIDs allowed to converse (empty = all)
 
 import "dotenv/config";
-import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, installProcessGuards } from "@mulmobridge/client";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "bluesky";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_DM_LEN = 10_000;
 const POLL_INTERVAL_MS = 3_000;
 const FETCH_TIMEOUT_MS = 15_000;

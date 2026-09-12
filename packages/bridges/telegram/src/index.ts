@@ -13,7 +13,7 @@
 //   TELEGRAM_POLL_TIMEOUT_SEC   — optional, default 25
 
 import "dotenv/config";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 import { createTelegramApi, type TelegramApi } from "./api.js";
 import { parseAllowlist, type Allowlist } from "./allowlist.js";
 import { createMessageRouter, type MessageRouter } from "./router.js";
@@ -102,11 +102,15 @@ async function main(): Promise<void> {
   });
 
   const abortController = new AbortController();
-  process.on("SIGINT", () => {
-    console.log("\nShutting down...");
-    abortController.abort();
-    client.close();
-    process.exit(0);
+  // Installed here rather than at module level because the shutdown work needs
+  // the controller and the socket. `main().catch` still covers the awaited
+  // startup path above, so nothing is unguarded in between.
+  installProcessGuards({
+    name: TRANSPORT_ID,
+    onShutdown: () => {
+      abortController.abort();
+      client.close();
+    },
   });
 
   await pollLoop(api, router, {

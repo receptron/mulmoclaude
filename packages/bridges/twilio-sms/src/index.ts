@@ -27,11 +27,13 @@
 import "dotenv/config";
 import crypto from "crypto";
 import express, { type Request, type Response as ExpressResponse } from "express";
-import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, installProcessGuards } from "@mulmobridge/client";
 import { listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "twilio-sms";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_SMS_LEN = 1_600; // Twilio concatenates segments up to 1600 chars
 const FETCH_TIMEOUT_MS = 15_000;
 

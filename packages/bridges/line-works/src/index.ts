@@ -26,11 +26,13 @@ import "dotenv/config";
 import crypto from "crypto";
 import { readFileSync } from "fs";
 import type { Request, Response as ExpressResponse } from "express";
-import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, installProcessGuards } from "@mulmobridge/client";
 import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "line-works";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_TEXT = 1_000;
 const FETCH_TIMEOUT_MS = 15_000;
 const JWT_TTL_SEC = 3_600;

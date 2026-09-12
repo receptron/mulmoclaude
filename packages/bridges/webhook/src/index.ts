@@ -26,11 +26,13 @@
 import "dotenv/config";
 import crypto from "crypto";
 import express, { type Request, type Response } from "express";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 import { listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "webhook";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const ENDPOINT = process.env.WEBHOOK_PATH ?? "/webhook";
 const secret = process.env.WEBHOOK_SECRET ?? "";
 const allowOpen = process.env.WEBHOOK_ALLOW_OPEN === "1";

@@ -17,10 +17,12 @@
 
 import "dotenv/config";
 import WebSocket from "ws";
-import { createBridgeClient, chunkText, frameText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, frameText, installProcessGuards } from "@mulmobridge/client";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "signal";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_SIGNAL_TEXT = 4_000;
 const FETCH_TIMEOUT_MS = 15_000;
 const RECONNECT_BASE_MS = 1_000;

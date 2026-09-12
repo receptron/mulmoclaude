@@ -101,7 +101,7 @@
     "@gui-chat-plugin/google-map": "^2.0.0",
     "@gui-chat-plugin/mindmap": "^2.0.0",
     "@marp-team/marp-core": "^4.4.0",
-    "@mulmobridge/client": "^1.1.0",
+    "@mulmobridge/client": "^1.2.0",
     "@mulmocast/beat-editor": "^1.1.1",
     "@mulmocast/deck": "^2.0.2",
     "@mulmocast/types": "^2.11.0",

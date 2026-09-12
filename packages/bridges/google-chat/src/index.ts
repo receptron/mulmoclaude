@@ -19,10 +19,12 @@ import "dotenv/config";
 import crypto from "crypto";
 import express, { type Request, type Response } from "express";
 import { configureTrustProxy, createWebhookRateLimit, listenWebhook } from "@mulmobridge/webhook-runtime";
-import { createBridgeClient } from "@mulmobridge/client";
+import { createBridgeClient, installProcessGuards } from "@mulmobridge/client";
 import { isRecord, splitJwtSegments } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "google-chat";
+
+installProcessGuards({ name: TRANSPORT_ID });
 
 const projectNumber = process.env.GOOGLE_CHAT_PROJECT_NUMBER;
 if (!projectNumber) {

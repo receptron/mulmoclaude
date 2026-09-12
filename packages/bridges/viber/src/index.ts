@@ -17,11 +17,13 @@
 
 import "dotenv/config";
 import type { Request, Response as ExpressResponse } from "express";
-import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, installProcessGuards } from "@mulmobridge/client";
 import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature, listenWebhook } from "@mulmobridge/webhook-runtime";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "viber";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_VIBER_TEXT = 7_000;
 const FETCH_TIMEOUT_MS = 15_000;
 const VIBER_API = "https://chatapi.viber.com/pa";

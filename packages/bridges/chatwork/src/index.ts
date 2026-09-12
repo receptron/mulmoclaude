@@ -24,10 +24,12 @@
 //     at 60s) and honours Retry-After when the server supplies it.
 
 import "dotenv/config";
-import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, installProcessGuards } from "@mulmobridge/client";
 import { isRecord, parseCsvSet } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "chatwork";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const API_BASE = "https://api.chatwork.com/v2";
 const MAX_MSG_LEN = 40_000; // Chatwork's practical limit is generous; chunk conservatively
 const FETCH_TIMEOUT_MS = 15_000;

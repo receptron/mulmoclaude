@@ -10,6 +10,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Fixed
 
+#### A bridge that crashed said nothing about which bridge it was, and Ctrl-C dropped work in flight (#3084)
+
+Counting all 25 packages under `packages/bridges/`: none had an `unhandledRejection` handler, none
+had `uncaughtException`, and only `telegram` and `nostr` handled `SIGINT` / `SIGTERM`. A bridge is a
+process a user starts in a terminal and leaves running, so both gaps show up as the same report —
+"the bot just stopped answering". Node 15+ terminates on an unhandled rejection, so ONE missed
+`await` anywhere took the bot down leaving a stack trace that named no transport; and Ctrl-C killed
+the other 23 mid-flight, dropping a webhook that was being handled or updates already fetched.
+
+`installProcessGuards({ name, onShutdown })` in `@mulmobridge/client` — which all 25 already
+depend on — is now called once from each of the 24 resident bridges. A crash prints
+`[<transport>] unhandled rejection — exiting: <reason>` and then the stack, and still exits 1:
+installing a handler SUPPRESSES Node's own exit, so it re-exits explicitly. The aim is a legible
+message, not a survivable error. A signal prints `[<transport>] SIGINT — shutting down`, runs the
+bridge's shutdown work, and exits 0; a second signal skips the wait and exits 1, because someone
+pressing Ctrl-C twice means it. A shutdown task that hangs is capped at 5s.
+
+`telegram` and `nostr` were the two that already did this correctly, so their work was folded in
+rather than replaced: telegram's `AbortController` + socket close and nostr's debounced-cursor
+flush are now the `onShutdown` they pass, and telegram gains `SIGTERM`, which it did not handle.
+`cli` is deliberately out of scope — it is an interactive readline REPL, not a resident process,
+and Ctrl-C there belongs to readline.
+
+`@mulmobridge/client` goes to 1.2.0 with the new export, and all 28 declared ranges on it are swept
+to `^1.2.0`. That is not tidiness: `scripts/mulmoclaude/drift.mjs` (the `smoke` job's drift stage)
+counts value-export lines in `src/index.ts` against the published tarball's, and a new export at an
+unchanged version is exactly the failure it exists to catch — npm still ships the old dist, so a
+consumer would crash with "does not provide an export named installProcessGuards". A bumped version
+reads as `pending-publish` instead, which is the honest state until the cascade publish lands.
+
+No restart logic: a supervisor belongs to whatever started the bridge (#3080), and two would fight.
+Verified on a running bridge process — `SIGINT` and `SIGTERM` each print their line and exit 0, and
+a stray rejection prints the transport-named line where Node alone printed an anonymous stack.
+
 #### A webhook bridge read its port with `Number(env) || N`, and a busy port killed it unexplained (#3084)
 
 The nine bridges that receive events over an inbound webhook (`line`, `line-works`, `google-chat`,

@@ -26,3 +26,5 @@ export {
   buildDataUrl,
   type ParsedDataUrl,
 } from "./mime.js";
+
+export { installProcessGuards, SHUTDOWN_GRACE_MS, type ProcessGuardOptions, type ShutdownTask } from "./processGuards.js";

@@ -26,13 +26,15 @@
 
 import "dotenv/config";
 import xmppPkg, { type XmlElement } from "@xmpp/client";
-import { createBridgeClient, chunkText, formatAckReply } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, formatAckReply, installProcessGuards } from "@mulmobridge/client";
 import { parseCsvSet } from "@mulmoclaude/common";
 import { splitJid, parseStanzaFields } from "./parse.js";
 
 const { client, xml } = xmppPkg;
 
 const TRANSPORT_ID = "xmpp";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const MAX_BODY_LEN = 10_000;
 
 const jid = process.env.XMPP_JID;

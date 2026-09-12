@@ -9,10 +9,12 @@
 //   ZULIP_API_KEY   — Bot API key
 
 import "dotenv/config";
-import { createBridgeClient, chunkText, fetchJsonRecord, type JsonRecord } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, fetchJsonRecord, type JsonRecord, installProcessGuards } from "@mulmobridge/client";
 import { isRecord } from "@mulmoclaude/common";
 
 const TRANSPORT_ID = "zulip";
+
+installProcessGuards({ name: TRANSPORT_ID });
 const POLL_TIMEOUT_SEC = 30;
 
 const zulipUrl = process.env.ZULIP_URL;
