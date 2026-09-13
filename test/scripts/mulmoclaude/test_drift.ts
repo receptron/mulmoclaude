@@ -180,9 +180,43 @@ describe("entryTargets", () => {
     );
   });
 
+  it("marks a subpath with no runtime target as null instead of borrowing `main`", () => {
+    const pkg = { exports: { ".": { import: "./dist/index.js" }, "./types": { types: "./dist/t.d.ts" } }, main: "./dist/index.js" };
+    assert.deepEqual(
+      [...drift.entryTargets(pkg)],
+      [
+        [".", "dist/index.js"],
+        ["./types", null],
+      ],
+    );
+  });
+
   it("falls back to module / main when there is no exports map", () => {
     assert.deepEqual([...drift.entryTargets({ main: "./dist/entry.js" })], [[".", "dist/entry.js"]]);
     assert.deepEqual([...drift.entryTargets({})], [[".", "dist/index.js"]]);
+  });
+});
+
+describe("resolveConditionTarget", () => {
+  it("descends through a condition block the way a bundler would", () => {
+    assert.equal(drift.resolveConditionTarget({ node: { import: "./dist/node.js" } }), "dist/node.js");
+    assert.equal(drift.resolveConditionTarget({ types: "./d.ts", import: "./dist/index.js" }), "dist/index.js");
+    assert.equal(drift.resolveConditionTarget("./dist/plain.js"), "dist/plain.js");
+  });
+
+  // Raised by Codex as a P2: a nested condition object bypassed the old
+  // string-only check, and the per-subpath `main` fallback then compared
+  // `dist/index.js` — a DIFFERENT file's export surface — for a types-only entry.
+  it("returns null rather than guessing when no runtime target exists", () => {
+    assert.equal(drift.resolveConditionTarget({ types: "./dist/index.d.ts" }), null);
+    assert.equal(drift.resolveConditionTarget(null), null);
+    assert.equal(drift.resolveConditionTarget(42), null);
+  });
+
+  it("stops descending instead of recursing forever", () => {
+    let deep: unknown = "./dist/x.js";
+    for (let i = 0; i < 12; i++) deep = { import: deep };
+    assert.equal(drift.resolveConditionTarget(deep), null);
   });
 });
 
@@ -208,6 +242,15 @@ describe("compareEntry", () => {
   it("falls back to line counting when either side is opaque", () => {
     const result = drift.compareEntry(`export * from "./x.js";\nexport { a };\n`, `export * from "./x.js";\n`);
     assert.equal(result.opaque, true);
+    assert.equal(result.drifted, true);
+  });
+
+  // Raised by Codex as a P1: the opaque branch used to REPLACE the name
+  // comparison with a line count, so a name added on the same line as the
+  // `export *` was discarded and both sides counted one line.
+  it("still compares the names it could read inside an opaque entry", () => {
+    const result = drift.compareEntry(`export * from "./x.js";export { newThing };\n`, `export * from "./x.js";\n`);
+    assert.deepEqual(result.added, ["newThing"]);
     assert.equal(result.drifted, true);
   });
 });

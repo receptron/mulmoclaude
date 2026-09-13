@@ -189,22 +189,40 @@ export function countValueExportLines(source) {
   return count;
 }
 
-/** The `exports` subpaths of a manifest, mapped to the file each one serves.
- *  Falls back to `module` / `main` / `dist/index.js` for a package with no
- *  `exports` map, which is what the single-entry packages relied on. */
+/** The runtime target of one `exports` value, descending through condition objects
+ *  (`{ node: { import: "./a.js" } }`) in the order a bundler would. Returns null
+ *  when no string target can be resolved — a types-only or unrecognised condition
+ *  block is reported as unresolved, never replaced with a guess: falling back to
+ *  `main` per subpath made a `{ types: "./x.d.ts" }` entry compare `dist/index.js`,
+ *  which is a different file's export surface. */
+export function resolveConditionTarget(value, depth = 0) {
+  if (typeof value === "string") return value.replace(/^\.\/+/, "");
+  if (depth >= 8 || value === null || typeof value !== "object") return null;
+  for (const condition of ["import", "module", "default", "require", "node", "browser"]) {
+    if (!(condition in value)) continue;
+    const resolved = resolveConditionTarget(value[condition], depth + 1);
+    if (resolved !== null) return resolved;
+  }
+  return null;
+}
+
+/** Every `exports` subpath mapped to its runtime target, or to null when the
+ *  target cannot be resolved. A package with no `exports` map at all falls back to
+ *  `module` / `main` / `dist/index.js` for `.` — that fallback is for the WHOLE
+ *  package, never for an individual subpath. */
 export function entryTargets(pkg) {
   const out = new Map();
   const exp = pkg?.exports;
   if (exp !== null && typeof exp === "object") {
-    for (const [subpath, value] of Object.entries(exp)) {
-      const target = typeof value === "string" ? value : (value?.import ?? value?.default ?? value?.require ?? null);
-      if (typeof target === "string") out.set(subpath, target.replace(/^\.\/+/, ""));
-    }
+    for (const [subpath, value] of Object.entries(exp)) out.set(subpath, resolveConditionTarget(value));
+    return out;
   }
-  if (out.size === 0) {
-    const target = pkg?.module ?? pkg?.main ?? "dist/index.js";
-    out.set(".", String(target).replace(/^\.\/+/, ""));
+  if (typeof exp === "string") {
+    out.set(".", exp.replace(/^\.\/+/, ""));
+    return out;
   }
+  const target = pkg?.module ?? pkg?.main ?? "dist/index.js";
+  out.set(".", String(target).replace(/^\.\/+/, ""));
   return out;
 }
 
@@ -297,12 +315,18 @@ export async function defaultFetchPublishedEntry({ name, version, entryPath, tim
 export function compareEntry(localSource, publishedSource) {
   const local = parseExportedNames(localSource);
   const published = parseExportedNames(publishedSource);
-  if (local.opaque || published.opaque) {
-    const localCount = countValueExportLines(localSource);
-    const distCount = countValueExportLines(publishedSource);
-    return { added: [], localCount, distCount, opaque: true, drifted: localCount > distCount };
-  }
   const added = [...local.names].filter((name) => !published.names.has(name)).sort();
+  if (local.opaque || published.opaque) {
+    // The names this parser DID extract are still exact, so they are compared as
+    // usual; the line count is an ADDITIONAL signal for the part it could not
+    // name. Replacing the comparison with the line count alone let
+    // `export * from "./x.js";export { newThing };` read as clean against
+    // `export * from "./x.js";` — one line on both sides, and the added name
+    // discarded.
+    const localLines = countValueExportLines(localSource);
+    const distLines = countValueExportLines(publishedSource);
+    return { added, localCount: localLines, distCount: distLines, opaque: true, drifted: added.length > 0 || localLines > distLines };
+  }
   return { added, localCount: local.names.size, distCount: published.names.size, opaque: false, drifted: added.length > 0 };
 }
 
@@ -371,6 +395,12 @@ export async function checkPackageDrift({
   let compared = 0;
 
   for (const [subpath, entryPath] of entries) {
+    if (entryPath === null) {
+      // No string target behind this subpath's condition block. Say so; do not
+      // substitute another file and compare that instead.
+      skipped.push(`${subpath} (no runtime target resolved from its exports conditions)`);
+      continue;
+    }
     if (!/\.(?:js|mjs|cjs)$/.test(entryPath)) {
       // A `./style.css` or `./package.json` entry carries no export surface this
       // metric can speak about, and counting it as a successful comparison is

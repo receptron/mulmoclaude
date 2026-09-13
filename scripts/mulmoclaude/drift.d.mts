@@ -20,9 +20,16 @@ export function parseExportedNames(source: string): ExportedNames;
 /** Line-count fallback, used only for an opaque entry. */
 export function countValueExportLines(source: string): number;
 
-/** Maps each `exports` subpath to the file it serves, relative to the package
- *  directory. Falls back to `module` / `main` / `dist/index.js`. */
-export function entryTargets(pkg: unknown): Map<string, string>;
+/** The runtime target behind one `exports` value, descending through condition
+ *  objects. Null when no string target resolves — reported as unresolved rather
+ *  than replaced with a guess. */
+export function resolveConditionTarget(value: unknown, depth?: number): string | null;
+
+/** Maps each `exports` subpath to the file it serves (relative to the package
+ *  directory), or to null when no runtime target resolves. A package with no
+ *  `exports` map at all falls back to `module` / `main` / `dist/index.js` for `.`;
+ *  that fallback never applies per subpath. */
+export function entryTargets(pkg: unknown): Map<string, string | null>;
 
 export interface EntryComparison {
   /** Runtime names present locally and absent from the published build. */
