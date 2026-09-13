@@ -1,7 +1,0 @@
-{
-  "name": "mulmoclaude-fixture-drift-clean",
-  "version": "0.0.0",
-  "dependencies": {
-    "@mulmobridge/protocol": "^0.1.0"
-  }
-}

@@ -24,10 +24,12 @@ on:
     # actually changed. Docs-only PRs, e2e fixtures, etc. shouldn't
     # burn CI minutes packing + installing mulmoclaude.
     paths:
-      - "packages/mulmoclaude/**"
-      - "packages/protocol/**"
-      - "packages/client/**"
-      - "packages/chat-service/**"
+      # Every workspace the drift stage scans, which since #3116 is any
+      # publishable package another workspace declares — not just the four
+      # `@mulmobridge/*` deps of the launcher. Listing the four was how a PR that
+      # added `asInt` to `@mulmoclaude/common` never started this workflow at all:
+      # widening the scan set does nothing if the trigger stays narrow.
+      - "packages/**"
       - "server/**"
       - "src/**"
       - "scripts/mulmoclaude/**"
