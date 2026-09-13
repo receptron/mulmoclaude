@@ -21,11 +21,11 @@ describe("parseNodeVersion", () => {
 
 describe("isNodeVersionSupported", () => {
   it("accepts the requirement and anything above it", () => {
-    ["v20.12.0", "v20.13.0", "v22.0.0", "v24.12.0"].forEach((raw) => assert.ok(isNodeVersionSupported(raw), raw));
+    ["v22.19.0", "v22.20.0", "v24.0.0", "v24.12.0"].forEach((raw) => assert.ok(isNodeVersionSupported(raw), raw));
   });
 
   it("rejects below the requirement, including the same major with a lower minor", () => {
-    ["v18.20.0", "v20.11.9", "v20.0.0"].forEach((raw) => assert.ok(!isNodeVersionSupported(raw), raw));
+    ["v18.20.0", "v20.12.0", "v22.18.9", "v22.0.0"].forEach((raw) => assert.ok(!isNodeVersionSupported(raw), raw));
   });
 
   it("treats an unparseable version as unsupported", () => {
@@ -67,7 +67,7 @@ describe("runPreflight", () => {
   it("reports the node version first, since nothing else can be trusted without it", () => {
     const failure = runPreflight({ nodeVersion: "v18.0.0", commandAvailable: () => false });
     assert.equal(failure?.key, "nodeTooOld");
-    assert.deepEqual(failure?.values, { required: "20.12", found: "v18.0.0" });
+    assert.deepEqual(failure?.values, { required: "22.19", found: "v18.0.0" });
   });
 
   it("reports npx before claude — npx is what actually gets spawned", () => {

@@ -10,10 +10,10 @@
 // stay portable across backends and remote-view preflights keep holding.
 //
 // Engine: `node:sqlite` — no native npm dependency (DuckDB pain avoided).
-// The app's engines floor is Node >= 20.12 but node:sqlite needs >= 22.5,
-// so the module is imported LAZILY and a failure degrades to a thrown,
-// clearly-worded error — ONLY sqlite-backed collections break, exactly the
-// DuckDB pattern in csvStore.ts. See
+// The app's engines floor (Node >= 22.19) clears node:sqlite's own >= 22.5,
+// so the LAZY import below is defensive: a Node built without the module
+// degrades to a thrown, clearly-worded error and ONLY sqlite-backed
+// collections break, exactly the DuckDB pattern in csvStore.ts. See
 // packages/core/assets/helps/error-recovery.md.
 //
 // Order contract: list/page walk `ORDER BY id` (BINARY collation =

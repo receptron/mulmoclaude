@@ -5,7 +5,7 @@ GUI front-end for Claude Code — chat with rich visual output, schema-driven da
 ## Quick Start
 
 ```bash
-# Prerequisites: Node.js 20+, Claude Code CLI
+# Prerequisites: Node.js 22.19+, Claude Code CLI
 npm install -g @anthropic-ai/claude-code
 claude              # one-time OAuth — completes the CLI setup
 

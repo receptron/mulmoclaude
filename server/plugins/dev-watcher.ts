@@ -6,7 +6,7 @@
 // chokidar to avoid pulling another runtime dependency. Recursive
 // watching is reliable on macOS / Linux / Windows starting from Node
 // 20.12 (Linux had race conditions and crash-on-delete bugs in earlier
-// 20.x patches; engines.node is set to >=20.12 to encode this).
+// 20.x patches), which engines.node (>=22.19) clears comfortably.
 //
 // The publish + warnServerSideChange callbacks are injected so tests
 // can exercise the debounce + classification logic without booting the

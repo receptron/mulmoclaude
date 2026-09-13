@@ -3,8 +3,8 @@
 //
 // Both non-file backends have such a state, and neither is a data problem:
 //
-//   - sqlite: `node:sqlite` needs Node >= 22.5, and the app's floor is 20.12,
-//     so on an older runtime ONLY sqlite collections fail (sqliteStore.ts).
+//   - sqlite: `node:sqlite` needs Node >= 22.5, which the app's floor (>=22.19)
+//     clears — so this is defensive, for a Node built without it (sqliteStore.ts).
 //   - csv/dataSource: `@duckdb/node-api` is a native module whose prebuilt
 //     binding can be missing for the platform (csvStore.ts).
 //

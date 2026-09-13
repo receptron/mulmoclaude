@@ -6,7 +6,7 @@
   "author": "snakajima",
   "license": "MIT",
   "engines": {
-    "node": ">=20.12"
+    "node": ">=22.19"
   },
   "workspaces": [
     "packages/*",

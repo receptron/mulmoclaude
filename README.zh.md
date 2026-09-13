@@ -39,7 +39,7 @@ npx mulmoclaude@latest
 
 ### 前置条件
 
-- **Node.js 20+** —— 运行时
+- **Node.js 22.19+** —— 运行时
 - **[Claude Code CLI](https://claude.ai/code)** —— 已安装并完成认证。请先运行一次 `claude` 完成 OAuth
 - **ffmpeg** —— 视频生成所需。如果不生成视频可以跳过
   - macOS: `brew install ffmpeg`

@@ -39,7 +39,7 @@ npx mulmoclaude@latest
 
 ### 필수 조건
 
-- **Node.js 20+** — 런타임
+- **Node.js 22.19+** — 런타임
 - **[Claude Code CLI](https://claude.ai/code)** — 설치 및 인증 완료. `claude` 를 한 번 실행해 OAuth 를 완료해 주세요
 - **ffmpeg** — 동영상 생성에 필요합니다. 동영상을 생성하지 않으면 건너뛰어도 됩니다
   - macOS: `brew install ffmpeg`

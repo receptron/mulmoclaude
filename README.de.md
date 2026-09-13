@@ -39,7 +39,7 @@ Der Launcher startet den Server und öffnet [http://localhost:3001](http://local
 
 ### Voraussetzungen
 
-- **Node.js 20+** — Laufzeitumgebung
+- **Node.js 22.19+** — Laufzeitumgebung
 - **[Claude Code CLI](https://claude.ai/code)** — installiert und authentifiziert. Führen Sie `claude` einmal aus, um das OAuth abzuschließen
 - **ffmpeg** — für die Videogenerierung erforderlich. Kann übersprungen werden, wenn Sie keine Videos erzeugen
   - macOS: `brew install ffmpeg`

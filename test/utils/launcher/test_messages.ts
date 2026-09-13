@@ -86,7 +86,7 @@ describe("pickLauncherLocale", () => {
 
 describe("fillPlaceholders", () => {
   it("substitutes known keys", () => {
-    assert.equal(fillPlaceholders("needs {required}, found {found}", { required: "20.12", found: "v18.0.0" }), "needs 20.12, found v18.0.0");
+    assert.equal(fillPlaceholders("needs {required}, found {found}", { required: "22.19", found: "v18.0.0" }), "needs 22.19, found v18.0.0");
   });
 
   it("leaves an unknown placeholder visible rather than rendering undefined", () => {

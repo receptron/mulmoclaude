@@ -8,6 +8,39 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Package releases
+
+Ships `@mulmoclaude/accounting-plugin@3.0.0`, `@mulmoclaude/chart-plugin@3.0.0`, `@mulmoclaude/collection-plugin@4.6.0`, `@mulmoclaude/common@1.3.0`, `@mulmoclaude/core@4.9.2`, `@mulmoclaude/form-plugin@2.0.0`, `@mulmoclaude/google-plugin@3.0.0`, `@mulmoclaude/html-plugin@4.0.0`, `@mulmoclaude/markdown-plugin@4.1.0`, `@mulmoclaude/markdown-utils@2.2.0`, `@mulmoclaude/mulmoscript-plugin@4.8.0`, `@mulmoclaude/shapescript-plugin@2.6.0`, `@mulmoclaude/spotify-plugin@2.0.0`, `@mulmoclaude/x-plugin@1.0.3`.
+
+### Changed
+
+#### Node.js の下限を 20.12 → 22.19 に引き上げ
+
+`google-auth-library@11` / `matrix-js-sdk@42` / `undici@8` が揃って Node >= 22 を要求するようになり、
+20.x のままでは取り込めない。下限は **`>=22.19`** — この 3 本で技術的に最も高い要求
+(`undici@8` の `>=22.19.0`) に合わせた値で、`>=22` では `undici@8` に届かない。
+`mermaid@12` (`>=22.12.0`) もエンジン面ではこれで解けるが、既定レイアウト/テーマが変わり図の
+見た目が動くため別途扱う。
+
+- `engines.node` を root と `packages/mulmoclaude` の両方で `>=22.19` に。
+- 起動をハードにブロックする launcher の `REQUIRED_NODE` も同じ値へ。両者のズレは
+  `test/utils/launcher/test_preflight.ts` の drift テストが落として教える。
+- `which@7` は**上げない**。7.0.0 の変更内容はサポート Node 範囲を狭めたことそのもので機能差分が無く、
+  範囲 `^22.22.2 || ^24.15.0 || >=26.0.0` が Node 23.x / 24.0–24.14 / 25.x を除外するため、
+  下限をどこに置いても宣言上の穴が残る。用途は `server/system/optionalDeps.ts` の PATH 探索 1 箇所。
+- 副作用として **`node:sqlite` (Node >= 22.5) が下限に含まれた**。lazy import と degradation は
+  「そのモジュール抜きでビルドされた Node」向けの防御として残すが、`sqliteStore.ts` /
+  `backendAvailability.ts` / `docs/shared-utils.md` / `assets/helps/error-recovery.md` の
+  「app の floor は 20.12」という記述はすべて事実と合わなくなったので直した。
+
+#### `@mulmoclaude/core@4.9.2`
+
+`assets/helps/error-recovery.md` の sqlite セクションが上の下限変更で事実と食い違うため。export も
+挙動も変わらない（エージェントはツール失敗時にこのファイルを読むので、記述は npm 経由で届く必要がある）。
+宣言 range を **17 / 9 ファイル** sweep — launcher の `dependencies` と 8 プラグインの
+`devDependencies` + `peerDependencies`。launcher 自身の `version` は不変。
+
+
 ### Fixed
 
 #### `@mulmoclaude/common@1.3.0`, `@mulmobridge/webhook-runtime@1.2.0`, `@mulmoclaude/core@4.9.1` — the versions catch up with #3084

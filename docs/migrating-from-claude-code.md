@@ -85,7 +85,7 @@ MulmoClaude は **「`~/mulmoclaude/`」を中心とする独立したアプリ*
 
 ### Step 1: MulmoClaude を初回起動
 
-**前提**: Node.js 20.12+ と [Claude Code CLI](https://claude.ai/code) がインストール・認証済みであること。
+**前提**: Node.js 22.19+ と [Claude Code CLI](https://claude.ai/code) がインストール・認証済みであること。
 Claude Code を普段使っている人なら後者は満たしているはず。
 
 選択肢は2つ。**どちらでも `~/mulmoclaude/` ワークスペースは共有**される (= 後で乗り換えても資産そのまま)。

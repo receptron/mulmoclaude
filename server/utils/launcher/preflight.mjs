@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 
 // Mirrors `engines.node` in packages/mulmoclaude/package.json.
 // test/utils/launcher/test_preflight.ts fails if the two drift.
-export const REQUIRED_NODE = { major: 20, minor: 12 };
+export const REQUIRED_NODE = { major: 22, minor: 19 };
 
 // These probes run a local binary that reads its own package metadata;
 // anything past a few seconds means it is wedged, not slow.

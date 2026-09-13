@@ -549,9 +549,10 @@ user's file by re-encoding it.
 A collection whose schema declares `storage: { type: "sqlite", path: … }`
 keeps its records in a single SQLite database file, read/written through
 Node's BUILT-IN `node:sqlite` module — no npm dependency. That module
-exists only in **Node.js >= 22.5**, while the app itself runs on >= 20.12,
-so on an older runtime ONLY sqlite-backed collections break (file and
-dataSource collections keep working) and every operation fails with
+exists only in **Node.js >= 22.5**. The app's own floor is >= 22.19, so a
+supported runtime always has it and this failure means a Node built without
+the module. Only sqlite-backed collections break (file and dataSource
+collections keep working); every operation fails with
 `sqlite storage needs the node:sqlite module (Node.js >= 22.5) — this
 runtime cannot load it`.
 

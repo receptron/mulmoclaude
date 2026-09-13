@@ -39,7 +39,7 @@ npx mulmoclaude@latest
 
 ### 前提条件
 
-- **Node.js 20 以降** — ランタイム
+- **Node.js 22.19 以降** — ランタイム
 - **[Claude Code CLI](https://claude.ai/code)** — インストール・認証済みであること。`claude` を一度実行して OAuth を完了してください
 - **ffmpeg** — 動画生成に必要です。動画を生成しない場合はスキップして構いません
   - macOS: `brew install ffmpeg`
