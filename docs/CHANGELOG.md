@@ -54,6 +54,32 @@ The workflow trigger moved with it. `mulmoclaude_smoke.yaml` only ran for
 `packages/{mulmoclaude,protocol,client,chat-service}`, so a PR touching `@mulmoclaude/common` never
 started the job at all: widening the scan set does nothing while the trigger stays narrow.
 
+Four more holes came out of the cross-review, each reproduced before it was fixed, and they share a
+shape: **a wrong or empty answer that reads as clean**. The parser now enumerates what it CAN model —
+a brace list without comments, `default`, a declaration, `type`/`interface` — and marks every other
+`export` statement opaque, because three consecutive findings were each "it silently drops one more
+shape" and a ban-list has no last case. Concretely:
+
+- **A published subpath that 404s is drift, not a skip.** Adding `{ "./new": "./dist/new.js" }` at an
+  unchanged version is a consumer-visible addition — `import "pkg/new"` fails after a plain install —
+  and the old code skipped that entry, so the package reported `ok` as long as `.` compared cleanly.
+  Transport failures (5xx, 429, timeouts) still skip: they say nothing about the package.
+- **A non-JS `exports` target no longer counts as a comparison.** Eight of the twenty scanned
+  packages export a `./style.css`, so an unbuilt package had its JS entry skipped, its stylesheet
+  "compared", and the whole package reported `ok`.
+- **The parser never guesses a name it cannot read exactly.** `export { a as "string name" }` (ES2022
+  arbitrary module namespace names) reported `a`, and `export { café }` reported `caf` under an
+  ASCII-only pattern — a name the package does not export is worse than a coarse comparison.
+- **An opaque entry still compares the names it could read.** The fallback used to replace the name
+  comparison with a line count, so `export * from "./x.js";export { newThing };` was clean against
+  `export * from "./x.js";` — one line on each side, the added name discarded.
+- **A subpath whose `exports` conditions resolve to no file is reported, not substituted.** A nested
+  `{ node: { import: … } }` block was dropped entirely, and a types-only entry fell back to the
+  package's `main` — comparing a different file's export surface.
+
+`test/scripts/mulmoclaude/test_drift.ts` pins all of it: 48 cases, including the near-misses that
+must come back opaque rather than empty.
+
 #### `@mulmoclaude/common@1.3.0`, `@mulmobridge/webhook-runtime@1.2.0`, `@mulmoclaude/core@4.9.1` — the versions catch up with #3084
 
 #3084 left shared packages carrying new exports at unchanged versions. That is the state

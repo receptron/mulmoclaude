@@ -14,11 +14,11 @@ workspace が別の workspace を宣言しているものを数えると **20 �
 
 ### 2. 指標（src の export 行数）が bundle ビルドで壊れる
 
-| package | ビルド | local src 行 | local dist 行 | 公開 dist 行 | 現指標の判定 |
-|---|---|---|---|---|---|
-| `@mulmoclaude/common` | tsc | 19 | 17 | 16 | 正しく drift |
-| `@mulmoclaude/x-plugin` | **vite** | 6 | 1 | 1 | **DRIFTED（誤検知）** |
-| `@mulmoclaude/core` | **vite** | — | — | — | local 229 / 公開 30 の無意味な比較 |
+| package                 | ビルド   | local src 行 | local dist 行 | 公開 dist 行 | 現指標の判定                       |
+| ----------------------- | -------- | ------------ | ------------- | ------------ | ---------------------------------- |
+| `@mulmoclaude/common`   | tsc      | 19           | 17            | 16           | 正しく drift                       |
+| `@mulmoclaude/x-plugin` | **vite** | 6            | 1             | 1            | **DRIFTED（誤検知）**              |
+| `@mulmoclaude/core`     | **vite** | —            | —             | —            | local 229 / 公開 30 の無意味な比較 |
 
 現行の「local **src** の export 行数 vs 公開 **dist** の export 行数」は、dist が src を
 1:1 で写す tsc ビルドでしか成立しない。広げた状態で測ると google / spotify / x の 3 plugin が
@@ -60,3 +60,16 @@ x-plugin の dist: export { extractTweetId, formatTweet, readUrlArg, readXPost, 
   `export default` を名前に数えない、`export * from` は opaque として扱う）
 - 既存 `test/scripts/mulmoclaude/test_drift.ts` の fixture ベースのテストを新形に移す
 - local dist が無い場合は `skipped` + 理由（黙って pass しない）
+
+## cross-review で出た 4 つの追加穴（すべて再現してから修正）
+
+どれも形が同じ — **間違った / 空の答えが clean と読まれる**:
+
+1. **公開側 subpath の 404 が skip だった** → concrete target の 404 は drift（transport 失敗は skip のまま）
+2. **非 JS target（`./style.css`）が「比較成功」に数えられていた** → 走査 20 のうち 8 個が該当。JS 未ビルドでも `ok` になり得た
+3. **パーサが読めない名前を推測していた** → `export { a as "string name" }` が `a`、`export { café }` が `caf`
+4. **opaque の fallback が名前比較を置き換えていた** / **ネスト条件と types のみの subpath** → 前者は 1 行対 1 行で clean、後者は別ファイルを比較
+
+3 回続けて「もう 1 つの形を落としている」と指摘されたので、**ルールを ban-list から許可リストに反転**した（文 / 指定子 / 宣言名 / 条件解決の 4 段）。安全なコードの一部も粗い比較に落ちるが、リリースゲートとしてはその取引が正しい。
+
+テストは 48 件。実ゲートは 20 パッケージ / drifted 0 / exit 0。
