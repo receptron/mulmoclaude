@@ -43,6 +43,42 @@ const REGISTRY_BASE = "https://registry.npmjs.org";
 const UNPKG_BASE = "https://unpkg.com";
 const REGISTRY_TIMEOUT_MS = 15_000;
 
+/** True when `text` holds a `,` outside every bracket, brace, paren and string —
+ *  i.e. a second declarator rather than a comma inside an initialiser. */
+export function hasTopLevelComma(text) {
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (quote !== null) {
+      if (char === "\\") i += 1;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") quote = char;
+    else if (char === "(" || char === "[" || char === "{") depth += 1;
+    else if (char === ")" || char === "]" || char === "}") depth = depth > 0 ? depth - 1 : 0;
+    else if (char === "," && depth === 0) return true;
+  }
+  return false;
+}
+
+/** The relative specifiers of every `export * from "…"` in a source. A barrel's
+ *  public surface lives in those files, so comparing only the barrel line says
+ *  nothing: an export added to the target changes what consumers can import while
+ *  the barrel itself is byte-identical on both sides. */
+export function starTargets(source) {
+  const out = [];
+  for (const statement of exportStatements(source)) {
+    const rest = statement.slice("export".length).trim();
+    if (!rest.startsWith("*")) continue;
+    if (/^\*\s+as\s+/.test(rest)) continue; // a namespace export, not a barrel
+    const spec = /from\s*["']([^"']+)["']/.exec(rest);
+    out.push(spec === null ? null : spec[1]);
+  }
+  return out;
+}
+
 /** Statements that begin with `export`, with newlines inside a brace group
  *  flattened so a wrapped list is one statement, and `;`-separated statements on
  *  one line split apart. Parsing per LINE instead of per statement silently
@@ -82,6 +118,11 @@ export function exportStatements(source) {
 export function parseExportedNames(source) {
   const names = new Set();
   let opaque = false;
+  // Barrels are counted, not lumped into `opaque`: a caller that can READ the
+  // re-exported file (collectEntryNames) resolves them exactly, and one that
+  // cannot must treat them as opaque. Sharing one flag made the resolved case
+  // permanently coarse.
+  let stars = 0;
   const IDENT = /^[A-Za-z_$][\w$]*/;
   const DECLARERS = new Set(["function", "function*", "class", "const", "let", "var"]);
   const NO_NAME_FORMS = new Set(["type", "interface"]);
@@ -122,7 +163,12 @@ export function parseExportedNames(source) {
   for (const statement of exportStatements(source)) {
     let rest = statement.slice("export".length).trim();
     if (rest.startsWith("*")) {
-      opaque = true;
+      // `export * as ns from "./x.js"` exports one name — the namespace object —
+      // and is NOT a barrel: following the target would credit this entry with
+      // names consumers cannot import directly.
+      const named = /^\*\s+as\s+([A-Za-z_$][\w$]*)\b/.exec(rest);
+      if (named !== null) names.add(named[1]);
+      else stars += 1;
       continue;
     }
     if (rest.startsWith("{")) {
@@ -159,6 +205,13 @@ export function parseExportedNames(source) {
       continue;
     }
     const declared = rest.slice(head.length).trim();
+    // One declarator per statement is what this models. `export const a = 1, b = 2`
+    // used to yield `a` alone while claiming to be exact; a comma at depth 0 (not
+    // inside brackets, braces, parens or a string) means more than one name.
+    if (hasTopLevelComma(declared)) {
+      opaque = true;
+      continue;
+    }
     const match = IDENT.exec(declared);
     // The identifier must END where a declaration's name legitimately can — the
     // boundary is a permit-list for the same reason the statement shapes are. An
@@ -169,7 +222,7 @@ export function parseExportedNames(source) {
     if (match === null || !(after === "" || /^[\s=(;:,<{)]/.test(after))) opaque = true;
     else names.add(match[0]);
   }
-  return { names, opaque };
+  return { names, opaque, stars };
 }
 
 // Kept from the line-counting era: it is the fallback for an opaque entry, and
@@ -310,13 +363,53 @@ export async function defaultFetchPublishedEntry({ name, version, entryPath, tim
   }
 }
 
+/**
+ * Every runtime name an entry exposes, following `export * from "…"` into the
+ * files it re-exports. A barrel's own line is identical on both sides while the
+ * target gains an export, so comparing only the barrel reports clean on exactly
+ * the change this gate exists to catch — the largest hole the cross-review of
+ * #3116 found, live today in `@mulmoclaude/markdown-utils`.
+ *
+ * `read(path)` resolves a path relative to the package root to source text, or
+ * null. Depth and a visited set bound it; anything unresolvable keeps the entry
+ * opaque rather than pretending the surface is smaller than it is.
+ */
+export async function collectEntryNames({ entryPath, read, depth = 0, seen = new Set() }) {
+  const names = new Set();
+  if (depth > 4 || seen.has(entryPath)) return { names, opaque: true };
+  seen.add(entryPath);
+  const source = await read(entryPath);
+  if (source === null) return { names, opaque: true };
+  const { names: directNames, opaque: directOpaque } = parseExportedNames(source);
+  for (const name of directNames) names.add(name);
+  let opaque = directOpaque;
+  for (const target of starTargets(source)) {
+    if (target === null || !target.startsWith(".")) {
+      // `export * from "some-package"` re-exports a dependency's surface, which is
+      // not in this tarball at all. Not resolvable here; stay opaque.
+      opaque = true;
+      continue;
+    }
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(entryPath), target));
+    const nested = await collectEntryNames({ entryPath: resolved, read, depth: depth + 1, seen });
+    for (const name of nested.names) names.add(name);
+    if (nested.opaque) opaque = true;
+  }
+  // A barrel whose targets all resolved is NOT opaque: the union is the surface.
+  // `opaque` above only ever comes from a shape the parser cannot model or a star
+  // that could not be followed.
+  return { names, opaque };
+}
+
 // Compare two module sources and say which runtime names the local one adds.
 // An opaque entry on either side falls back to line counting, and says so.
 export function compareEntry(localSource, publishedSource) {
   const local = parseExportedNames(localSource);
   const published = parseExportedNames(publishedSource);
   const added = [...local.names].filter((name) => !published.names.has(name)).sort();
-  if (local.opaque || published.opaque) {
+  // Without a reader this comparator cannot follow a barrel, so one makes the
+  // entry opaque here even though `collectEntryNames` would resolve it.
+  if (local.opaque || published.opaque || local.stars > 0 || published.stars > 0) {
     // The names this parser DID extract are still exact, so they are compared as
     // usual; the line count is an ADDITIONAL signal for the part it could not
     // name. Replacing the comparison with the line count alone let
@@ -442,13 +535,30 @@ export async function checkPackageDrift({
       skipped.push(`${subpath} (published ${entryPath}: ${remote.reason ?? "unavailable"})`);
       continue;
     }
-    const result = compareEntry(localSource, remote.source);
+    // Follow `export *` on BOTH sides, by the same relative paths, so a barrel
+    // whose target gained an export is compared on its real surface rather than on
+    // one identical line.
+    const localNames = await collectEntryNames({
+      entryPath,
+      read: async (rel) => readFile(path.join(root, dir ?? "", rel), "utf8").catch(() => null),
+    });
+    const publishedNames = await collectEntryNames({
+      entryPath,
+      read: async (rel) => (await fetchPublishedEntry({ name, version: published.version, entryPath: rel })).source,
+    });
+    const addedNames = [...localNames.names].filter((exportName) => !publishedNames.names.has(exportName)).sort();
+    const entryOpaque = localNames.opaque || publishedNames.opaque;
     compared += 1;
-    localCount += result.localCount;
-    distCount += result.distCount;
-    if (result.opaque) opaqueEntries.push(subpath);
-    for (const exportName of result.added) added.push(`${subpath}:${exportName}`);
-    if (result.opaque && result.drifted) added.push(`${subpath}:+${result.localCount - result.distCount} export line(s)`);
+    localCount += localNames.names.size;
+    distCount += publishedNames.names.size;
+    if (entryOpaque) opaqueEntries.push(subpath);
+    for (const exportName of addedNames) added.push(`${subpath}:${exportName}`);
+    if (entryOpaque) {
+      // The part that could not be named is still covered by the coarser signal.
+      const localLines = countValueExportLines(localSource);
+      const distLines = countValueExportLines(remote.source);
+      if (localLines > distLines) added.push(`${subpath}:+${localLines - distLines} unnamed export line(s)`);
+    }
   }
 
   if (compared === 0) {

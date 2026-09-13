@@ -51,10 +51,34 @@ describe("parseExportedNames", () => {
     assert.deepEqual([...drift.parseExportedNames('export { default as thing } from "./x.js";\n').names], ["thing"]);
   });
 
-  it("marks `export * from` opaque — the set cannot be enumerated from this file alone", () => {
-    const { names, opaque } = drift.parseExportedNames(`export * from "./chunk.js";\nexport const visible = 1;\n`);
-    assert.equal(opaque, true);
-    assert.deepEqual([...names], ["visible"]);
+  // A barrel is COUNTED, not lumped into `opaque`: a caller that can read the
+  // re-exported file resolves it exactly (`collectEntryNames`), and one that
+  // cannot must treat it as opaque (`compareEntry`). Sharing one flag kept a
+  // fully-resolved barrel permanently coarse.
+  it("counts `export * from` as a barrel rather than as an unmodelled shape", () => {
+    const parsed = drift.parseExportedNames(`export * from "./chunk.js";\nexport const visible = 1;\n`);
+    assert.equal(parsed.stars, 1);
+    assert.equal(parsed.opaque, false);
+    assert.deepEqual([...parsed.names], ["visible"]);
+  });
+
+  it("`export * as ns from` exports ONE name and is not a barrel", () => {
+    const parsed = drift.parseExportedNames(`export * as ns from "./x.js";\n`);
+    assert.deepEqual([...parsed.names], ["ns"]);
+    assert.equal(parsed.stars, 0);
+    assert.deepEqual(drift.starTargets(`export * as ns from "./x.js";\n`), []);
+  });
+
+  it("a multi-declarator statement is opaque rather than half-named", () => {
+    const parsed = drift.parseExportedNames("export const a = 1, b = 2;\n");
+    assert.equal(parsed.opaque, true);
+    assert.deepEqual([...parsed.names], []);
+  });
+
+  it("a comma inside an initialiser is not a second declarator", () => {
+    assert.deepEqual([...drift.parseExportedNames("export const f = fn(1, 2);\n").names], ["f"]);
+    assert.deepEqual([...drift.parseExportedNames("export const xs = [1, 2];\n").names], ["xs"]);
+    assert.deepEqual([...drift.parseExportedNames('export const s = "a,b";\n').names], ["s"]);
   });
 
   it("ignores indented exports (only module-level counts)", () => {
@@ -86,7 +110,6 @@ describe("parseExportedNames", () => {
       "export { a, /* x */ b };\n", // a block comment inside the brace
       "export { a,\n", // a brace that never closes
       "export enum Colour { Red }\n", // a form this parser does not model
-      'export * from "./chunk.js";\n', // enumerable only with the published tarball
     ];
     nearMisses.forEach((source) => {
       const { names, opaque } = drift.parseExportedNames(source);

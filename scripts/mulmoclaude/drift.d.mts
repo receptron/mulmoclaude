@@ -7,7 +7,13 @@
  *  the caller falls back to line counting. */
 export interface ExportedNames {
   names: Set<string>;
+  /** True when a statement cannot be modelled at all — the caller falls back to
+   *  line counting. Barrels are NOT counted here; see `stars`. */
   opaque: boolean;
+  /** How many `export * from "…"` barrels the source has. A caller that can read
+   *  the re-exported file resolves them exactly; one that cannot must treat the
+   *  entry as opaque. */
+  stars: number;
 }
 
 /** Statements beginning with `export`, with a brace group's newlines flattened so
@@ -41,6 +47,24 @@ export interface EntryComparison {
 }
 
 export function compareEntry(localSource: string, publishedSource: string): EntryComparison;
+
+/** True when `text` holds a `,` outside every bracket, brace, paren and string. */
+export function hasTopLevelComma(text: string): boolean;
+
+/** The relative specifiers of every `export * from "…"` barrel in a source.
+ *  `export * as ns from` is excluded — that exports one namespace name. */
+export function starTargets(source: string): (string | null)[];
+
+/** Every runtime name an entry exposes, following `export *` into the files it
+ *  re-exports. `read` maps a package-relative path to source text or null; depth
+ *  and a visited set bound the walk, and anything unresolvable keeps the result
+ *  opaque rather than understating the surface. */
+export function collectEntryNames(args: {
+  entryPath: string;
+  read: (path: string) => Promise<string | null>;
+  depth?: number;
+  seen?: Set<string>;
+}): Promise<{ names: Set<string>; opaque: boolean }>;
 
 /**
  * Returns true when `local` (a semver-ish string) is strictly greater than
