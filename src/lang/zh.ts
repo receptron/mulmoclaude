@@ -765,6 +765,10 @@ const zhMessages = {
           displayName: "YouTube 字幕",
           description: "通过 URL 获取任意公开 YouTube 视频的字幕。无需凭证。",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map（日本车站数据）",
+          description: "日本全国 9,273 个车站的开放数据 — 指定半径内的客流量、人口、地价和水灾风险。",
+        },
       },
       config: {
         howToGet: "获取方式",

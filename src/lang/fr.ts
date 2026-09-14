@@ -788,6 +788,11 @@ const frMessages = {
           displayName: "Transcription YouTube",
           description: "Récupère les sous-titres de n'importe quelle vidéo YouTube publique par URL. Sans identifiants.",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map (données des gares du Japon)",
+          description:
+            "Données ouvertes des 9 273 gares du Japon — fréquentation, population, prix du foncier et risque d'inondation dans le rayon de votre choix.",
+        },
       },
       config: {
         howToGet: "Comment l'obtenir",

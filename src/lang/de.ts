@@ -798,6 +798,10 @@ const deMessages = {
           displayName: "YouTube-Transkript",
           description: "Holt die Untertitel zu jedem öffentlichen YouTube-Video per URL. Keine Zugangsdaten nötig.",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map (Bahnhofsdaten Japan)",
+          description: "Offene Daten zu allen 9.273 Bahnhöfen Japans — Fahrgastzahlen, Bevölkerung, Bodenrichtwerte und Hochwasserrisiko im gewählten Umkreis.",
+        },
       },
       config: {
         howToGet: "So erhältst du den Wert",

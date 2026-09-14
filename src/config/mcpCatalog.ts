@@ -551,6 +551,36 @@ export const MCP_CATALOG: McpCatalogEntry[] = [
     configSchema: [],
     riskLevel: "low",
   },
+  // Japanese station-area open data over HTTP. All 9,273 railway
+  // stations in Japan, aggregated by a radius you pick (500 m – 20 km):
+  // ridership, population (and its 2040 projection), land price,
+  // estimated retail / food sales, businesses and workers, plus flood
+  // and landslide hazard zones and live JMA warnings. Read-only, no
+  // auth, hosted by the project — nothing to install.
+  //
+  // Catalogue value over the built-ins: `WebFetch` / `WebSearch` can
+  // reach the same government portals, but each one is a separate
+  // PDF / viewer with its own units and vintages. This returns one
+  // self-describing catalog and a CSV the model can compute on, so
+  // "which stations near Yokohama suit a family buying a flat" is
+  // answered with numbers rather than recollection.
+  //
+  // Verified 2026-09-15: `initialize` + `tools/list` over streamable
+  // HTTP return 13 tools with no credentials (protocol 2025-06-18).
+  {
+    id: "ai-database-map",
+    displayName: "settingsMcpTab.catalog.entry.aiDatabaseMap.displayName",
+    description: "settingsMcpTab.catalog.entry.aiDatabaseMap.description",
+    audience: "general",
+    upstreamUrl: "https://github.com/kusui26/AI-Database-Map",
+    setupGuideUrl: "https://ai-database-map.vercel.app/ai",
+    spec: {
+      type: "http",
+      url: "https://ai-database-map.vercel.app/api/mcp",
+    },
+    configSchema: [],
+    riskLevel: "low",
+  },
 ];
 
 /** Look up by id. Returns null when the id isn't in the catalog

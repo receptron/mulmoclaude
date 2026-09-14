@@ -785,6 +785,11 @@ const ptBRMessages = {
           displayName: "Transcrição do YouTube",
           description: "Obtém as legendas de qualquer vídeo público do YouTube pela URL. Sem credenciais.",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map (dados de estações do Japão)",
+          description:
+            "Dados abertos das 9.273 estações ferroviárias do Japão — passageiros, população, preço da terra e risco de enchente no raio que você escolher.",
+        },
       },
       config: {
         howToGet: "Como obter",

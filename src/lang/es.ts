@@ -794,6 +794,11 @@ const esMessages = {
           displayName: "Transcripción de YouTube",
           description: "Obtén los subtítulos de cualquier vídeo público de YouTube por URL. Sin credenciales.",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map (datos de estaciones de Japón)",
+          description:
+            "Datos abiertos de las 9.273 estaciones de tren de Japón — pasajeros, población, precio del suelo y riesgo de inundación en el radio que elijas.",
+        },
       },
       config: {
         howToGet: "Cómo obtenerlo",

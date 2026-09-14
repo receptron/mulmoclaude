@@ -778,6 +778,10 @@ const koMessages = {
           displayName: "YouTube 자막",
           description: "공개된 YouTube 동영상의 URL로 자막을 가져옵니다. 자격 증명 불필요.",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map (일본 역 데이터)",
+          description: "일본 전국 9,273개 역의 공공 데이터 — 지정한 반경 내 승하차 인원, 인구, 지가, 침수 위험.",
+        },
       },
       config: {
         howToGet: "발급 방법",

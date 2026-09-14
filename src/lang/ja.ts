@@ -780,6 +780,10 @@ const jaMessages = {
           displayName: "YouTube 字幕",
           description: "公開 YouTube 動画の URL から字幕を取得。認証情報不要。",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map（日本の駅データ）",
+          description: "日本全国 9,273 駅のオープンデータ — 指定した半径内の乗降客数・人口・地価・水害リスク。",
+        },
       },
       config: {
         howToGet: "取得方法",

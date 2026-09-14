@@ -807,6 +807,10 @@ const enMessages = {
           displayName: "YouTube transcript",
           description: "Fetch the captions for any public YouTube video by URL. No credentials needed.",
         },
+        aiDatabaseMap: {
+          displayName: "AI Database Map (Japan station data)",
+          description: "Open data for all 9,273 railway stations in Japan — ridership, population, land price and flood risk within the radius you choose.",
+        },
       },
       config: {
         howToGet: "How to get this",
