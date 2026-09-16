@@ -12,8 +12,8 @@ name: E2E Live (no LLM)
 # server/system/docker.ts would exit 1 before Vite came up.
 
 on:
-  schedule:
-    - cron: "0 18 * * *"  # Daily 18:00 UTC = 03:00 JST
+  # schedule:
+  #   - cron: "0 18 * * *"  # Daily 18:00 UTC = 03:00 JST (paused - low usage)
   workflow_dispatch:
   pull_request:
     # e2e-live drives a REAL browser against a REAL dev server, so the blast
