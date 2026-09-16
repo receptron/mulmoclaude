@@ -61,6 +61,41 @@ stdio-shaped hole. This is the "bypass" people describe.
 | **stdio** (default) | **Dropped.** The `node:22-slim` sandbox image can't host arbitrary stdio runtimes ([#162](https://github.com/receptron/mulmoclaude/issues/162), [#1334](https://github.com/receptron/mulmoclaude/issues/1334)). The Settings UI surfaces this before you save. |
 | **stdio + `hostExecInDocker: true`** ([#1421 Phase B](https://github.com/receptron/mulmoclaude/issues/1421)) | Explicit opt-in. MulmoClaude starts the stdio server on the **host** behind a `stdio ↔ HTTP` gateway and rewrites the config to `http` so the sandboxed Claude can reach it (`config.ts:186`). |
 
+## Claude Code plugins (`/plugin install`)
+
+**Container**, from the host's own `~/.claude` bind mount — but only because
+the ledgers get translated on the way in.
+
+The CLI records where each marketplace and each plugin lives as an absolute
+path on the machine that installed them:
+
+| file | key |
+|---|---|
+| `<claudeConfigDir>/plugins/known_marketplaces.json` | `installLocation` |
+| `<claudeConfigDir>/plugins/installed_plugins.json` | `installPath` |
+
+Those are HOST paths (`/Users/you/.claude/...`), and the container's `HOME` is
+`/home/node`, so read verbatim they are ENOENT. The CLI answers `cache-miss`
+for the marketplace and the plugin goes with it — **every surface at once**:
+skills, slash commands, MCP servers and hooks, with no error and no warning
+([#3186](https://github.com/receptron/mulmoclaude/issues/3186)).
+
+`pluginLedgerMountArgs` (`server/agent/pluginLedgerMount.ts`) stages
+container-shaped copies of both files and overlays them `:ro`, the same idea as
+`localhost` → `host.docker.internal` for HTTP MCP. The translation itself is
+pure and lives in `server/agent/pluginLedgerPaths.ts`.
+
+Two things to know when debugging this:
+
+- **`claude plugin list` is not the success signal.** It can report `enabled`
+  while the agent still receives nothing. Read the `init` event of
+  `claude -p --output-format stream-json --verbose` instead: it carries the
+  session's slash commands, tools and `mcp_servers`.
+- **A plugin installed OUTSIDE the config dir does not load.**
+  `plugin marketplace add <local path>` is a supported shape, but that tree is
+  not bind-mounted, so no amount of path translation reaches it. Such entries
+  are deliberately passed through untouched rather than rewritten.
+
 ## Where-what summary
 
 | What | Where it runs |
@@ -72,6 +107,8 @@ stdio-shaped hole. This is the "bypass" people describe.
 | User HTTP MCP | **host** (URL rewritten to reach it) |
 | User stdio MCP (default) | *not called* |
 | User stdio MCP (`hostExecInDocker: true`) | **host** (via stdio↔HTTP gateway) |
+| Claude Code plugins (skills / commands / hooks) | **container** (ledgers translated) |
+| A plugin's own MCP server | **container** (spawned from the mounted plugin tree) |
 | Anthropic API traffic | container (outbound directly) |
 
 ## Consequences
