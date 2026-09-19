@@ -187,6 +187,73 @@ PR #2639 rather than at the branch-local bump.
 
 ---
 
+## Rules for release PRs
+
+These four rules used to live in `CLAUDE.md`, which now keeps a one-line summary of each and points here.
+
+### `chore(release)` commits — never bump the launcher preemptively
+
+A `chore(release)` commit that publishes a shared workspace package (e.g. `@mulmoclaude/core`, `@mulmoclaude/collection-plugin`) MUST bump only that package's `version` and the launcher's DEP RANGE for it (to keep the `launcherSync.mjs` workspace-lockstep invariant green). It MUST NOT bump the launcher's OWN `version` field — that field is reserved for the `/publish-mulmoclaude` workflow that actually publishes the npm launcher.
+
+Rationale: the launcher-sync gate enforces `launcherRange.lowerBound == workspace.version` for dep ratchet, but it never touches or checks the launcher's OWN `version`. Bumping the launcher preemptively "for tidiness" while skipping the actual npm publish creates a silent drift where `packages/mulmoclaude/package.json` runs ahead of npm's latest — future readers can't tell what the next actual publish should be, and end up either skipping the drafted-but-unpublished identity (leaving numbering gaps) or publishing a version whose intent no longer matches the current code. See #1945 for the pattern that motivated this rule.
+
+When to bump `packages/mulmoclaude/package.json`'s `version`:
+- Inside the `/publish-mulmoclaude` flow, right before the actual `npm publish`. That commit becomes the identity of the release.
+- Never as part of a `chore(release)` that publishes only shared packages.
+
+### Internal dep ranges — always track the latest published version
+
+Every declared range on a workspace-internal package (`@mulmoclaude/*`, `@mulmobridge/*`, `mulmoclaude`) MUST equal `^<latest version published to npm>`, in **every** `package.json` that declares it — `dependencies`, `devDependencies` and `peerDependencies` alike, in bridges and plugins, not just the launcher.
+
+Whenever you publish a workspace package, sweep every consumer's range to the new version in the same PR.
+
+Rationale: a caret range on a `0.x` package does **not** float across minor versions — `^0.23.0` resolves to `>=0.23.0 <0.24.0`. So a stale range doesn't merely look untidy, it *pins consumers to an old line* and silently withholds everything published since. This is not hypothetical: `mulmoclaude@1.3.0` shipped `@mulmoclaude/core: ^0.23.0` while npm had already served 0.24 through 0.28, so npm-installed users could not receive any of it. The `launcherSync.mjs` gate only checks the launcher, so nothing catches the same drift in the other ~50 workspaces.
+
+To audit before a release:
+
+```bash
+# for each internal dep name, compare every declared range against npm's latest
+npm view <pkg> version --registry https://registry.npmjs.org/
+```
+
+A range update reaches users only through that consumer's own next release, so it does not force an immediate republish of all 50 packages — but it MUST be in the tree before the consumer is published next.
+
+### A plugin declares host-provided packages as `peer` + `dev` — never `dependencies`
+
+A `packages/plugins/*-plugin` is always installed **alongside a host** — `mulmoclaude` or
+`mulmoterminal` — and both hosts declare `@mulmoclaude/core` themselves. So core is supplied by
+the host, and a plugin MUST declare it as:
+
+```jsonc
+"peerDependencies":  { "@mulmoclaude/core": "^<latest>" },  // the host must provide it
+"devDependencies":   { "@mulmoclaude/core": "^<latest>" }   // so the plugin builds/tests standalone
+```
+
+and MUST NOT list it under `dependencies`. Same for anything else the host owns
+(`gui-chat-protocol`, `vue`, `echarts` — see the existing `peerDependencies` blocks).
+
+Rationale: `dependencies` makes npm install a **second copy of core nested under the plugin**,
+so the plugin and the host each get their own module instance. Anything core keeps in module
+state (registries, watchers, caches) then silently exists twice, and the plugin talks to the
+copy the host never sees. A peer range instead *fails loudly* when the host is too old, which is
+the behaviour you want. `check:launcher-sync` verifies the launcher satisfies these peers
+("no peer-dep violations"); nothing catches a wrongly-placed `dependencies` entry, so it is on
+you at review time.
+
+`collection-plugin` is the reference shape. When a plugin imports core, moving the entry out of
+`dependencies` means **adding** it to `peerDependencies` and `devDependencies` — deleting it
+outright leaves an imported package undeclared.
+
+### Tag every publish — no untagged releases
+
+Every `npm publish` of a workspace package MUST be accompanied by a git tag `@scope/name@X.Y.Z` (no `v` prefix) on the published commit, plus a GH release (`--latest=false`). The `/publish` skill does this — do NOT publish by hand and skip the tag.
+
+Rationale: the tag is the ONLY reliable marker of "what commit this npm version was cut from". Answering *"which packages changed since their last release and need republishing?"* is a `git diff <name>@<version> HEAD -- <dir>` — which is impossible when the tag is missing. This is not hypothetical: the `1.0.0` plugins (`@mulmoclaude/*-plugin`) were published to npm without `@…@1.0.0` tags (a bulk `0.x → 1.0.0` re-version), so release-drift detection for them had to fall back to guessing the version-bump commit. `version` in `package.json` == npm's latest tells you it was published, but NOT whether the current source differs from what shipped — only the tag does.
+
+When you discover a past publish that was never tagged, create the tag retroactively on the commit that bumped `version` to the published value (best effort), so future drift detection works.
+
+---
+
 ## Release mechanics
 
 `/publish` owns the steps. What it enforces, and why each matters:
