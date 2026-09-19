@@ -50,7 +50,7 @@
   "devDependencies": {
     "@mulmoclaude/core": "^4.10.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "@vitejs/plugin-vue": "^6.0.9",
     "echarts": "^6.1.0",
     "gui-chat-protocol": "^2.0.0",

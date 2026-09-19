@@ -254,7 +254,7 @@
   },
   "devDependencies": {
     "@receptron/task-scheduler": "^1.0.3",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "gui-chat-protocol": "^2.0.0",
     "tsx": "^4.23.13",
     "typescript": "^6.0.3",

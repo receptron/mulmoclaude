@@ -50,7 +50,7 @@
     "socket.io-client": "^4.0.0"
   },
   "devDependencies": {
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "typescript": "^6.0.3"
   },
   "homepage": "https://github.com/receptron/mulmoclaude/tree/main/packages/client#readme",
