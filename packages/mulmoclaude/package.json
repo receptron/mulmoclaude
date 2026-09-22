@@ -38,7 +38,7 @@
     "@mulmoclaude/chart-plugin": "^4.0.1",
     "@mulmoclaude/collection-plugin": "^5.2.0",
     "@mulmoclaude/common": "^1.3.0",
-    "@mulmoclaude/core": "^5.4.0",
+    "@mulmoclaude/core": "^5.4.1",
     "@mulmoclaude/form-plugin": "^2.0.0",
     "@mulmoclaude/google-plugin": "^4.1.0",
     "@mulmoclaude/html-plugin": "^5.0.1",
