@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/core",
-  "version": "5.5.0",
+  "version": "5.5.1",
   "description": "Shared server-side core for MulmoClaude and MulmoTerminal \u2014 the always-shipped-together subsystems consolidated behind subpath exports so the two hosts can't drift. Server-only except the browser-safe ./artifacts, ./whisper/client, ./workspace-setup/slug, ./translation/client, ./remote-view, ./remote-host and ./plugin-vue entries. All host specifics are injected.",
   "repository": {
     "type": "git",
