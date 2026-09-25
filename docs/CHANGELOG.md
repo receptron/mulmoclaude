@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
-## [1.23.0] - 2026-09-25
+## [1.23.0] - 2026-09-26
 
 **Any file can be attached, an expired `claude` login now says how to fix it, errors survive a reload, and reconnecting no longer loses the selection or a card's time.**
 
