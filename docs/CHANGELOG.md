@@ -8,6 +8,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-09-25
+
+**Any file can be attached, an expired `claude` login now says how to fix it, errors survive a reload, and reconnecting no longer loses the selection or a card's time.**
+
+### Highlights
+
+#### Attach any file type (#3299, PR #3301)
+
+The chat input used to refuse anything outside images, PDF, Office documents and text — a Microsoft Project `.mpp` (#3297) showed "File type not supported" and could not even reach the workspace. Now any file attaches. Types whose content the model can read behave as before; any other type is stored under `data/attachments/` and handed to the agent by path, and its chip says the content can't be read. The stored name always ends in `.bin` (`<id>.mpp.bin`), so no workspace route that decides by extension — the HTML preview above all — ever treats an uploaded file as something its type never claimed. A stored attachment's type now comes from its saved extension only, never from a type the request declares.
+
+#### An expired `claude` login says what to do (#3284, PR #3286)
+
+When the spawned `claude` CLI cannot authenticate, the chat shows one error that ends with the fix — run `claude /login` in a terminal on this machine, then resend — instead of the CLI's text as an ordinary reply followed by a bare `claude exited with code 1`. The agent's own recovery notes (`@mulmoclaude/core@5.5.1`) gained the same section, including when a `CLAUDE_CODE_OAUTH_TOKEN` in the server's environment overrides a fresh login.
+
+#### Errors stay in the session history (#3288, #3291, PR #3289)
+
+A failed turn's `[Error] …` card is now saved with the session and comes back after a reload, identical to the live one. A failing text flush no longer swallows the error it was about to report.
+
+#### Reconnecting keeps the selection, the timestamps and the text still streaming (#3292, #3294, #3295, PRs #3293 / #3296)
+
+Catch-up after a reconnect adopts the server's transcript, and every parse gave text cards fresh ids — so the selected card was lost and every text card lost its time. Cards are now matched to the ones already on screen. Catch-up also adopts only a snapshot that is complete and current: not while a run is streaming (the server's copy does not have that text yet), and not if the transcript changed while it was being fetched.
+
+#### Image results are checked before they are drawn (#3287, PR #3290)
+
+`generateImage` and `editImages` now validate the image route's response before the view draws it, so a malformed reply shows a reason instead of an empty image.
+
 ### Fixed
 
 - **A form's `defaultValue` was never checked** (`@mulmoclaude/form-plugin@2.1.0`, #3298, refs #3287) — this plugin was copied from
