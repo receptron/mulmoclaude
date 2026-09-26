@@ -23,7 +23,7 @@
   "license": "MIT",
   "author": "Receptron Team",
   "dependencies": {
-    "@mulmobridge/protocol": "^1.0.1",
+    "@mulmobridge/protocol": "^1.1.0",
     "express": "^5.1.0",
     "socket.io": "^4.8.3"
   },

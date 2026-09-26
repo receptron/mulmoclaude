@@ -7,7 +7,7 @@
 // `createRelay(deps)` so the module has no direct imports from the
 // host.
 
-import { EVENT_TYPES } from "@mulmobridge/protocol";
+import { EVENT_TYPES, resolveReplyTimeoutMs } from "@mulmobridge/protocol";
 import type { ChatStateStore } from "./chat-state.js";
 import type { CommandHandler } from "./commands.js";
 import { createKeyedSerializer } from "./keyed-serializer.js";
@@ -45,10 +45,6 @@ export interface RelayDeps {
   defaultRoleId: string;
   logger: Logger;
 }
-
-// ── Constants ────────────────────────────────────────────────
-
-const REPLY_TIMEOUT_MS = 5 * 60 * 1000;
 
 // ── Factory ──────────────────────────────────────────────────
 
@@ -144,7 +140,8 @@ async function processRelayMessage(deps: RelayDeps, params: RelayParams): Promis
   }
 
   try {
-    const reply = await collectAgentReply(onSessionEvent, chatState.sessionId, params.onChunk);
+    const replyTimeoutMs = resolveBridgeReplyTimeout(bridgeOptions, logger, transportId);
+    const reply = await collectAgentReply(onSessionEvent, chatState.sessionId, replyTimeoutMs, params.onChunk);
     await store.setChatState(transportId, {
       ...chatState,
       updatedAt: new Date().toISOString(),
@@ -194,16 +191,24 @@ export function resolveDefaultRole(
   return resolved.id;
 }
 
+// The bridge client reads the same option for its ack timer, so a bad value
+// is warned about on both ends and both fall back to the same default.
+function resolveBridgeReplyTimeout(bridgeOptions: RelayParams["bridgeOptions"], logger: Logger, transportId: string): number {
+  const { replyTimeoutMs, warning } = resolveReplyTimeoutMs(bridgeOptions?.replyTimeoutMs);
+  if (warning) logger.warn("chat-service", "bridge reply timeout option ignored", { transportId, warning });
+  return replyTimeoutMs;
+}
+
 // Kept out of the factory closure so future packaging doesn't need
 // to re-capture anything; `onSessionEvent` arrives as a plain param.
-function collectAgentReply(onSessionEvent: OnSessionEventFn, chatSessionId: string, onChunk?: (text: string) => void): Promise<string> {
+function collectAgentReply(onSessionEvent: OnSessionEventFn, chatSessionId: string, replyTimeoutMs: number, onChunk?: (text: string) => void): Promise<string> {
   return new Promise((resolve) => {
     const textChunks: string[] = [];
 
     const timer = setTimeout(() => {
       unsubscribe();
       resolve(textChunks.join("") || "The request timed out before a reply was generated.");
-    }, REPLY_TIMEOUT_MS);
+    }, replyTimeoutMs);
 
     const unsubscribe = onSessionEvent(chatSessionId, (event) => {
       const type = event.type as string;

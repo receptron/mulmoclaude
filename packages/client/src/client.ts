@@ -14,14 +14,11 @@
 
 import { io, type Socket } from "socket.io-client";
 import { CHAT_SOCKET_EVENTS, CHAT_SOCKET_PATH, type Attachment, type BridgeOptions } from "@mulmobridge/protocol";
+import { resolveAckTimeoutMs } from "./ackTimeout.js";
 import { readBridgeToken, tokenFilePath } from "./token.js";
 import { readBridgeEnvOptions } from "./options.js";
 import { DEFAULT_API_URL, resolvePublishedApiUrl } from "./apiUrl.js";
 import { backoffMs, credentialsChanged, type Credentials } from "./supervisor.js";
-
-// 6 min > the server's REPLY_TIMEOUT_MS (5 min) so the server's
-// timeout surfaces as a reply, not a client-side cancellation.
-const REPLY_TIMEOUT_MS = 6 * 60 * 1000;
 
 export interface MessageAck {
   ok: boolean;
@@ -139,6 +136,7 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   // `opts.options === undefined` → scrape env automatically.
   // `opts.options === {}` → opt out of the scrape explicitly.
   const options = opts.options ?? readBridgeEnvOptions(opts.transportId, process.env);
+  const ackTimeoutMs = resolveAckTimeoutMs(options, console.error);
   const subscriptions = emptySubscriptions();
 
   const pending: Pending = new Set();
@@ -265,7 +263,7 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   }
 
   return {
-    send: (externalChatId, text, attachments) => sendMessage(live.socket, pending, externalChatId, text, attachments),
+    send: (externalChatId, text, attachments) => sendMessage({ socket: live.socket, pending, ackTimeoutMs }, externalChatId, text, attachments),
     onPush: (handler) => {
       subscriptions.push.push(handler);
       live.socket.on(CHAT_SOCKET_EVENTS.push, handler);
@@ -309,7 +307,14 @@ interface SupervisorState {
   closed: boolean;
 }
 
-function sendMessage(socket: Socket, pending: Pending, externalChatId: string, text: string, attachments?: Attachment[]): Promise<MessageAck> {
+interface SendChannel {
+  socket: Socket;
+  pending: Pending;
+  ackTimeoutMs: number;
+}
+
+function sendMessage(channel: SendChannel, externalChatId: string, text: string, attachments?: Attachment[]): Promise<MessageAck> {
+  const { socket, pending, ackTimeoutMs } = channel;
   const payload: Record<string, unknown> = { externalChatId, text };
   if (attachments && attachments.length > 0) payload.attachments = attachments;
   return new Promise((resolve) => {
@@ -317,7 +322,7 @@ function sendMessage(socket: Socket, pending: Pending, externalChatId: string, t
     // CANCELLABLE. socket.io arms its ack timer at emit time and keeps it armed
     // on a socket that is closed underneath it, so a send abandoned by a rebuild
     // left a six-minute timer behind per send — measured: the test process exited
-    // at 6:00.45, exactly REPLY_TIMEOUT_MS, long after every assertion had passed
+    // at 6:00.45, exactly the ack timeout, long after every assertion had passed
     // (Codex, #3078). `settle` clears it, so `abandon` clears it too.
     const state: { timer?: ReturnType<typeof setTimeout> } = {};
     const settle = (ack: MessageAck): void => {
@@ -325,7 +330,7 @@ function sendMessage(socket: Socket, pending: Pending, externalChatId: string, t
       clearTimeout(state.timer);
       resolve(ack);
     };
-    state.timer = setTimeout(() => settle({ ok: false, error: `timeout: no ack within ${REPLY_TIMEOUT_MS}ms` }), REPLY_TIMEOUT_MS);
+    state.timer = setTimeout(() => settle({ ok: false, error: `timeout: no ack within ${ackTimeoutMs}ms` }), ackTimeoutMs);
     pending.add(settle);
     socket.emit(CHAT_SOCKET_EVENTS.message, payload, (ack: MessageAck | undefined) => {
       settle(ack ?? { ok: false, error: "no ack from server" });
@@ -339,8 +344,8 @@ function sendMessage(socket: Socket, pending: Pending, externalChatId: string, t
  * socket.io settles an IN-FLIGHT ack immediately when its socket closes, but a
  * send issued while the socket was already disconnected is queued for a
  * reconnection that will never happen here — the socket is being replaced, not
- * reconnected — so its callback would sit for the full 6-minute ack timeout
- * (measured, Codex). The bridge's user would wait six minutes for a message the
+ * reconnected — so its callback would sit for the full ack timeout
+ * (measured, Codex). The bridge's user would wait that whole time for a message the
  * client already knows it cannot deliver.
  */
 function abandon(pending: Pending, reason: string): void {

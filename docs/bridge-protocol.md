@@ -216,7 +216,7 @@ the reply:
 
 ```ts
 socket
-  .timeout(6 * 60 * 1000) // > server's 5-minute reply timeout
+  .timeout(6 * 60 * 1000) // > the server's reply timeout (5 minutes by default)
   .emit(
     "message",
     { externalChatId: "terminal", text: "hello" },
@@ -258,10 +258,15 @@ type MessageAck =
   internal, `409` is turned into `ok: true` with a "please wait"
   reply).
 
-Timeout strategy: the server uses a 5-minute reply timeout. Use a
-client-side timeout slightly longer (6 minutes in `_lib/client.ts`)
-so the server's timeout wins and you get a textual reply rather
-than a client-side cancellation.
+Timeout strategy: the server stops waiting for the agent after the
+reply timeout — 5 minutes, or `options.replyTimeoutMs` from the
+handshake (a positive whole number of milliseconds; anything else
+falls back to 5 minutes). It then replies with whatever text has
+streamed so far; text produced after that is not delivered. Use a
+client-side timeout longer than the server's — `ackTimeoutMsFor()`
+in `@mulmobridge/protocol` adds one minute — so the server's
+timeout wins and you get a textual reply rather than a client-side
+cancellation. `@mulmobridge/client` does this for you.
 
 ### `push` — server → bridge (Phase B of #268)
 

@@ -67,6 +67,14 @@ describe("resolveRelayBridgeOptions — per-platform overrides", () => {
   });
 });
 
+describe("resolveRelayBridgeOptions — reply timeout", () => {
+  it("forwards RELAY_REPLY_TIMEOUT_MS, with the per-platform form winning", () => {
+    const fixture = env({ RELAY_REPLY_TIMEOUT_MS: "600000", RELAY_LINE_REPLY_TIMEOUT_MS: "1800000" });
+    assert.deepEqual(resolveRelayBridgeOptions("line", fixture), { replyTimeoutMs: "1800000" });
+    assert.deepEqual(resolveRelayBridgeOptions("teams", fixture), { replyTimeoutMs: "600000" });
+  });
+});
+
 describe("resolveRelayBridgeOptions — secret / unknown-key allowlist", () => {
   it("does NOT leak RELAY_TOKEN into bridgeOptions", () => {
     const fixture = env({ RELAY_TOKEN: "super-secret-bearer", RELAY_URL: "wss://example.com" });

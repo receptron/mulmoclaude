@@ -1,6 +1,6 @@
 {
   "name": "@mulmobridge/protocol",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Shared types and constants for the MulmoBridge protocol",
   "type": "module",
   "main": "./dist/index.js",
