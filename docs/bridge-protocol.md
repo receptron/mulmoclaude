@@ -224,13 +224,14 @@ Send a user turn. Use socket.io's built-in ack callback to await
 the reply:
 
 ```ts
-// Must be the value the SERVER uses: 5 minutes when your handshake sent no
-// `options.replyTimeoutMs`, otherwise that value. Changing it here alone only
-// moves your side. Wait longer than the server does.
-const replyTimeoutMs = 5 * 60 * 1000;
+import { ackTimeoutMsFor, resolveReplyTimeoutMs } from "@mulmobridge/protocol";
+
+// `handshakeOptions` is the `auth.options` you connected with. Resolving it
+// with the server's own function gives the limit the server will use.
+const { replyTimeoutMs } = resolveReplyTimeoutMs(handshakeOptions.replyTimeoutMs);
 
 socket
-  .timeout(replyTimeoutMs + 60 * 1000)
+  .timeout(ackTimeoutMsFor(replyTimeoutMs))
   .emit(
     "message",
     { externalChatId: "terminal", text: "hello" },
@@ -273,15 +274,13 @@ type MessageAck =
   reply).
 
 Timeout strategy: the server stops waiting for the agent after the
-reply timeout — 5 minutes, or `options.replyTimeoutMs` from the
-handshake (a positive whole number of milliseconds; anything else
-falls back to 5 minutes, and a value past Node's timer ceiling —
-`MAX_REPLY_TIMEOUT_MS`, about 24.8 days — is clamped to it). It then replies with whatever text has
-streamed so far; text produced after that is not delivered. Use a
-client-side timeout longer than the server's — `ackTimeoutMsFor()`
-in `@mulmobridge/protocol` adds one minute — so the server's
-timeout wins and you get a textual reply rather than a client-side
-cancellation. `@mulmobridge/client` does this for you.
+reply timeout, which is `resolveReplyTimeoutMs(options.replyTimeoutMs)`
+from `@mulmobridge/protocol` applied to the handshake options — 5
+minutes when none was sent. It then replies with whatever text has
+streamed so far; text produced after that is not delivered. Wait
+`ackTimeoutMsFor()` of that same resolved value on your side, so the
+server's timeout wins and you get a textual reply rather than a
+client-side cancellation. `@mulmobridge/client` does this for you.
 
 ### `push` — server → bridge (Phase B of #268)
 
