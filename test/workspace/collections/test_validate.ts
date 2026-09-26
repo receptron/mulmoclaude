@@ -183,6 +183,14 @@ describe("strict tier — typed checks reported by the scan, not enforced on wri
     assert.deepEqual(await scan(), []);
   });
 
+  it("accepts a bare date in a datetime field as an all-day value", async () => {
+    write("allday.json", JSON.stringify({ id: "allday", seen: "2026-09-28" }));
+    write("feb30dt.json", JSON.stringify({ id: "feb30dt", seen: "2026-02-30" })); // shape-valid, calendar-impossible
+    const byFile = Object.fromEntries((await scan()).map((i) => [i.file, i.problem]));
+    assert.equal(byFile["allday.json"], undefined);
+    assert.match(byFile["feb30dt.json"] ?? "", /'seen' = '2026-02-30' is not a YYYY-MM-DDTHH:MM datetime .*nor a YYYY-MM-DD all-day date/);
+  });
+
   it("tolerates numeric strings in number/money fields (renderers coerce them)", async () => {
     write("n.json", JSON.stringify({ id: "n", hours: "42", rate: "99.5" }));
     assert.deepEqual(await scan(), []);

@@ -188,7 +188,7 @@ skipped, never crashes the host):
 ### Field types
 
 `string` · `text` (multi-line) · `email` · `number` · `date` (`YYYY-MM-DD`) ·
-`datetime` (`YYYY-MM-DDTHH:MM`) · `boolean` · `markdown` · `money` · `enum` ·
+`datetime` (`YYYY-MM-DDTHH:MM`, or `YYYY-MM-DD` for all day) · `boolean` · `markdown` · `money` · `enum` ·
 `ref` · `embed` · `backlinks` · `rollup` · `table` · `derived` · `image` · `file` · `toggle` · `flag`
 
 Every field spec needs a `type` and a `label`. Extra keys by type:
@@ -206,6 +206,9 @@ Every field spec needs a `type` and a `label`. Extra keys by type:
   one `Z`-suffixed datetime that is legal is a shared app's server-stamped
   field — nine fractional digits, written by the SERVER, never by you. Anything
   else ending in `Z` (including `toISOString()`'s three digits) is linted.
+  A bare `YYYY-MM-DD` is also legal and means ALL DAY — the calendar shows it
+  without a clock and a Google Calendar push sends it as an all-day event;
+  `…T00:00` means a real midnight start.
   Use it (as `calendarField` / `calendarEndField`) when an event has a real
   start/end clock — the calendar's day view then draws each record as a
   proportional time block. For the common "date column + separate time column"
