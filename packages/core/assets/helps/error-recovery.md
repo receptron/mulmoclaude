@@ -1322,7 +1322,9 @@ first ten.
 The one that recurs is `datetime`. It stores a **local wall clock** —
 `YYYY-MM-DDTHH:MM`, seconds optional, **no `Z` and no offset** — because `08:00`
 in a schedule means eight in the morning wherever it is read, and that is what
-the calendar can place. So format the string, never convert it:
+the calendar can place. A bare `YYYY-MM-DD` is also valid and means ALL DAY —
+do not "fix" it to `…T00:00`, which is a real midnight start and is pushed to
+Google Calendar as one. So format the string, never convert it:
 
 ```js
 // WRONG — appends `Z` and shifts the hours by the generating machine's offset

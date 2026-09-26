@@ -194,7 +194,8 @@ skipped, never crashes the host):
 Every field spec needs a `type` and a `label`. Extra keys by type:
 
 - **`datetime`** — no extra keys. Stored as a `YYYY-MM-DDTHH:MM` string (seconds
-  optional) and edited with a native date+time picker. It is a **local wall
+  optional) and edited with a native date+time picker, or as a bare `YYYY-MM-DD`
+  for an all-day value (see below). It is a **local wall
   clock, not an instant**: no `Z`, no `+09:00` offset. `08:00` means eight in the
   morning wherever the records are read, which is what a schedule means and what
   the calendar can place. So a generated value must be FORMATTED, never
