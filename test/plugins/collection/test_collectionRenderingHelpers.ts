@@ -90,6 +90,12 @@ describe("inputTypeFor", () => {
     assert.equal(inputTypeFor("date", stamped), "date");
     assert.equal(inputTypeFor("string", stamped), "text");
   });
+  it("keeps a date picker for an all-day bare date in a datetime field", () => {
+    // `datetime-local` shows a bare date as blank, and saving then writes the blank back.
+    assert.equal(inputTypeFor("datetime", "2026-09-28"), "date");
+    assert.equal(inputTypeFor("datetime", "2026-02-30"), "datetime-local");
+    assert.equal(inputTypeFor("date", "2026-09-28"), "date");
+  });
   it("falls back to text for everything else", () => {
     assert.equal(inputTypeFor("markdown"), "text");
     assert.equal(inputTypeFor("ref"), "text");

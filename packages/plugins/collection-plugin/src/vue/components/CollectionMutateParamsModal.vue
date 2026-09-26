@@ -71,7 +71,7 @@
             v-else
             :id="`collections-mutate-${key}`"
             v-model="text[key]"
-            :type="inputTypeFor(spec.type)"
+            :type="inputTypeFor(spec.type, text[key])"
             :step="stepForFieldType(spec.type)"
             :required="spec.required"
             class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none font-medium text-slate-700 transition-all"

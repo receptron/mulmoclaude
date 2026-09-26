@@ -15,6 +15,7 @@
 //   false<true · ref → display label · derived → its display type.
 // markdown/table/image/file/embed get no sort button.
 
+import { parseIsoDate } from "./calendarGrid";
 import { fieldTextOrNull } from "./fieldText";
 import type { CollectionItem, CollectionFieldSpec, CollectionFieldType } from "./schema";
 
@@ -66,10 +67,18 @@ export function stringSortValue(raw: unknown): SortValue {
   return str.trim() === "" ? EMPTY : { empty: false, str };
 }
 
+/** A bare date at LOCAL midnight — the instant `Date.parse` gives `…T00:00`.
+ *  `Date.parse` alone reads a bare date as UTC, which would sort an all-day
+ *  `datetime` value after that morning's timed ones east of Greenwich. */
+function epochOf(text: string): number {
+  const ymd = parseIsoDate(text);
+  return ymd === null ? Date.parse(text) : new Date(ymd.year, ymd.month - 1, ymd.day).getTime();
+}
+
 export function dateSortValue(raw: unknown): SortValue {
   const text = fieldTextOrNull(raw);
   if (text === null || text === "") return EMPTY;
-  const epoch = Date.parse(text);
+  const epoch = epochOf(text);
   // Unparseable dates fall back to a lexical compare rather than vanishing.
   return Number.isNaN(epoch) ? stringSortValue(raw) : { empty: false, num: epoch };
 }

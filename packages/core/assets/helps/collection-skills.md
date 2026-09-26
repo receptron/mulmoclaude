@@ -188,13 +188,14 @@ skipped, never crashes the host):
 ### Field types
 
 `string` · `text` (multi-line) · `email` · `number` · `date` (`YYYY-MM-DD`) ·
-`datetime` (`YYYY-MM-DDTHH:MM`) · `boolean` · `markdown` · `money` · `enum` ·
+`datetime` (`YYYY-MM-DDTHH:MM`, or `YYYY-MM-DD` for all day) · `boolean` · `markdown` · `money` · `enum` ·
 `ref` · `embed` · `backlinks` · `rollup` · `table` · `derived` · `image` · `file` · `toggle` · `flag`
 
 Every field spec needs a `type` and a `label`. Extra keys by type:
 
 - **`datetime`** — no extra keys. Stored as a `YYYY-MM-DDTHH:MM` string (seconds
-  optional) and edited with a native date+time picker. It is a **local wall
+  optional) and edited with a native date+time picker, or as a bare `YYYY-MM-DD`
+  for an all-day value (see below). It is a **local wall
   clock, not an instant**: no `Z`, no `+09:00` offset. `08:00` means eight in the
   morning wherever the records are read, which is what a schedule means and what
   the calendar can place. So a generated value must be FORMATTED, never
@@ -206,6 +207,9 @@ Every field spec needs a `type` and a `label`. Extra keys by type:
   one `Z`-suffixed datetime that is legal is a shared app's server-stamped
   field — nine fractional digits, written by the SERVER, never by you. Anything
   else ending in `Z` (including `toISOString()`'s three digits) is linted.
+  A bare `YYYY-MM-DD` is also legal and means ALL DAY — the calendar shows it
+  without a clock and a Google Calendar push sends it as an all-day event;
+  `…T00:00` means a real midnight start.
   Use it (as `calendarField` / `calendarEndField`) when an event has a real
   start/end clock — the calendar's day view then draws each record as a
   proportional time block. For the common "date column + separate time column"
