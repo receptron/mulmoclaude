@@ -1,7 +1,7 @@
 {
   "name": "@mulmoclaude/collection-plugin",
   "version": "5.3.0",
-  "description": "Schema-driven Collections plugin (presentCollection) \u2014 the Vue surfaces (chat View/Preview, embeds, calendar, record modal, i18n) for MulmoClaude and MulmoTerminal. The isomorphic engine + node storage engine now live in @mulmoclaude/core/collection and @mulmoclaude/core/collection/server.",
+  "description": "Schema-driven Collections plugin (presentCollection) — the Vue surfaces (chat View/Preview, embeds, calendar, record modal, i18n) for MulmoClaude and MulmoTerminal. The isomorphic engine + node storage engine now live in @mulmoclaude/core/collection and @mulmoclaude/core/collection/server.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/receptron/mulmoclaude.git",
@@ -50,7 +50,7 @@
   "devDependencies": {
     "@mulmoclaude/core": "^5.5.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@vitejs/plugin-vue": "^6.0.9",
     "echarts": "^6.1.0",
     "gui-chat-protocol": "^2.0.0",
