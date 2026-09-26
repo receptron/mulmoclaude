@@ -215,8 +215,12 @@ Send a user turn. Use socket.io's built-in ack callback to await
 the reply:
 
 ```ts
+// The same value you sent as `options.replyTimeoutMs` in the handshake
+// (5 minutes when you sent none). Wait longer than the server does.
+const replyTimeoutMs = 5 * 60 * 1000;
+
 socket
-  .timeout(6 * 60 * 1000) // > the server's reply timeout (5 minutes by default)
+  .timeout(replyTimeoutMs + 60 * 1000)
   .emit(
     "message",
     { externalChatId: "terminal", text: "hello" },
