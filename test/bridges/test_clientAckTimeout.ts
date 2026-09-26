@@ -57,10 +57,12 @@ async function stopSilentServer(server: SilentServer): Promise<void> {
 
 async function connectedClient(url: string, options: BridgeOptions): Promise<BridgeClient> {
   const client = createBridgeClient({ transportId: "cli", apiUrl: url, options });
-  const deadline = Date.now() + CONNECT_TIMEOUT_MS;
-  while (!client.socket.connected) {
-    assert.ok(Date.now() < deadline, "the client never connected to the fake server");
-    await new Promise((resolve) => setTimeout(resolve, 20));
+  try {
+    await waitFor(() => client.socket.connected, "the client to connect to the fake server");
+  } catch (err) {
+    // A client left open keeps reconnecting and holds the test process alive.
+    client.close();
+    throw err;
   }
   return client;
 }
