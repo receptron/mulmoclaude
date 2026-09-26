@@ -2,9 +2,9 @@
 //
 // Two behaviours we care about:
 //  1. The paperclip button is present + wired to a hidden <input type="file">
-//     with the right `accept` filter derived from ACCEPTED_MIME_*.
-//  2. Dropping an unsupported file type surfaces a visible error banner,
-//     instead of the pre-PR silent-drop.
+//     with no `accept` filter, so any file can be picked.
+//  2. Dropping a file whose content we cannot read attaches it as a file
+//     only (the chip says so) instead of refusing it.
 //
 // The placeholder used to spell out "drop / paste / attach", but was
 // shortened to "Message Claude…" — discoverability now rides on the
@@ -28,22 +28,12 @@ test.describe("ChatInput attach discoverability", () => {
     expect(title && title.length > 0).toBeTruthy();
   });
 
-  test("hidden file input has an accept filter covering supported types", async ({ page }) => {
+  test("hidden file input has no accept filter, so any file can be picked", async ({ page }) => {
     const input = page.getByTestId("file-input");
     // Exists in DOM but hidden — Playwright's default `toBeVisible` would
     // fail, so assert presence via locator count + attribute reads.
     await expect(input).toHaveCount(1);
-    const accept = await input.getAttribute("accept");
-    expect(accept).toBeTruthy();
-    // Spot-check: the filter must cover images + PDFs + the
-    // Office-document trio + text/*. These are the core formats the
-    // server side converts today.
-    expect(accept).toContain("image/");
-    expect(accept).toContain("text/");
-    expect(accept).toContain("application/pdf");
-    expect(accept).toContain("wordprocessingml"); // DOCX
-    expect(accept).toContain("spreadsheetml"); // XLSX
-    expect(accept).toContain("presentationml"); // PPTX
+    expect(await input.getAttribute("accept")).toBeNull();
   });
 
   test("clicking the attach button opens the picker (fires a click on the hidden input)", async ({ page }) => {
@@ -54,25 +44,33 @@ test.describe("ChatInput attach discoverability", () => {
     expect(chooser).toBeTruthy();
   });
 
-  test("dropping an unsupported file type surfaces a visible error", async ({ page }) => {
+  test("dropping a file of an unreadable type attaches it as a file only", async ({ page }) => {
     const dropTarget = page.locator("[data-testid=user-input]").locator("..").locator("..");
-    // Synthesize a DragEvent with a DataTransfer carrying a single
-    // bogus `.zip` file — readAttachmentFile should now route it to
-    // the fileError banner instead of returning silently.
+    // `.mpp` arrives with an empty MIME type in the browser — the case
+    // that used to be refused outright.
     await dropTarget.evaluate((element) => {
       const transfer = new DataTransfer();
-      transfer.items.add(new File(["payload"], "thing.zip", { type: "application/zip" }));
+      transfer.items.add(new File(["payload"], "schedule.mpp", { type: "" }));
       element.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
     });
-    const banner = page.getByTestId("file-error");
-    await expect(banner).toBeVisible();
-    const text = (await banner.textContent())?.trim() ?? "";
-    expect(text.length).toBeGreaterThan(0);
+    await expect(page.getByTestId("chat-attachment-preview")).toHaveCount(1);
+    await expect(page.getByTestId("chat-attachment-file-only")).toBeVisible();
+    await expect(page.getByTestId("file-error")).toHaveCount(0);
+  });
+
+  test("a readable type carries no file-only note", async ({ page }) => {
+    const dropTarget = page.locator("[data-testid=user-input]").locator("..").locator("..");
+    await dropTarget.evaluate((element) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File(["a,b"], "data.csv", { type: "text/csv" }));
+      element.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    });
+    await expect(page.getByTestId("chat-attachment-preview")).toHaveCount(1);
+    await expect(page.getByTestId("chat-attachment-file-only")).toHaveCount(0);
   });
 
   test("dropping an oversized accepted file still shows the too-large error (regression)", async ({ page }) => {
-    // Pre-existing fileTooLarge branch — guard against the new
-    // unsupported-type branch accidentally swallowing it.
+    // The size cap still applies to every type, readable or not.
     const dropTarget = page.locator("[data-testid=user-input]").locator("..").locator("..");
     await dropTarget.evaluate((element) => {
       const bigPayload = new Uint8Array(31 * 1024 * 1024); // 31 MB — over the 30 MB cap
@@ -221,15 +219,15 @@ test.describe("ChatInput drop-target affordance (#1289 Step 1 + Step 2)", () => 
     });
     await expect(overlay).toBeVisible();
 
-    // Dropping an unsupported type at the panel level surfaces the
-    // SAME error banner the textarea-drop path surfaces — verifies
-    // App.vue actually routes the dropped file into ChatInput.readFile.
+    // Dropping at the panel level attaches the SAME way the textarea-drop
+    // path does — verifies App.vue actually routes the dropped file into
+    // ChatInput.
     await panel.evaluate((element) => {
       const transfer = new DataTransfer();
       transfer.items.add(new File(["payload"], "thing.zip", { type: "application/zip" }));
       element.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
     });
     await expect(overlay).toHaveCount(0);
-    await expect(page.getByTestId("file-error")).toBeVisible();
+    await expect(page.getByTestId("chat-attachment-file-only")).toBeVisible();
   });
 });

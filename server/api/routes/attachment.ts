@@ -42,7 +42,8 @@ export function setImageJpegConverterForTests(converter: ConvertToJpeg): Convert
 interface UploadAttachmentBody {
   /** `data:<mime>;base64,...` from FileReader.readAsDataURL. */
   dataUrl: string;
-  /** Original filename (optional — used only for log preview). */
+  /** Original filename (optional). Logged, and its extension is kept
+   *  when the MIME type is unknown. */
   filename?: string;
 }
 
@@ -134,7 +135,7 @@ async function handleUploadAttachment(req: Request<object, unknown, UploadAttach
     bytes: Math.floor((parsed.base64.length * 3) / 4),
   });
   try {
-    const original = await saveAttachment(parsed.base64, parsed.mimeType);
+    const original = await saveAttachment(parsed.base64, parsed.mimeType, filename);
     if (parsed.mimeType === PPTX_MIME) {
       await respondWithPptxCompanion(res, original, parsed.base64);
       return;

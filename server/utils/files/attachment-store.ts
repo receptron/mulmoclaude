@@ -10,7 +10,7 @@
 //   data/attachments/YYYY/MM/<id>.<ext>            (original, always)
 //   data/attachments/YYYY/MM/<id>.pdf              (companion, PPTX only — same <id>)
 
-import { readFile } from "fs/promises";
+import { readFile, stat } from "fs/promises";
 import path from "path";
 import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { shortId } from "../id.js";
@@ -18,92 +18,9 @@ import { writeFileAtomic } from "./atomic.js";
 import { yearMonthUtc } from "@mulmoclaude/core/artifacts";
 import { makePathValidator } from "./path-validator.js";
 import { makeStoreResolvers } from "./store-resolvers.js";
+import { storedExtensionFor } from "./attachment-mime.js";
 
 const resolvers = makeStoreResolvers(() => WORKSPACE_PATHS.attachments, WORKSPACE_DIRS.attachments);
-
-// MIME ↔ extension mapping. Kept narrow on purpose — anything not
-// in this table falls back to `.bin` so we don't have to guess.
-// `inferMimeFromExtension()` is the inverse, used when reading a
-// stored file back to build a Claude content block.
-const MIME_EXT: Readonly<Record<string, string>> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/jpg": ".jpg",
-  "image/webp": ".webp",
-  "image/gif": ".gif",
-  "image/svg+xml": ".svg",
-  // HEIC / HEIF — iOS default capture format. Without these
-  // entries, an iPhone upload was getting saved as `<id>.bin` and
-  // looked broken in the Files panel even though the bytes were
-  // intact (#1222 PR-A follow-up). The EXIF reader treats both
-  // MIMEs as supported, so the upload pipeline must too.
-  "image/heic": ".heic",
-  "image/heif": ".heif",
-  // TIFF — exifr can read it, and the photo plugin enumerates it
-  // as a supported source format. Same rationale as HEIC.
-  "image/tiff": ".tif",
-  // BMP + AVIF — routed through upload-time JPEG conversion for
-  // Claude's Messages API (see image-jpeg-convert.ts). Without these
-  // MIME_EXT entries the original would land as `<id>.bin`, breaking
-  // the `originalPath` fidelity the route response promises.
-  "image/bmp": ".bmp",
-  "image/avif": ".avif",
-  "application/pdf": ".pdf",
-  "application/json": ".json",
-  "application/xml": ".xml",
-  "application/x-yaml": ".yaml",
-  "application/toml": ".toml",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
-  "text/plain": ".txt",
-  "text/csv": ".csv",
-  "text/html": ".html",
-  "text/markdown": ".md",
-  "text/xml": ".xml",
-  "text/yaml": ".yaml",
-  "text/x-yaml": ".yaml",
-};
-
-// Inverse of MIME_EXT — enough to round-trip everything we save.
-// Not a complete extension → MIME table; only entries we produce
-// when storing files (so reading back is unambiguous).
-const EXT_MIME: Readonly<Record<string, string>> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".heic": "image/heic",
-  ".heif": "image/heif",
-  ".tif": "image/tiff",
-  ".tiff": "image/tiff",
-  ".bmp": "image/bmp",
-  ".avif": "image/avif",
-  ".pdf": "application/pdf",
-  ".json": "application/json",
-  ".xml": "application/xml",
-  ".yaml": "application/x-yaml",
-  ".yml": "application/x-yaml",
-  ".toml": "application/toml",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  ".txt": "text/plain",
-  ".csv": "text/csv",
-  ".html": "text/html",
-  ".md": "text/markdown",
-};
-
-export function extensionForMime(mimeType: string): string {
-  return MIME_EXT[mimeType] ?? ".bin";
-}
-
-export function inferMimeFromExtension(filename: string): string | undefined {
-  const ext = path.extname(filename).toLowerCase();
-  return EXT_MIME[ext];
-}
 
 export interface SavedAttachment {
   /** Workspace-relative path of the file written to disk. */
@@ -150,9 +67,9 @@ async function runSaveAttachmentHooks(absPath: string, relativePath: string, mim
 /** Save a single attachment under data/attachments/YYYY/MM/. The
  *  caller picks the ID; companions (e.g. PPTX → PDF) reuse it via
  *  `saveCompanion()` so they share the same numeric prefix. */
-export async function saveAttachment(base64Data: string, mimeType: string): Promise<SavedAttachment> {
+export async function saveAttachment(base64Data: string, mimeType: string, originalFilename?: string): Promise<SavedAttachment> {
   const partition = yearMonthUtc();
-  const ext = extensionForMime(mimeType);
+  const ext = storedExtensionFor(mimeType, originalFilename);
   const filename = `${shortId()}${ext}`;
   const absPath = path.join(WORKSPACE_PATHS.attachments, partition, filename);
   await writeFileAtomic(absPath, Buffer.from(base64Data, "base64"));
@@ -189,6 +106,16 @@ export async function loadAttachmentBase64(relativePath: string): Promise<string
 export async function loadAttachmentBytes(relativePath: string): Promise<Buffer> {
   const absPath = await resolvers.forRead(relativePath);
   return readFile(absPath);
+}
+
+/** True when `relativePath` names a regular file inside the attachment store. */
+export async function attachmentExists(relativePath: string): Promise<boolean> {
+  try {
+    const absPath = await resolvers.forRead(relativePath);
+    return (await stat(absPath)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 export const isAttachmentPath = makePathValidator({ prefix: WORKSPACE_DIRS.attachments });

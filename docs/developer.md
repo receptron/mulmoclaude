@@ -573,10 +573,13 @@ Users can paste or drop files into the chat input. The server converts non-nativ
 | DOCX                                                 | mammoth → plain text | `type: "text"`     | `mammoth` (npm) | All                              |
 | XLSX                                                 | xlsx → CSV per sheet | `type: "text"`     | `xlsx` (npm)    | All                              |
 | PPTX                                                 | libreoffice → PDF    | `type: "document"` | LibreOffice     | Docker sandbox or native install |
+| anything else                                        | none — file only     | none               | —               | All                              |
+
+**File-only attachments**: a type not in the table is still accepted. It is stored under `data/attachments/` as `<id>.<original ext>.bin` (`storedExtensionFor` in `server/utils/files/attachment-mime.ts` — always ending in `.bin`, so no extension-dispatching route treats it as HTML etc.) and announced to the agent by its `[Attached file: …]` marker, with no content block. The chat-input chip says the content can't be read.
 
 **PPTX conversion path**: the server process runs on the host (macOS/Linux), but LibreOffice lives inside the Docker sandbox image. `convertPptxToPdf()` in `server/agent/attachmentConverter.ts` tries native `libreoffice` first; if not found, falls back to `docker run --rm -v tmpdir:/data mulmoclaude-sandbox libreoffice --headless --convert-to pdf`. Without either, the user sees a text hint suggesting PDF or image export.
 
-**Adding a new type**: add MIME handling in `server/agent/attachmentConverter.ts` (conversion logic), update `isConvertibleMime()` + `CONVERTIBLE_MIME_TYPES`, and add the MIME to `ACCEPTED_MIME_EXACT` in `src/App.vue`.
+**Adding a new type**: add its handling in `server/agent/attachmentConverter.ts` (`convertAttachment`, or `TEXT_MIME_TYPES` for text), add the MIME ↔ extension pair to both tables in `server/utils/files/attachment-mime.ts` (otherwise it is stored as `.bin` and stays file-only), and add the MIME to `READABLE_MIMES` in `src/utils/attachment/readableTypes.ts` — `test_readableTypes.ts` fails until the two sets match.
 
 ---
 

@@ -137,11 +137,11 @@
         </div>
       </div>
 
-      <!-- Hidden file input driven by the attach button. The `accept`
-           filter matches ACCEPTED_MIME_PREFIXES/_EXACT below; the change
-           handler routes through the same readAttachmentFile() used by
+      <!-- Hidden file input driven by the attach button. No `accept`
+           filter: a type we cannot read still attaches as a file. The
+           change handler routes through the same processFiles() used by
            drop + paste, so all three paths behave identically. -->
-      <input ref="fileInput" type="file" multiple class="hidden" :accept="fileInputAccept" data-testid="file-input" @change="onFilePicked" />
+      <input ref="fileInput" type="file" multiple class="hidden" data-testid="file-input" @change="onFilePicked" />
     </div>
   </div>
 </template>
@@ -288,31 +288,7 @@ const suggestionsBtnRef = ref<HTMLButtonElement | null>(null);
 const MAX_ATTACH_BYTES = 30 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
 
-const ACCEPTED_MIME_PREFIXES = ["image/", "text/"];
-const ACCEPTED_MIME_EXACT = new Set([
-  "application/pdf",
-  "application/json",
-  "application/xml",
-  "application/x-yaml",
-  "application/toml",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-]);
-
-// `accept` attribute for the hidden <input type="file"> that the
-// paperclip button drives. Prefixes like `image/*` and `text/*` are
-// expanded by the browser's native file picker; exact MIME entries
-// are passed through. Drop + paste still accept the same set via the
-// isAcceptedType() check below, so all three entry points stay in sync.
-const fileInputAccept = [...ACCEPTED_MIME_PREFIXES.map((prefix) => `${prefix}*`), ...ACCEPTED_MIME_EXACT].join(",");
-
-function isAcceptedType(mime: string): boolean {
-  return ACCEPTED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) || ACCEPTED_MIME_EXACT.has(mime);
-}
-
 function validateFile(file: File): string | null {
-  if (!isAcceptedType(file.type)) return t("chatInput.unsupportedFileType");
   if (file.size > MAX_ATTACH_BYTES) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(1);
     return t("chatInput.fileTooLarge", { sizeMB });
@@ -387,7 +363,7 @@ async function processFiles(files: File[]): Promise<void> {
     const valid = results.filter((result): result is PastedFile => result !== null);
     if (valid.length > 0) emitClampedFiles(valid);
   } catch {
-    fileError.value = t("chatInput.unsupportedFileType");
+    fileError.value = t("chatInput.readFileFailed");
   }
 
   await nextTick();
@@ -407,7 +383,7 @@ function onPasteFile(event: ClipboardEvent): void {
   if (!items) return;
   const files: File[] = [];
   for (const item of items) {
-    if (isAcceptedType(item.type)) {
+    if (item.kind === "file") {
       const file = item.getAsFile();
       if (file) files.push(file);
     }

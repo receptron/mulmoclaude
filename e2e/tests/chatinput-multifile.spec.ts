@@ -7,7 +7,7 @@
 //   1. Happy path across ALL three entry points — picker, paste, drop —
 //      each attaching several supported files → a chip per file.
 //   2. 10-file cap — 11 files → tooManyFiles error, capped at 10 chips.
-//   3. Failure recovery — a later drop containing an invalid file is
+//   3. Failure recovery — a later drop containing an oversized file is
 //      rejected WITHOUT wiping the already-attached chips (snapshot kept).
 //   4. Race — two back-to-back drops both land (the fileQueue serialisation
 //      in ChatInput keeps the second from clobbering the first).
@@ -19,9 +19,13 @@ interface FileSpec {
   name: string;
   type: string;
   content: string;
+  /** Build a zero-filled body of this size in the page instead of `content`. */
+  sizeBytes?: number;
 }
 
 const chips = (page: Page) => page.getByTestId("chat-attachment-preview");
+
+const OVER_CAP_BYTES = 31 * 1024 * 1024;
 
 // The drop target is the wrapper two levels up from the textarea — the same
 // anchor the sibling chatinput-attach spec drops onto. Kept in one helper so
@@ -30,7 +34,7 @@ async function dropFiles(page: Page, files: FileSpec[]): Promise<void> {
   const dropTarget = page.locator("[data-testid=user-input]").locator("..").locator("..");
   await dropTarget.evaluate((element, specs) => {
     const transfer = new DataTransfer();
-    for (const spec of specs) transfer.items.add(new File([spec.content], spec.name, { type: spec.type }));
+    for (const spec of specs) transfer.items.add(new File([spec.sizeBytes ? new Uint8Array(spec.sizeBytes) : spec.content], spec.name, { type: spec.type }));
     element.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
   }, files);
 }
@@ -103,9 +107,9 @@ test.describe("ChatInput multi-file attachment (#1666)", () => {
     ]);
     await expect(chips(page)).toHaveCount(2);
 
-    // A later drop carrying an unsupported file: the batch is rejected and the
+    // A later drop carrying an oversized file: the batch is rejected and the
     // error surfaces, but the first two chips must remain (snapshot intact).
-    await dropFiles(page, [{ name: "bad.zip", type: "application/zip", content: "z" }]);
+    await dropFiles(page, [{ name: "huge.pdf", type: "application/pdf", content: "", sizeBytes: OVER_CAP_BYTES }]);
     await expect(page.getByTestId("file-error")).toBeVisible();
     await expect(chips(page)).toHaveCount(2);
   });

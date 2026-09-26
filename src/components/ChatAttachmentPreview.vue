@@ -3,7 +3,10 @@
     <img v-if="imageSrc" :src="imageSrc" alt="Attached image" class="max-h-20 max-w-40 object-contain" />
     <div v-else class="flex items-center gap-1.5 text-xs text-gray-700">
       <span class="material-icons text-base" :class="iconColor">{{ icon }}</span>
-      <span class="max-w-40 truncate">{{ filename || t("chatInput.attachmentFallbackName") }}</span>
+      <div class="flex flex-col">
+        <span class="max-w-40 truncate">{{ filename || t("chatInput.attachmentFallbackName") }}</span>
+        <span v-if="!readable" class="text-[10px] text-amber-700" data-testid="chat-attachment-file-only">{{ t("chatInput.fileOnlyAttachment") }}</span>
+      </div>
     </div>
     <button
       data-testid="chat-attachment-remove"
@@ -20,6 +23,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { isReadableAttachmentType } from "../utils/attachment/readableTypes";
 
 const { t } = useI18n();
 
@@ -54,6 +58,8 @@ const imageSrc = computed(() => {
   if (BROWSER_RENDERABLE_IMAGE_MIMES.has(props.mime)) return props.dataUrl;
   return "";
 });
+
+const readable = computed(() => isReadableAttachmentType(props.mime));
 
 const icon = computed(() => {
   if (props.mime === "application/pdf") return "picture_as_pdf";

@@ -3,7 +3,8 @@ import { generateGeminiImageContent, generateGeminiImageFromPrompt } from "../..
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, serverError } from "../../utils/httpError.js";
 import { saveImage, overwriteImage, loadImageBase64, stripDataUri, isImagePath } from "../../utils/files/image-store.js";
-import { isAttachmentPath, loadAttachmentBase64, inferMimeFromExtension } from "../../utils/files/attachment-store.js";
+import { isAttachmentPath, loadAttachmentBase64 } from "../../utils/files/attachment-store.js";
+import { inferMimeFromExtension } from "../../utils/files/attachment-mime.js";
 import { promptMeta } from "../../utils/promptMeta.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { log } from "../../system/logger/index.js";
