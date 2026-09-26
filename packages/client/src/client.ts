@@ -135,7 +135,9 @@ export function createBridgeClient(opts: BridgeClientOptions): BridgeClient {
   const token = requireBearerToken();
   // `opts.options === undefined` → scrape env automatically.
   // `opts.options === {}` → opt out of the scrape explicitly.
-  const options = opts.options ?? readBridgeEnvOptions(opts.transportId, process.env);
+  // A copy: every reconnect re-sends it, and the ack limit below is fixed from it
+  // once, so a caller mutating their object later must not move one without the other.
+  const options: BridgeOptions = { ...(opts.options ?? readBridgeEnvOptions(opts.transportId, process.env)) };
   const ackTimeoutMs = resolveAckTimeoutMs(options, console.error);
   const subscriptions = emptySubscriptions();
 
