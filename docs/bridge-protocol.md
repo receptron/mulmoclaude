@@ -188,6 +188,15 @@ const socket = io(resolveApiUrl(), {
   var. Required when the server is configured with auth (the
   default).
 
+### Optional fields
+
+- `options: Record<string, string | number | boolean>` — a flat bag
+  the server keeps for every message on this socket. The key it acts
+  on itself is `replyTimeoutMs` (see *Timeout strategy* under
+  `message`); the rest is forwarded to the host app (e.g.
+  `defaultRole`). `@mulmobridge/client` fills it from the
+  `BRIDGE_*` / `<TRANSPORT>_BRIDGE_*` env vars.
+
 ### Rejection cases
 
 The server emits `connect_error` with one of these messages. A
@@ -215,8 +224,9 @@ Send a user turn. Use socket.io's built-in ack callback to await
 the reply:
 
 ```ts
-// The same value you sent as `options.replyTimeoutMs` in the handshake
-// (5 minutes when you sent none). Wait longer than the server does.
+// Must be the value the SERVER uses: 5 minutes when your handshake sent no
+// `options.replyTimeoutMs`, otherwise that value. Changing it here alone only
+// moves your side. Wait longer than the server does.
 const replyTimeoutMs = 5 * 60 * 1000;
 
 socket
@@ -265,7 +275,8 @@ type MessageAck =
 Timeout strategy: the server stops waiting for the agent after the
 reply timeout — 5 minutes, or `options.replyTimeoutMs` from the
 handshake (a positive whole number of milliseconds; anything else
-falls back to 5 minutes). It then replies with whatever text has
+falls back to 5 minutes, and a value past Node's timer ceiling —
+`MAX_REPLY_TIMEOUT_MS`, about 24.8 days — is clamped to it). It then replies with whatever text has
 streamed so far; text produced after that is not delivered. Use a
 client-side timeout longer than the server's — `ackTimeoutMsFor()`
 in `@mulmobridge/protocol` adds one minute — so the server's
