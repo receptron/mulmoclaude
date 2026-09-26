@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/collection-plugin",
-  "version": "5.3.0",
+  "version": "5.4.0",
   "description": "Schema-driven Collections plugin (presentCollection) — the Vue surfaces (chat View/Preview, embeds, calendar, record modal, i18n) for MulmoClaude and MulmoTerminal. The isomorphic engine + node storage engine now live in @mulmoclaude/core/collection and @mulmoclaude/core/collection/server.",
   "repository": {
     "type": "git",
