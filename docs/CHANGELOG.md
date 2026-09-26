@@ -8,15 +8,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
-### Added
+## [1.24.0] - 2026-09-26
 
-- **A `datetime` field accepts a bare date as an all-day value** (`@mulmoclaude/core@5.6.0`, #3304, PR #3308) — in a collection
-  that mixes timed and all-day Google Calendar events on `datetime` columns, a record created locally can now be all-day:
-  write `start: "2026-09-28"`, `end: "2026-09-29"`. The strict lint no longer flags it, the list sort places it at local
-  midnight (it used to sort at 09:00 in UTC+9), and the push sends it as Google's `start.date`. `…T00:00` still means a real
-  midnight start. The agent's collection guidance and recovery notes say the same. The record form edits such a value with a
-  date picker instead of a blank date+time one — at the top level, inside a table row, and in an action's parameter form
-  (`@mulmoclaude/collection-plugin@5.4.0`).
+**A `datetime` field can hold an all-day date, so a calendar that mixes timed and all-day events can create both from a collection.**
+
+### Highlights
+
+#### All-day values in a `datetime` field (#3304, PR #3308)
+
+A collection that mirrors a Google calendar with `start` / `end` on `datetime` columns could not create an all-day event
+from a record: `…T00:00` is pushed as a real midnight appointment, and a bare date was reported as a data problem. A
+bare date (`start: "2026-09-28"`, `end: "2026-09-29"`) is now a valid `datetime` value meaning **all day**. The push sends
+it as Google's all-day `start.date` / `end.date`. The record form edits it with a date picker instead of a blank date+time
+field, at the top level, inside a table row and in an action's parameter form. The list sort places it at local midnight
+(it used to land at 09:00 in UTC+9). The agent's collection guidance says the same and tells it not to rewrite a bare date
+to `…T00:00`. Events pulled from Google are still stored as `…T00:00`, and keep their all-day kind as before.
 
 Ships `@mulmoclaude/accounting-plugin@4.0.1`, `@mulmoclaude/chart-plugin@4.0.1`, `@mulmoclaude/collection-plugin@5.4.0`, `@mulmoclaude/common@1.3.0`, `@mulmoclaude/core@5.6.0`, `@mulmoclaude/form-plugin@2.1.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.0.1`, `@mulmoclaude/markdown-plugin@5.1.0`, `@mulmoclaude/markdown-utils@3.0.1`, `@mulmoclaude/mulmoscript-plugin@5.0.1`, `@mulmoclaude/shapescript-plugin@7.1.0`, `@mulmoclaude/spotify-plugin@2.0.2`, `@mulmoclaude/x-plugin@1.0.4`.
 
