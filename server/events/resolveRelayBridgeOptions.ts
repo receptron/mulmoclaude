@@ -47,7 +47,7 @@ const BLANKET_PREFIX = "RELAY_";
 // Closed set of bridge-option keys the relay path may forward.
 // Stored in lowerCamel form (the bag's wire shape). Adding a new
 // recognized option means appending one entry here.
-const RECOGNISED_KEYS: ReadonlySet<string> = new Set(["defaultRole"]);
+const RECOGNISED_KEYS: ReadonlySet<string> = new Set(["defaultRole", "replyTimeoutMs"]);
 
 // Build the per-platform prefix for a given platform name. Same
 // normalisation as bridges' `<TRANSPORT>_BRIDGE_` — uppercase plus

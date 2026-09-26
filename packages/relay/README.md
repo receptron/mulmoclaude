@@ -156,7 +156,9 @@ The MulmoClaude server can pin a different default role per relay platform. Set 
 
 Per-platform overrides win over the blanket form on conflict. A new chat session opened via a relay-forwarded message starts in the resolved role; existing sessions keep whatever role they were created with. See [#739](https://github.com/receptron/mulmoclaude/issues/739) for the design and `server/events/resolveRelayBridgeOptions.ts` for the implementation.
 
-For symmetry: native bridge processes (e.g. `yarn slack`) use `<TRANSPORT>_BRIDGE_DEFAULT_ROLE` instead — that scrape lives in `@mulmobridge/client`. The two schemes are intentionally parallel; pick the one matching your deployment topology.
+The reply timeout — how long the host waits for the agent before replying with whatever text has streamed so far (default 5 minutes) — resolves the same way: `RELAY_REPLY_TIMEOUT_MS` for every platform, `RELAY_<PLATFORM>_REPLY_TIMEOUT_MS` for one, in milliseconds.
+
+For symmetry: native bridge processes (e.g. `yarn slack`) use `<TRANSPORT>_BRIDGE_DEFAULT_ROLE` / `<TRANSPORT>_BRIDGE_REPLY_TIMEOUT_MS` instead — that scrape lives in `@mulmobridge/client`. The two schemes are intentionally parallel; pick the one matching your deployment topology.
 
 ## Security
 

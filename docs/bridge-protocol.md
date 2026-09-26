@@ -167,11 +167,15 @@ import { io } from "socket.io-client";
 import { resolveApiUrl } from "@mulmobridge/client"; // or resolve it yourself —
                                                     // see "Minimal TypeScript bridge"
 
+// Optional — see "Optional fields". Omit it (or send `{}`) for the defaults.
+const handshakeOptions: { replyTimeoutMs?: string } = { replyTimeoutMs: "1800000" };
+
 const socket = io(resolveApiUrl(), {
   path: "/ws/chat",
   auth: {
     transportId: "cli",     // required — identifies your bridge
     token: "<bearer token>", // required when the server has auth on
+    options: handshakeOptions,
   },
   transports: ["websocket"],
 });
@@ -187,6 +191,16 @@ const socket = io(resolveApiUrl(), {
 - `token: string` — the bearer token from the workspace file / env
   var. Required when the server is configured with auth (the
   default).
+
+### Optional fields
+
+- `options: Record<string, string | number | boolean>` — a flat bag
+  the server keeps for every message on this socket, and forwards
+  whole to the host app. The chat-service itself reads two keys:
+  `replyTimeoutMs` (see *Timeout strategy* under `message`) and
+  `defaultRole`, the role a chat starts in — used only when the chat
+  has no state yet. `@mulmobridge/client` fills the bag from the
+  `BRIDGE_*` / `<TRANSPORT>_BRIDGE_*` env vars.
 
 ### Rejection cases
 
@@ -215,8 +229,14 @@ Send a user turn. Use socket.io's built-in ack callback to await
 the reply:
 
 ```ts
+import { ackTimeoutMsFor, resolveReplyTimeoutMs } from "@mulmobridge/protocol";
+
+// `handshakeOptions` is the `auth.options` object from the Handshake example.
+// Resolving it with the server's own function gives the limit the server uses.
+const { replyTimeoutMs } = resolveReplyTimeoutMs(handshakeOptions.replyTimeoutMs);
+
 socket
-  .timeout(6 * 60 * 1000) // > server's 5-minute reply timeout
+  .timeout(ackTimeoutMsFor(replyTimeoutMs))
   .emit(
     "message",
     { externalChatId: "terminal", text: "hello" },
@@ -258,10 +278,14 @@ type MessageAck =
   internal, `409` is turned into `ok: true` with a "please wait"
   reply).
 
-Timeout strategy: the server uses a 5-minute reply timeout. Use a
-client-side timeout slightly longer (6 minutes in `_lib/client.ts`)
-so the server's timeout wins and you get a textual reply rather
-than a client-side cancellation.
+Timeout strategy: the server stops waiting for the agent after the
+reply timeout, which is `resolveReplyTimeoutMs(options.replyTimeoutMs)`
+from `@mulmobridge/protocol` applied to the handshake options — 5
+minutes when none was sent. It then replies with whatever text has
+streamed so far; text produced after that is not delivered. Wait
+`ackTimeoutMsFor()` of that same resolved value on your side, so the
+server's timeout wins and you get a textual reply rather than a
+client-side cancellation. `@mulmobridge/client` does this for you.
 
 ### `push` — server → bridge (Phase B of #268)
 
@@ -337,6 +361,8 @@ socket.on("push", (ev) => console.log(`[push] ${ev.chatId}: ${ev.message}`));
 
 // Send a turn
 await new Promise<void>((resolve) => {
+  // 6 min: this bridge sends no `auth.options`, so the server waits its 5-minute
+  // default. Send `replyTimeoutMs` and this must follow — see "Timeout strategy".
   socket.timeout(360_000).emit(
     "message",
     { externalChatId: "test", text: "Hello" },

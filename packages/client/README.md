@@ -108,6 +108,30 @@ One case is outside this: a server-initiated disconnect (`io server disconnect`)
 is the one reason socket.io does not retry, so no connection failure follows it.
 The chat-service never issues one, so there is nothing to recover from today.
 
+## How long `send()` waits
+
+The server gives the agent **5 minutes** per turn, then replies with whatever
+text has streamed so far — anything the agent produces after that is dropped.
+`send()` waits one minute longer than that, so the server's reply always wins
+over a client-side timeout.
+
+To give long turns more time, set the limit in milliseconds on the bridge:
+
+```bash
+BRIDGE_REPLY_TIMEOUT_MS=1800000          # every bridge: 30 minutes
+DISCORD_BRIDGE_REPLY_TIMEOUT_MS=1800000  # this bridge only (wins over the shared form)
+```
+
+It travels to the server in the handshake options, so the server and `send()`
+always use the same value — nothing to keep in step by hand. A value that is not
+a positive whole number is ignored with a warning (the default applies); one
+past Node's timer ceiling (about 24.8 days) is clamped with a warning.
+
+While a turn is running, the next message in the same chat waits for it, so a
+longer limit can also mean a longer wait for the message after it. Upgrade the
+bridge together with the server: an older client keeps its fixed 6-minute wait
+and gives up before a longer server limit ends.
+
 ## Ecosystem
 
 Part of the [`@mulmobridge/*`](https://www.npmjs.com/~mulmobridge) package family.
