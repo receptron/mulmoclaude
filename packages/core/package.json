@@ -1,7 +1,7 @@
 {
   "name": "@mulmoclaude/core",
   "version": "5.5.1",
-  "description": "Shared server-side core for MulmoClaude and MulmoTerminal \u2014 the always-shipped-together subsystems consolidated behind subpath exports so the two hosts can't drift. Server-only except the browser-safe ./artifacts, ./whisper/client, ./workspace-setup/slug, ./translation/client, ./remote-view, ./remote-host and ./plugin-vue entries. All host specifics are injected.",
+  "description": "Shared server-side core for MulmoClaude and MulmoTerminal — the always-shipped-together subsystems consolidated behind subpath exports so the two hosts can't drift. Server-only except the browser-safe ./artifacts, ./whisper/client, ./workspace-setup/slug, ./translation/client, ./remote-view, ./remote-host and ./plugin-vue entries. All host specifics are injected.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/receptron/mulmoclaude.git",
@@ -254,7 +254,7 @@
   },
   "devDependencies": {
     "@receptron/task-scheduler": "^1.0.3",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "gui-chat-protocol": "^2.0.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
