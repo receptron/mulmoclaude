@@ -195,10 +195,11 @@ const socket = io(resolveApiUrl(), {
 ### Optional fields
 
 - `options: Record<string, string | number | boolean>` — a flat bag
-  the server keeps for every message on this socket. The key it acts
-  on itself is `replyTimeoutMs` (see *Timeout strategy* under
-  `message`); the rest is forwarded to the host app (e.g.
-  `defaultRole`). `@mulmobridge/client` fills it from the
+  the server keeps for every message on this socket, and forwards
+  whole to the host app. The chat-service itself reads two keys:
+  `replyTimeoutMs` (see *Timeout strategy* under `message`) and
+  `defaultRole`, the role a chat starts in — used only when the chat
+  has no state yet. `@mulmobridge/client` fills the bag from the
   `BRIDGE_*` / `<TRANSPORT>_BRIDGE_*` env vars.
 
 ### Rejection cases
