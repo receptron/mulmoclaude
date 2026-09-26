@@ -226,9 +226,11 @@ the reply:
 ```ts
 import { ackTimeoutMsFor, resolveReplyTimeoutMs } from "@mulmobridge/protocol";
 
-// `handshakeOptions` is the `auth.options` you connected with, if any. Resolving
-// it with the server's own function gives the limit the server will use.
-const { replyTimeoutMs } = resolveReplyTimeoutMs(handshakeOptions?.replyTimeoutMs);
+// The object you pass as `auth.options` when connecting (see Handshake); use
+// `{}` if you send none. Resolving it with the server's own function gives the
+// limit the server will use.
+const handshakeOptions: { replyTimeoutMs?: string } = { replyTimeoutMs: "1800000" };
+const { replyTimeoutMs } = resolveReplyTimeoutMs(handshakeOptions.replyTimeoutMs);
 
 socket
   .timeout(ackTimeoutMsFor(replyTimeoutMs))
