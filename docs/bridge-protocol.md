@@ -167,11 +167,15 @@ import { io } from "socket.io-client";
 import { resolveApiUrl } from "@mulmobridge/client"; // or resolve it yourself —
                                                     // see "Minimal TypeScript bridge"
 
+// Optional — see "Optional fields". Omit it (or send `{}`) for the defaults.
+const handshakeOptions: { replyTimeoutMs?: string } = { replyTimeoutMs: "1800000" };
+
 const socket = io(resolveApiUrl(), {
   path: "/ws/chat",
   auth: {
     transportId: "cli",     // required — identifies your bridge
     token: "<bearer token>", // required when the server has auth on
+    options: handshakeOptions,
   },
   transports: ["websocket"],
 });
@@ -226,10 +230,8 @@ the reply:
 ```ts
 import { ackTimeoutMsFor, resolveReplyTimeoutMs } from "@mulmobridge/protocol";
 
-// The object you pass as `auth.options` when connecting (see Handshake); use
-// `{}` if you send none. Resolving it with the server's own function gives the
-// limit the server will use.
-const handshakeOptions: { replyTimeoutMs?: string } = { replyTimeoutMs: "1800000" };
+// `handshakeOptions` is the `auth.options` object from the Handshake example.
+// Resolving it with the server's own function gives the limit the server uses.
 const { replyTimeoutMs } = resolveReplyTimeoutMs(handshakeOptions.replyTimeoutMs);
 
 socket
