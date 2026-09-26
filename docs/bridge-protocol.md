@@ -226,9 +226,9 @@ the reply:
 ```ts
 import { ackTimeoutMsFor, resolveReplyTimeoutMs } from "@mulmobridge/protocol";
 
-// `handshakeOptions` is the `auth.options` you connected with. Resolving it
-// with the server's own function gives the limit the server will use.
-const { replyTimeoutMs } = resolveReplyTimeoutMs(handshakeOptions.replyTimeoutMs);
+// `handshakeOptions` is the `auth.options` you connected with, if any. Resolving
+// it with the server's own function gives the limit the server will use.
+const { replyTimeoutMs } = resolveReplyTimeoutMs(handshakeOptions?.replyTimeoutMs);
 
 socket
   .timeout(ackTimeoutMsFor(replyTimeoutMs))
@@ -356,6 +356,8 @@ socket.on("push", (ev) => console.log(`[push] ${ev.chatId}: ${ev.message}`));
 
 // Send a turn
 await new Promise<void>((resolve) => {
+  // 6 min: this bridge sends no `auth.options`, so the server waits its 5-minute
+  // default. Send `replyTimeoutMs` and this must follow — see "Timeout strategy".
   socket.timeout(360_000).emit(
     "message",
     { externalChatId: "test", text: "Hello" },
