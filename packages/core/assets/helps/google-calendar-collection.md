@@ -153,12 +153,19 @@ the calendar day view then draws each record as a proportional time block.
 
 ## All-day events
 
-A `datetime` column stores an all-day event as `2026-07-17T00:00`, because that
-is where the day view places it. That is fine for mirroring, but it is also
+A `datetime` column stores an all-day event mirrored from Google as
+`2026-07-17T00:00`, because that is where the day view places it. That is also
 exactly how a real midnight appointment is stored — so a record CREATED locally
-in a `datetime` column is pushed as a midnight event, never as an all-day one.
+with `…T00:00` is pushed as a midnight event, never as an all-day one.
 
-For a calendar whose events are all-day, give start/end a **`date`** column
+To create an all-day event in a `datetime` column (a calendar that mixes timed
+and all-day events), write a **bare date** on both ends instead:
+`start: "2026-07-17"`, `end: "2026-07-18"`. A bare date is a valid `datetime`
+value, it is pushed as Google's `start.date` / `end.date`, and the record form
+edits it with a date picker. After the next sync it reads back as `…T00:00`
+and stays all-day.
+
+For a calendar whose events are ALL all-day, give start/end a **`date`** column
 instead. Google's bare date is then kept verbatim, and a record the user creates
 by typing two dates is pushed as a real all-day event.
 

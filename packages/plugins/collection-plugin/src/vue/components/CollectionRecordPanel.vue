@@ -242,7 +242,7 @@
                         <input
                           v-else
                           v-model="row.text[subKey]"
-                          :type="render.inputTypeFor(subField.type)"
+                          :type="render.inputTypeFor(subField.type, row.text[subKey])"
                           :step="render.stepFor(subField.type)"
                           :required="subField.required"
                           class="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none font-medium text-slate-700"

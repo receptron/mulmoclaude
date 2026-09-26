@@ -4,7 +4,7 @@
 // function of its arguments. The composable imports these and calls them
 // from inside its computed/watch closures; behaviour is identical.
 
-import { deriveAll, fieldText, isCanonicalServerTime } from "@mulmoclaude/core/collection";
+import { deriveAll, fieldText, isCanonicalServerTime, parseIsoDate } from "@mulmoclaude/core/collection";
 import type {
   CollectionDetailResponse,
   CollectionItem,
@@ -46,14 +46,20 @@ export function isServerStamped(value: unknown): boolean {
   return isCanonicalServerTime(value);
 }
 
+/** `datetime-local` shows nothing for a value it cannot hold, and saving then
+ *  writes the blank back. A server-stamped instant is shown as text (and is
+ *  disabled where it is rendered); an all-day bare date keeps a date picker. */
+function dateTimeInputType(value: unknown): string {
+  if (isServerStamped(value)) return "text";
+  return parseIsoDate(value) === null ? "datetime-local" : "date";
+}
+
 export function inputTypeFor(type: FieldType, value?: unknown): string {
   if (type === "email") return "email";
   if (type === "number") return "number";
   if (type === "money") return "number";
   if (type === "date") return "date";
-  // A server-stamped instant is shown as text, because `datetime-local` would
-  // show nothing at all. It is also disabled where it is rendered.
-  if (type === "datetime") return isServerStamped(value) ? "text" : "datetime-local";
+  if (type === "datetime") return dateTimeInputType(value);
   return "text";
 }
 

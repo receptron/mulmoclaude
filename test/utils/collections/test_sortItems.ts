@@ -63,6 +63,19 @@ describe("SortValue constructors", () => {
     assert.equal(dateSortValue("").empty, true);
   });
 
+  it("dateSortValue puts a bare date at local midnight, like …T00:00", () => {
+    // `Date.parse` reads a bare date as UTC, which sorted an all-day `datetime`
+    // after that morning's timed records east of Greenwich.
+    assert.equal(dateSortValue("2026-09-28").num, dateSortValue("2026-09-28T00:00").num);
+    assert.ok((dateSortValue("2026-09-28").num as number) < (dateSortValue("2026-09-28T08:00").num as number));
+    assert.ok((dateSortValue("2026-09-27T23:59").num as number) < (dateSortValue("2026-09-28").num as number));
+  });
+
+  it("dateSortValue keeps an impossible bare date on the lexical fallback", () => {
+    assert.equal(dateSortValue("2026-02-30").str, undefined);
+    assert.equal(dateSortValue("not a date").str, "not a date");
+  });
+
   it("enumSortValue keys off the declared index, not the label", () => {
     const values = ["low", "high", "critical"]; // deliberately non-alphabetical
     assert.deepEqual(enumSortValue(values, "low"), { empty: false, num: 0 });
