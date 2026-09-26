@@ -14,10 +14,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
   that mixes timed and all-day Google Calendar events on `datetime` columns, a record created locally can now be all-day:
   write `start: "2026-09-28"`, `end: "2026-09-29"`. The strict lint no longer flags it, the list sort places it at local
   midnight (it used to sort at 09:00 in UTC+9), and the push sends it as Google's `start.date`. `…T00:00` still means a real
-  midnight start. The agent's collection guidance and recovery notes say the same. The record form's date picker for such a
-  value ships in `@mulmoclaude/collection-plugin`'s next release.
+  midnight start. The agent's collection guidance and recovery notes say the same. The record form edits such a value with a
+  date picker instead of a blank date+time one — at the top level, inside a table row, and in an action's parameter form
+  (`@mulmoclaude/collection-plugin@5.4.0`).
 
-Ships `@mulmoclaude/accounting-plugin@4.0.1`, `@mulmoclaude/chart-plugin@4.0.1`, `@mulmoclaude/collection-plugin@5.3.0`, `@mulmoclaude/common@1.3.0`, `@mulmoclaude/core@5.6.0`, `@mulmoclaude/form-plugin@2.1.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.0.1`, `@mulmoclaude/markdown-plugin@5.1.0`, `@mulmoclaude/markdown-utils@3.0.1`, `@mulmoclaude/mulmoscript-plugin@5.0.1`, `@mulmoclaude/shapescript-plugin@7.1.0`, `@mulmoclaude/spotify-plugin@2.0.2`, `@mulmoclaude/x-plugin@1.0.4`.
+Ships `@mulmoclaude/accounting-plugin@4.0.1`, `@mulmoclaude/chart-plugin@4.0.1`, `@mulmoclaude/collection-plugin@5.4.0`, `@mulmoclaude/common@1.3.0`, `@mulmoclaude/core@5.6.0`, `@mulmoclaude/form-plugin@2.1.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.0.1`, `@mulmoclaude/markdown-plugin@5.1.0`, `@mulmoclaude/markdown-utils@3.0.1`, `@mulmoclaude/mulmoscript-plugin@5.0.1`, `@mulmoclaude/shapescript-plugin@7.1.0`, `@mulmoclaude/spotify-plugin@2.0.2`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [1.23.0] - 2026-09-26
 
