@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Added
+
+- **A `datetime` field accepts a bare date as an all-day value** (`@mulmoclaude/core@5.6.0`, #3304, PR #3308) — in a collection
+  that mixes timed and all-day Google Calendar events on `datetime` columns, a record created locally can now be all-day:
+  write `start: "2026-09-28"`, `end: "2026-09-29"`. The strict lint no longer flags it, the list sort places it at local
+  midnight (it used to sort at 09:00 in UTC+9), and the push sends it as Google's `start.date`. `…T00:00` still means a real
+  midnight start. The agent's collection guidance and recovery notes say the same. The record form's date picker for such a
+  value ships in `@mulmoclaude/collection-plugin`'s next release.
+
 ## [1.23.0] - 2026-09-26
 
 **Any file can be attached, an expired `claude` login now says how to fix it, errors survive a reload, and reconnecting no longer loses the selection or a card's time.**
