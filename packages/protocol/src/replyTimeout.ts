@@ -29,8 +29,16 @@ export interface ReplyTimeoutResolution {
 const POSITIVE_INTEGER = /^[1-9]\d*$/;
 
 function parseConfigured(raw: string | number): number | null {
-  if (typeof raw === "number") return Number.isSafeInteger(raw) && raw > 0 ? raw : null;
+  // Not `isSafeInteger`: a huge integer is still a request for "as long as possible", and the caller clamps it.
+  if (typeof raw === "number") return Number.isInteger(raw) && raw > 0 ? raw : null;
   return POSITIVE_INTEGER.test(raw) ? Number(raw) : null;
+}
+
+/** For the warning only. `JSON.stringify` throws on a bigint or a circular object. */
+function describeRaw(raw: unknown): string {
+  if (typeof raw === "string") return JSON.stringify(raw);
+  if (typeof raw === "number" || typeof raw === "boolean" || typeof raw === "bigint") return String(raw);
+  return `<${Array.isArray(raw) ? "array" : typeof raw}>`;
 }
 
 /**
@@ -46,7 +54,7 @@ export function resolveReplyTimeoutMs(raw: unknown): ReplyTimeoutResolution {
   if (configured === null) {
     return {
       replyTimeoutMs: DEFAULT_REPLY_TIMEOUT_MS,
-      warning: `replyTimeoutMs=${JSON.stringify(raw)} is not a positive whole number of milliseconds; using ${DEFAULT_REPLY_TIMEOUT_MS}`,
+      warning: `replyTimeoutMs=${describeRaw(raw)} is not a positive whole number of milliseconds; using ${DEFAULT_REPLY_TIMEOUT_MS}`,
     };
   }
   if (configured > MAX_REPLY_TIMEOUT_MS) {

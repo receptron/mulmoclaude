@@ -53,9 +53,15 @@ describe("resolveReplyTimeoutMs — unusable values fall back with a warning", (
     true,
     {},
     [],
+    1n,
+    Symbol("timeout"),
+    () => 1000,
   ];
-  unusable.forEach((raw) => {
-    it(`rejects ${JSON.stringify(raw) ?? String(raw)}`, () => {
+  const circular: { self?: unknown } = {};
+  circular.self = circular;
+  unusable.push(circular);
+  unusable.forEach((raw, index) => {
+    it(`rejects unusable value #${index} (${typeof raw})`, () => {
       const out = resolveReplyTimeoutMs(raw);
       assert.equal(out.replyTimeoutMs, DEFAULT_REPLY_TIMEOUT_MS);
       assert.match(out.warning ?? "", /not a positive whole number/);
@@ -65,11 +71,21 @@ describe("resolveReplyTimeoutMs — unusable values fall back with a warning", (
 
 describe("resolveReplyTimeoutMs — past the timer ceiling", () => {
   it("clamps with a warning rather than letting Node fire the timer after 1 ms", () => {
-    [String(MAX_REPLY_TIMEOUT_MS + 1), String(SET_TIMEOUT_CEILING_MS), "99999999999999999999", Number.MAX_SAFE_INTEGER].forEach((raw) => {
+    [String(MAX_REPLY_TIMEOUT_MS + 1), String(SET_TIMEOUT_CEILING_MS), "99999999999999999999", Number.MAX_SAFE_INTEGER, 2 ** 53, 1e300].forEach((raw) => {
       const out = resolveReplyTimeoutMs(raw);
       assert.equal(out.replyTimeoutMs, MAX_REPLY_TIMEOUT_MS);
       assert.match(out.warning ?? "", /exceeds the maximum/);
     });
+  });
+});
+
+describe("resolveReplyTimeoutMs — the warning names the value it ignored", () => {
+  it("quotes strings, prints primitives, and labels objects without serialising them", () => {
+    assert.match(resolveReplyTimeoutMs("30m").warning ?? "", /^replyTimeoutMs="30m" /);
+    assert.match(resolveReplyTimeoutMs(-5).warning ?? "", /^replyTimeoutMs=-5 /);
+    assert.match(resolveReplyTimeoutMs(1n).warning ?? "", /^replyTimeoutMs=1 /);
+    assert.match(resolveReplyTimeoutMs([]).warning ?? "", /^replyTimeoutMs=<array> /);
+    assert.match(resolveReplyTimeoutMs({}).warning ?? "", /^replyTimeoutMs=<object> /);
   });
 });
 
