@@ -27,13 +27,13 @@ later just by asking: *"add a priority field."*
 
 | | 日本語 | English |
 |---|---|---|
-| 1 | [はじめに — 起動するまで](guide/ja/getting-started.html) | [Getting started](guide/en/getting-started.html) |
-| 2 | [コレクションとは](guide/ja/what-is-a-collection.html) | [What is a collection?](guide/en/what-is-a-collection.html) |
-| 3 | [コレクションを作る](guide/ja/create.html) | [Create a collection](guide/en/create.html) |
-| 4 | [コレクションを使う](guide/ja/use.html) | [Use a collection](guide/en/use.html) |
-| 5 | [共有する・スマホで使う](guide/ja/share.html) | [Share it, use it on your phone](guide/en/share.html) |
-| 6 | [schema.json のしくみ](guide/ja/schema.html) | [How schema.json works](guide/en/schema.html) |
-| 7 | [困ったとき](guide/ja/faq.html) | [Troubleshooting](guide/en/faq.html) |
+| 1 | [はじめに — 起動するまで](guide/ja/getting-started.md) | [Getting started](guide/en/getting-started.md) |
+| 2 | [コレクションとは](guide/ja/what-is-a-collection.md) | [What is a collection?](guide/en/what-is-a-collection.md) |
+| 3 | [コレクションを作る](guide/ja/create.md) | [Create a collection](guide/en/create.md) |
+| 4 | [コレクションを使う](guide/ja/use.md) | [Use a collection](guide/en/use.md) |
+| 5 | [共有する・スマホで使う](guide/ja/share.md) | [Share it, use it on your phone](guide/en/share.md) |
+| 6 | [schema.json のしくみ](guide/ja/schema.md) | [How schema.json works](guide/en/schema.md) |
+| 7 | [困ったとき](guide/ja/faq.md) | [Troubleshooting](guide/en/faq.md) |
 
 ```bash
 npx mulmoclaude@latest

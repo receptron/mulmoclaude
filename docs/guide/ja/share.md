@@ -201,4 +201,4 @@ MulmoClaude を再起動すると、つなぎ直しが必要なことがあり�
 
 ---
 
-次は [schema.json のしくみ](schema.html) へ（中身に興味がある人向け）。
+次は [schema.json のしくみ](schema.md) へ（中身に興味がある人向け）。

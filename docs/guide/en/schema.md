@@ -119,4 +119,4 @@ The full specification is Claude's own how-to,
 
 ---
 
-Next: [Troubleshooting](faq.html).
+Next: [Troubleshooting](faq.md).

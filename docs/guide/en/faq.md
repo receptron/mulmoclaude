@@ -25,7 +25,7 @@ description: What to check when a collection doesn't show up, the phone won't co
    > My … collection doesn't show up in the list. Check its schema.json and fix it.
 
    Claude reads the blueprint, finds what's wrong and fixes it
-3. If you just edited `schema.json` by hand, suspect a typo ([How schema.json works](schema.html#edit-by-hand))
+3. If you just edited `schema.json` by hand, suspect a typo ([How schema.json works](schema.md#edit-by-hand))
 
 {: .note }
 When **Installed** is empty it says *"Star a skill that ships a schema from the Skills page to see it

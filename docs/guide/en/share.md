@@ -206,4 +206,4 @@ too or they will not show on the other side.
 
 ---
 
-Next: [How schema.json works](schema.html) (for the curious).
+Next: [How schema.json works](schema.md) (for the curious).

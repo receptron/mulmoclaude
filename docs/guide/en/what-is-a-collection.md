@@ -45,7 +45,7 @@ A collection is just two things:
 There is no database. **The folder and its files are the app.** So you can open the data as ordinary
 files, back it up, or hand it to someone.
 
-Curious about the blueprint? See [How schema.json works](schema.html). You do not need it to create
+Curious about the blueprint? See [How schema.json works](schema.md). You do not need it to create
 or use a collection.
 
 ## Where are the files?
@@ -83,4 +83,4 @@ is very unlikely to end up on disk.
 
 ---
 
-Next: [Create a collection](create.html).
+Next: [Create a collection](create.md).

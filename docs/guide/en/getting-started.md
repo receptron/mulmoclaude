@@ -85,4 +85,4 @@ home directory. We call it the **workspace**. Nothing is uploaded to the cloud b
 
 ---
 
-Next: [What is a collection?](what-is-a-collection.html) — or jump straight to [Create a collection](create.html).
+Next: [What is a collection?](what-is-a-collection.md) — or jump straight to [Create a collection](create.md).

@@ -26,7 +26,7 @@ There are three tabs at the top:
 | Tab | What it shows |
 |---|---|
 | **Installed** | The collections you have |
-| **Discover** | Collections other people have published — import one with a click ([Share](share.html#discover)) |
+| **Discover** | Collections other people have published — import one with a click ([Share](share.md#discover)) |
 | **Map** | How your collections link to each other (only shown when they do) |
 
 ## Way 1: the "+ Collection" button (easiest)
@@ -105,9 +105,9 @@ Records you already have are kept.
 
 ## If you get stuck
 
-- The collection you made doesn't show up → [Troubleshooting](faq.html#not-listed)
-- Which field types exist → [How schema.json works](schema.html)
+- The collection you made doesn't show up → [Troubleshooting](faq.md#not-listed)
+- Which field types exist → [How schema.json works](schema.md)
 
 ---
 
-Next: [Use a collection](use.html).
+Next: [Use a collection](use.md).

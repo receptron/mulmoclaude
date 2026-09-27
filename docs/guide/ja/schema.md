@@ -119,4 +119,4 @@ description: コレクションの設計図 schema.json の読み方。項目の
 
 ---
 
-次は [困ったとき](faq.html) へ。
+次は [困ったとき](faq.md) へ。

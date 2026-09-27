@@ -25,7 +25,7 @@ description: コレクションが一覧に出てこない、スマホからつ�
    > 〇〇コレクションが一覧に出ない。schema.json をチェックして直して
 
    と頼んでください。Claude が設計図を読み込み直し、何が悪いかを調べて直します
-3. 手で `schema.json` を書き換えた直後なら、書き間違いを疑ってください（[schema.json のしくみ](schema.html#edit-by-hand)）
+3. 手で `schema.json` を書き換えた直後なら、書き間違いを疑ってください（[schema.json のしくみ](schema.md#edit-by-hand)）
 
 {: .note }
 **インストール済み** が空のときに「スキーマを含むスキルを Skills ページからスター付けすると、ここに表示されます。」という文が出ますが、

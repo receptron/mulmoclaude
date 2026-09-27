@@ -86,5 +86,5 @@ MulmoClaude が作るものは、すべてあなたのパソコンの **`~/mulmo
 
 ---
 
-準備ができたら、次は [コレクションとは](what-is-a-collection.html) へ。
-すぐ作ってみたい人は [コレクションを作る](create.html) へどうぞ。
+準備ができたら、次は [コレクションとは](what-is-a-collection.md) へ。
+すぐ作ってみたい人は [コレクションを作る](create.md) へどうぞ。

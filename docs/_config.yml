@@ -10,6 +10,15 @@ url: https://receptron.github.io
 plugins:
   - jekyll-seo-tag
   - jekyll-sitemap
+  - jekyll-relative-links
+
+# Lets the guide pages link to each other with plain "getting-started.md"-style
+# relative links, so the same links work both when browsing docs/guide/**/*.md
+# directly on GitHub and on the built Pages site (where jekyll-relative-links
+# rewrites them to the page's real .html permalink at build time).
+relative_links:
+  enabled: true
+  collections: true
 
 search_enabled: true
 color_scheme: light

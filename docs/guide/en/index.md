@@ -26,15 +26,15 @@ Each one starts with a single sentence to Claude: *"I want to keep track of …"
 
 | # | Page | What it covers |
 |---|---|---|
-| 1 | [Getting started](getting-started.html) | Prerequisites, install, launch |
-| 2 | [What is a collection?](what-is-a-collection.html) | How it works, where the files live |
-| 3 | [Create a collection](create.html) | Three ways to create one, and how to reshape it later |
-| 4 | [Use a collection](use.html) | Table, calendar, kanban; adding and editing; asking Claude |
-| 5 | [Share it, use it on your phone](share.html) | Import, publish, phone, other people's input, handing over files |
-| 6 | [How schema.json works](schema.html) | For the curious: field types, buttons, reminders |
-| 7 | [Troubleshooting](faq.html) | A collection does not show up, and more |
+| 1 | [Getting started](getting-started.md) | Prerequisites, install, launch |
+| 2 | [What is a collection?](what-is-a-collection.md) | How it works, where the files live |
+| 3 | [Create a collection](create.md) | Three ways to create one, and how to reshape it later |
+| 4 | [Use a collection](use.md) | Table, calendar, kanban; adding and editing; asking Claude |
+| 5 | [Share it, use it on your phone](share.md) | Import, publish, phone, other people's input, handing over files |
+| 6 | [How schema.json works](schema.md) | For the curious: field types, buttons, reminders |
+| 7 | [Troubleshooting](faq.md) | A collection does not show up, and more |
 
 In a hurry? Read **1 → 3 → 4** and you are ready to go.
 
-[Getting started](getting-started.html){: .btn .btn-purple .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[Create a collection](create.html){: .btn .fs-5 .mb-4 .mb-md-0 }
+[Getting started](getting-started.md){: .btn .btn-purple .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[Create a collection](create.md){: .btn .fs-5 .mb-4 .mb-md-0 }

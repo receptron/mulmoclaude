@@ -108,7 +108,7 @@ Things you can ask:
 When a table or kanban isn't enough, have the look itself built for you:
 
 1. Click **+** (**Add view**) in the toolbar
-2. Choose **Custom view** (or **Phone view** for your phone — see [Use it on your phone](share.html#phone))
+2. Choose **Custom view** (or **Phone view** for your phone — see [Use it on your phone](share.md#phone))
 3. Describe the look you want in the chat that opens
 
 For example: "Show the movies as a grid of posters", "This week's schedule as a timetable",
@@ -133,4 +133,4 @@ workspace's `archive/`).
 
 ---
 
-Next: [Share it, use it on your phone](share.html).
+Next: [Share it, use it on your phone](share.md).
