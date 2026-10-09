@@ -243,7 +243,7 @@
   },
   "peerDependencies": {
     "@receptron/task-scheduler": "^1.0.3",
-    "firebase": "^12.0.0",
+    "firebase": "^12.0.0 || ^13.0.0",
     "gui-chat-protocol": "^2.3.0",
     "vue": "^3.5.0",
     "vue-i18n": "^11.4.4"
