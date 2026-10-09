@@ -45,7 +45,7 @@
     "@mulmoclaude/common": "^1.4.0",
     "@mulmoclaude/core": "^5.11.2",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "@typescript-eslint/eslint-plugin": "^8.71.1",
     "@typescript-eslint/parser": "^8.71.1",
     "@vitejs/plugin-vue": "^6.0.9",
