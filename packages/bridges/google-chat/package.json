@@ -28,7 +28,7 @@
     "@mulmoclaude/common": "^1.4.0",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
-    "express-rate-limit": "^8.7.0"
+    "express-rate-limit": "^8.7.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

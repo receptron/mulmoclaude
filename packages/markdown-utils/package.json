@@ -35,8 +35,8 @@
   "dependencies": {
     "@mulmoclaude/common": "^1.4.0",
     "dompurify": "^3.4.16",
-    "js-yaml": "^5.4.2",
-    "marked": "^18.0.14"
+    "js-yaml": "^5.4.3",
+    "marked": "^18.1.0"
   },
   "peerDependencies": {
     "mathjax-full": "^3.2.2",
