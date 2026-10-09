@@ -8,9 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
-### Published packages
+## [2.2.1] - 2026-10-09
 
-- **`@mulmoclaude/core` 5.11.2** (2026-10-09): the `mc-manage-skills` preset skill now points at `conversations/chat/<session-id>.jsonl` (it said `chat/<session-id>.jsonl`, which has not existed since the layout regrouping), so "save this conversation as a skill" reads the right transcript (#3416, issue #3415). No code change; version bump and range sweep in #3420.
+**Journal summaries now link to chat sessions that exist: new summaries point at `conversations/chat/`, and links already written by earlier releases open the right session in the viewer.**
+
+### Highlights
+
+#### Journal session links resolve again (#3415, PR #3416)
+
+The archivist prompt told the model to write `/chat/<id>.jsonl`, a path from before chat moved under `conversations/`, so every session link in `conversations/summaries/` resolved to a directory that does not exist, and clicking one in the viewer never switched to that session. The prompt now builds the path from the workspace layout, so it cannot drift from it again, and the viewer also recognises the old `chat/<id>.jsonl` form, so summaries written by earlier releases work in the app without being rewritten. The skill-save prompt and the `mc-manage-skills` preset skill, which carried the same stale path, are corrected too (`@mulmoclaude/core` 5.11.2).
+
+Summaries on disk are not rewritten by the app, so in an external editor an old link stays dead. A repair script exists in the repository (`yarn journal:repair-links --workspace <dir>`, with `--dry-run` to preview; #3417, PR #3418), but it lives under `scripts/` and is not part of the npm package, so it is only available from a source checkout.
+
+#### Dependency updates (PR #3414)
+
+`@mulmocast/types` 2.17 and `js-yaml` 5.4.3, and the launcher now requires `@mulmoclaude/core` `^5.11.2`.
+
+Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.0.1`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.4.0`, `@mulmoclaude/core@5.11.2`, `@mulmoclaude/form-plugin@2.1.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.0.1`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.1`, `@mulmoclaude/mulmoscript-plugin@5.3.0`, `@mulmoclaude/spotify-plugin@2.0.2`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.2.0] - 2026-10-07
 
