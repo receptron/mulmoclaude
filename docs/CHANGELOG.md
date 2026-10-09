@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Published packages
+
+- **`@mulmoclaude/core` 5.11.2** (2026-10-09): the `mc-manage-skills` preset skill now points at `conversations/chat/<session-id>.jsonl` (it said `chat/<session-id>.jsonl`, which has not existed since the layout regrouping), so "save this conversation as a skill" reads the right transcript (#3416, issue #3415). No code change; version bump and range sweep in #3420.
+
 ## [2.2.0] - 2026-10-07
 
 **Every turn sends a shorter system prompt — the Simple role now runs at about 9,300 characters — and Settings → Model can stop loading the Claude Code plugins whose skill lists dominate each request.**
