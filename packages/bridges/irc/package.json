@@ -24,7 +24,7 @@
   "dependencies": {
     "@mulmobridge/client": "^1.4.1",
     "@mulmobridge/protocol": "^1.1.0",
-    "dotenv": "^17.0.0",
+    "dotenv": "^18.0.7",
     "irc-framework": "^4.14.0"
   },
   "devDependencies": {
