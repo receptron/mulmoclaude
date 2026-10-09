@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MulmoClaude はじめての準備</title>
+<style>
+/* manual-kit / manual.css — 手順書本体のレイアウト（見出し・小手順・注記・折りたたみ・コピー枠）。図は parts/mock.css */
+/* Layout: 1カラム。本文は基本の手順だけ、例外は折りたたみ。装飾は線1種類と強調色1色 */
+:root{
+  --bg:#ffffff; --fg:#1f2329; --muted:#646b75; --line:#dfe2e6; --soft:#f4f5f7; --accent:#1f5fa8;--more-bg:#f1f5fa;--tag-memo:#4f5763;--tag-memo-bg:#eceef1;--tag-warn:#b4472f;--tag-warn-bg:#fbece7;--tag-ok:#217a4b;--tag-ok-bg:#e6f3eb;
+  --term-bg:#1e1f24; --term-fg:#e6e6e6; --term-dim:#8b93a1; --term-green:#7fd18b; --term-yellow:#e8c46a; --term-red:#ff8f87; --term-blue:#8cb8ff;
+  --font-body:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#16181c;--fg:#e6e8eb;--muted:#a0a7b1;--line:#30343b;--soft:#1f2227;--accent:#86b4ec;--more-bg:#1d2633;--tag-memo:#c4cad3;--tag-memo-bg:#2a2f37;--tag-warn:#f0a48f;--tag-warn-bg:#3a2520;--tag-ok:#8fd3ab;--tag-ok-bg:#1d3327;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#16181c;--fg:#e6e8eb;--muted:#a0a7b1;--line:#30343b;--soft:#1f2227;--accent:#86b4ec;--more-bg:#1d2633;--tag-memo:#c4cad3;--tag-memo-bg:#2a2f37;--tag-warn:#f0a48f;--tag-warn-bg:#3a2520;--tag-ok:#8fd3ab;--tag-ok-bg:#1d3327;color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:16px;line-height:1.9}
+.wrap{max-width:42rem;margin:0 auto;padding-inline:16px;padding-block:2.5rem 4rem}
+h1{font-size:1.6rem;line-height:1.4;margin:0 0 1rem;text-wrap:balance}
+h2{font-size:1.25rem;line-height:1.4;margin:0 0 .8rem;text-wrap:balance}
+h2 .no{color:var(--accent);margin-right:.6em}
+p{margin:1rem 0}
+a{color:var(--accent)}
+strong{font-weight:700}
+code{font-family:var(--font-mono);font-size:.92em;background:var(--soft);padding:.05em .3em;border-radius:3px}
+.toc{margin:1.5rem 0 0;padding-left:1.4rem}
+.toc a{color:var(--fg)}
+.step{margin-top:3rem;padding-top:2rem;border-top:1px solid var(--line)}
+ul{padding-left:1.3rem}
+li{margin:.3rem 0}
+.cmd{display:flex;margin:.8rem 0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.cmd pre{flex:1;min-width:0;margin:0;padding:.7rem 1rem;font-family:var(--font-mono);font-size:.95rem;overflow-x:auto;white-space:pre;background:var(--soft)}
+.cmd button{flex:none;border:0;border-left:1px solid var(--line);background:var(--bg);color:var(--accent);font:700 .85rem var(--font-body);padding:0 1rem;cursor:pointer}
+.cmd button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.cmd.tpl pre{white-space:pre-wrap;font-family:var(--font-body);font-size:.92rem;line-height:1.8}
+.tbl{overflow-x:auto;margin:1rem 0}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{border-bottom:1px solid var(--line);padding:.55rem .4rem;text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:400;font-size:.85rem}
+td:first-child{min-width:11rem}
+footer{margin-top:3rem;padding-top:1rem;border-top:1px solid var(--line);color:var(--muted);font-size:.85rem}
+figure{margin:1.6rem 0 1.9rem}
+figcaption{font-size:.85rem;color:var(--muted);margin-top:.4rem}
+
+/* 小さな手順: 丸数字＋見出し、文と図は番号の右にそろえる（実用書の型） */
+.substep{margin-top:2.4rem}
+h3.sub{display:flex;align-items:center;gap:.7rem;font-size:1.08rem;line-height:1.5;margin:0 0 .4rem}
+h3.sub .sn{flex:none;width:1.75rem;height:1.75rem;border-radius:50%;background:var(--accent);color:var(--bg);display:grid;place-items:center;font-size:.92rem;font-weight:700}
+.sub-body{margin-left:2.45rem}
+.sub-body>p:first-child{margin-top:0}
+@media (max-width:560px){.sub-body{margin-left:0}}
+/* メモ・注意・確認: 頭に小さなラベル（ラベルの中心を1行目の中心に） */
+.note{display:flex;gap:.6rem;align-items:flex-start;margin:.9rem 0;font-size:.95rem}
+.note strong{flex:none;font-size:.75rem;line-height:1.5;margin-top:.42em;font-weight:700;padding:.05rem .45rem;border-radius:4px;background:var(--tag-memo-bg);color:var(--tag-memo)}
+.note.warn strong{background:var(--tag-warn-bg);color:var(--tag-warn)}
+.note.ok strong{background:var(--tag-ok-bg);color:var(--tag-ok)}
+.note strong:empty{display:none}
+/* こんなときは: 角の丸い薄い色の箱。開くと中身 */
+details{margin:1rem 0;border-radius:8px;background:var(--more-bg)}
+details>summary{cursor:pointer;padding:.65rem 1rem;font-weight:700;list-style:none;display:flex;align-items:center;gap:.6rem}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"こんなときは";flex:none;font-size:.72rem;padding:.05rem .45rem;border-radius:4px;background:var(--accent);color:var(--bg)}
+details>summary::after{content:"＋";margin-left:auto;color:var(--muted);font-weight:400}
+details[open]>summary::after{content:"－"}
+details>*:not(summary){margin-left:1rem;margin-right:1rem}
+details>:last-child{margin-bottom:1rem}
+details.stuck{background:var(--bg);border:1px solid var(--accent)}
+details.stuck>summary::before{content:"止まったら"}
+h4.minor{font-size:1.05rem;margin:2.8rem 0 .9rem;padding-bottom:.35rem;border-bottom:1px solid var(--line)}
+h2 .no:empty{display:none}
+
+/*
+ * manual-kit / mock.css — 手順書のイメージ図（ダミーのスクリーンショット）用パーツ
+ *
+ * すべて mk- で始まる。手順書側の CSS とぶつからない。
+ * 図は「実機の画面」を描くので、ページのライト／ダーク切り替えに追従しない（固定色）。
+ * 使い方と各パーツの HTML は catalog.html を見る。
+ */
+:root {
+  --mk-mono: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --mk-sans: "Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;
+  --mk-term-bg: #1e1f24;
+  --mk-term-fg: #e6e6e6;
+  --mk-green: #7fd18b;
+  --mk-yellow: #e8c46a;
+  --mk-red: #ff8f87;
+  --mk-blue: #8cb8ff;
+  --mk-dim: #8b93a1;
+  --mk-mac-blue: #2c6ed5;
+  --mk-mark: #e8553a;
+}
+
+/* ---------- 窓の枠 ---------- */
+.mk-win, .mk-desk, .mk-keys, .mk-copybox { line-height: 1.5; }   /* ページの行間を引き継がない */
+.mk-win { border-radius: 8px; overflow: hidden; border: 1px solid rgba(0,0,0,.2); font-family: var(--mk-sans); }
+.mk-bar { display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: #3a3b40; color: #c9ccd3; font-size: .78rem; }
+.mk-bar i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; background: #6b6d73; flex: none; }
+.mk-bar-title { flex: 1; text-align: center; margin-right: 45px; }
+.mk-bar-url { flex: 1; background: #2a2b30; border-radius: 5px; padding: .1rem .7rem; color: #ddd; margin: 0 40px 0 10px; }
+
+/* ---------- ターミナル ---------- */
+.mk-term { background: var(--mk-term-bg); color: var(--mk-term-fg); font-family: var(--mk-mono); font-size: .85rem; line-height: 1.7; padding: 12px 16px 16px; overflow-x: auto; white-space: pre; }
+.mk-prompt { color: var(--mk-green); }          /* yourname@MacBook-Air ~ % */
+.mk-typed  { color: #fff; font-weight: 700; }   /* 利用者が打った文字 */
+.mk-ok     { color: var(--mk-green); }
+.mk-warn   { color: var(--mk-yellow); }
+.mk-err    { color: var(--mk-red); }
+.mk-sel    { color: var(--mk-blue); }           /* 選択中の項目・コピーしてほしい行 */
+.mk-dim    { color: var(--mk-dim); }
+.mk-cursor { display: inline-block; width: .6em; height: 1.1em; background: #ddd; vertical-align: -.2em; }
+
+/* ---------- 注記 ---------- */
+/* mk-tag（画面の中の黄色いラベル）は旧方式。新しい図では mk-hl ＋ mk-pin ＋ mk-pins を使う */
+.mk-tag  { display: inline-block; background: var(--mk-yellow); color: #1e1f24; font-family: var(--mk-sans); font-size: .72rem; font-weight: 700; padding: 0 .45em; border-radius: 3px; margin-left: .5em; white-space: nowrap; }
+.mk-mark { outline: 3px solid var(--mk-mark); outline-offset: 4px; border-radius: 6px; }  /* 「ここを押す」の赤枠 */
+.mk-arrow { text-align: center; color: #6b7280; font-family: var(--mk-sans); font-size: .88rem; margin: .3rem 0; }
+
+/* ---------- ボタン（Mac の見た目） ---------- */
+.mk-btn { display: inline-block; padding: .25rem 1rem; border-radius: 6px; background: #fff; border: 1px solid #c4c4c4; color: #222; }
+.mk-btn--primary { background: var(--mk-mac-blue); border-color: var(--mk-mac-blue); color: #fff; }
+.mk-btn--dark { background: #2c2c2c; border-color: #2c2c2c; color: #fff; padding: .4rem 1.4rem; }
+.mk-btns { display: flex; gap: .6rem; justify-content: flex-end; flex-wrap: wrap; margin-top: auto; }
+
+/* ---------- キーボード ---------- */
+.mk-keys { border: 1px solid #dfe2e6; border-radius: 8px; padding: 1.2rem 1rem; background: #f4f5f7; font-family: var(--mk-sans); }
+.mk-keys-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.mk-key { min-width: 3.2rem; padding: .4rem .5rem; border-radius: 6px; border: 1px solid #d4d7dc; border-bottom-width: 3px; background: #fff; font-size: .75rem; line-height: 1.3; text-align: center; color: #646b75; }
+.mk-key--wide { min-width: 9rem; display: grid; place-items: center; }
+.mk-key--on { border-color: var(--mk-mark); color: #1f2329; font-weight: 700; }
+.mk-keys-note { text-align: center; margin-top: .8rem; font-size: .9rem; color: #1f2329; }
+.mk-keys-note b { color: var(--mk-mark); }
+
+/* ---------- Spotlight ---------- */
+.mk-desk { background: #8a96a6; padding: 1.8rem 1rem 1.6rem; border-radius: 8px; display: flex; justify-content: center; font-family: var(--mk-sans); }
+.mk-spot { width: 100%; max-width: 28rem; background: #f5f6f8; border-radius: 12px; color: #1d2430; padding-bottom: .6rem; }
+.mk-spot-q { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem; font-size: 1.15rem; border-bottom: 1px solid #d6d9df; }
+.mk-spot-q::before { content: ""; width: 20px; height: 20px; flex: none; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='8' cy='8' r='6' fill='none' stroke='%23666' stroke-width='2'/%3E%3Cpath d='M12.5 12.5 18 18' stroke='%23666' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat center / contain; }
+.mk-spot-hit { display: flex; align-items: center; gap: .7rem; padding: .5rem .8rem; margin: .6rem .6rem 0; border-radius: 8px; background: var(--mk-mac-blue); color: #fff; font-size: .92rem; }
+.mk-spot-kind { margin-left: auto; opacity: .8; font-size: .8rem; }
+
+/* アプリのアイコン（ターミナル風 / 汎用） */
+.mk-icon { width: 26px; height: 26px; border-radius: 6px; background: #c9d1dc; display: inline-grid; place-items: center; flex: none; }
+.mk-icon--term { background: #222; color: var(--mk-green); font: 700 .68rem var(--mk-mono); }
+.mk-icon--term::before { content: ">_"; }
+.mk-icon--lg { width: 38px; height: 38px; border-radius: 8px; }
+
+/* ---------- Finder ---------- */
+.mk-finder { display: grid; grid-template-columns: 10rem 1fr; background: #fff; color: #222; font-size: .85rem; }
+.mk-finder-side { list-style: none; margin: 0; padding: .8rem .6rem; background: #eceef1; }
+.mk-finder-side li { padding: .2rem .5rem; border-radius: 4px; line-height: 1.6; }
+.mk-finder-side .mk-head { font-size: .72rem; color: #888; }
+.mk-finder-side .mk-on { background: #d3dbe8; font-weight: 700; }
+.mk-finder-path { padding: .45rem 1rem; color: #666; border-bottom: 1px solid #eee; font-size: .78rem; }
+.mk-finder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: .7rem; padding: 1rem; }
+.mk-finder-grid > span { display: flex; flex-direction: column; align-items: center; gap: .3rem; text-align: center; font-size: .75rem; padding: .3rem; }
+
+/* ---------- インストーラ（左に工程、右に本文）。実物の縦横比 約1.4:1 ---------- */
+.mk-installer { background: #ececec; color: #222; font-size: .88rem; display: grid; grid-template-columns: 11rem 1fr; aspect-ratio: 1.45 / 1; }
+.mk-installer ol { margin: 0; padding: 1.4rem 1rem 1rem 2.2rem; background: #e4e4e4; color: #888; line-height: 2.1; }
+.mk-installer ol .mk-on { color: #111; font-weight: 700; }
+.mk-installer-main { padding: 1.4rem 1.6rem 1.2rem; display: flex; flex-direction: column; gap: .9rem; line-height: 1.7; }
+.mk-installer-main .mk-btns { margin-top: auto; }
+
+/* ---------- 認証ダイアログ（パスワード入力）。実物と同じ縦長の小さな窓を mk-desk の上に置く ---------- */
+.mk-auth { width: 17rem; background: #f2f2f2; color: #222; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.25); padding: 1.3rem 1.3rem 1.1rem; display: flex; flex-direction: column; align-items: center; gap: .55rem; text-align: center; font-size: .82rem; line-height: 1.5; }
+.mk-auth-icon { width: 44px; height: 44px; border-radius: 10px; background: #d8dbe0; display: grid; place-items: center; font-size: 1.3rem; }
+.mk-auth strong { font-size: .88rem; }
+.mk-auth .mk-field { width: 100%; text-align: left; box-sizing: border-box; }
+.mk-auth .mk-btn { width: 100%; box-sizing: border-box; text-align: center; padding: .3rem 0; }
+.mk-auth-gap { height: .2rem; }
+
+/* ---------- ダイアログ（汎用） ---------- */
+.mk-dialog { background: #f2f2f2; color: #222; padding: 1.1rem 1.3rem; font-size: .88rem; display: flex; flex-direction: column; gap: .45rem; line-height: 1.5; }
+.mk-label { font-size: .8rem; color: #666; }
+.mk-field { background: #fff; border: 1px solid #c4c4c4; border-radius: 5px; padding: .2rem .6rem; font-family: var(--mk-mono); }
+
+/* ---------- ブラウザの中身 ---------- */
+.mk-page { background: #fff; color: #222; padding: 1.8rem 1.5rem; display: flex; flex-direction: column; align-items: center; gap: .7rem; text-align: center; font-size: .9rem; }
+.mk-page-title { font-size: 1.1rem; font-weight: 700; }
+.mk-page-sub { color: #666; font-size: .8rem; }
+.mk-tabs { display: flex; gap: .3rem; }
+.mk-tab { padding: .15rem .9rem; border: 1px solid #ccc; border-radius: 5px; color: #777; }
+.mk-tab--on { background: #eee; color: #111; font-weight: 700; }
+
+/* ---------- 手順書のコピー枠（の絵） ---------- */
+.mk-copybox { display: flex; align-items: center; border: 1px solid #dfe2e6; border-radius: 6px; overflow: hidden; background: #f4f5f7; }
+.mk-copybox pre { flex: 1; min-width: 0; margin: 0; padding: .7rem 1rem; font-family: var(--mk-mono); font-size: .95rem; }
+.mk-copybox span { flex: none; color: #1f5fa8; font-weight: 700; font-size: .85rem; padding: .3rem .9rem; margin: 0 .4rem; font-family: var(--mk-sans); }
+
+@media (max-width: 560px) {
+  .mk-finder, .mk-installer { grid-template-columns: 1fr; }
+  .mk-finder-side, .mk-installer ol { display: none; }
+}
+
+/* ---------- 画面の中の目印と、図の下の説明（実用書の「①」方式） ----------
+ * 画面の中には記号だけを置き、説明の文は図の外に出す。注記を画面の表示と取り違えないため。
+ *   該当する行: <span class="mk-hl">…</span><span class="mk-pin">1</span>
+ *   図の直後:   <ol class="mk-pins"><li><span class="mk-pin">1</span>説明</li></ol>
+ */
+.mk-hl  { display: inline-block; vertical-align: top; box-shadow: 0 0 0 2px var(--mk-mark); border-radius: 4px; padding: 0 .45em; margin: 0 -.45em; }  /* 負の margin で文字の位置はずらさない。複数行でも枠は1つ */
+.mk-pin { display: inline-grid; place-items: center; width: 1.4em; height: 1.4em; border-radius: 50%; background: var(--mk-mark); color: #fff; font: 700 .72rem/1 var(--mk-sans); margin-left: .7em; vertical-align: .05em; white-space: nowrap; }
+.mk-pins { list-style: none; margin: .55rem 0 0; padding: 0; font-family: var(--mk-sans); font-size: .9rem; line-height: 1.6; color: inherit; display: grid; gap: .25rem; }
+.mk-pins li { display: flex; gap: .55em; align-items: baseline; }
+.mk-pins .mk-pin { margin-left: 0; flex: none; }
+
+/* ---------- 枠の外の吹き出し＋引き出し線（広い画面と PDF） ----------
+ * 図全体を .mk-co で包み、目印の直後に <span class="mk-co-note">説明</span> を置く。
+ * 吹き出しは .mk-co を基準に右の列へ出る（ターミナルの overflow に切られない）。高さは行に合う。
+ * 狭い画面では吹き出しを消し、番号 mk-pin と図の下の mk-pins（「①」方式）に切り替わる。
+ */
+.mk-co { position: relative; padding-right: 10.5rem; }
+.mk-co .mk-pin, .mk-co .mk-pins { display: none; }
+.mk-co-note { position: absolute; right: 0; width: 9rem; margin-top: -.35em; box-sizing: border-box;
+  white-space: normal; background: #fff; color: #1f2329; border: 1.5px solid var(--mk-mark); border-radius: 6px;
+  padding: .2rem .5rem; font: 700 .78rem/1.45 var(--mk-sans); }
+/* 引き出し線: 目印の直後の .mk-co-lead から右へ伸び、吹き出し（白地・前面）の手前で隠れる */
+.mk-co { overflow: hidden; }
+.mk-co-lead { position: absolute; width: 100%; height: 0; margin: .9em 0 0 .45em; border-top: 1.5px solid var(--mk-mark); z-index: 1; }
+.mk-co-lead::before { content: ""; position: absolute; left: -3px; top: -4px; width: 6px; height: 6px; border-radius: 50%; background: var(--mk-mark); }
+.mk-co-note { z-index: 2; }
+/* 線が行の続きの文字に重なるときは、文字の後ろに回す */
+.mk-co .mk-term :where(.mk-dim, .mk-sel, .mk-typed, .mk-prompt, .mk-ok, .mk-warn, .mk-err) { position: relative; z-index: 2; background: var(--mk-term-bg); }
+@media (max-width: 600px) {
+  .mk-co { padding-right: 0; }
+  .mk-co-note, .mk-co-lead { display: none; }
+  .mk-co .mk-pin { display: inline-grid; }
+  .mk-co .mk-pins { display: grid; }
+}
+
+/* mock.js が線を引いたとき: CSS の線を隠し、測って引いた線（.mk-co-drawn）を出す */
+.mk-co--js .mk-co-lead { display: none; }
+.mk-co-drawn { position: absolute; height: 0; border-top: 1.5px solid var(--mk-mark); z-index: 1; }
+.mk-co-drawn::before { content: ""; position: absolute; left: -3px; top: -4px; width: 6px; height: 6px; border-radius: 50%; background: var(--mk-mark); }
+/* 番号の印を部品の右上の角に重ねる（並んだアイコンに番号を振るとき。行の幅を取らない） */
+.mk-pin-host { position: relative; display: inline-grid; }
+.mk-pin--corner { position: absolute; top: -.6em; right: -.7em; margin: 0; z-index: 3; box-shadow: 0 0 0 2px #fff; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>MulmoClaude はじめての準備</h1>
+<div class="intro"><p>この手順書では、MulmoClaude を使う前に、Mac に Node.js と Claude Code を入れる手順を説明します。Claude Code にメッセージを送るところまで、上から順に進めてください。目安は15〜20分です。</p>
+<p>MulmoClaude 自体のインストールは、<a href="mulmoclaude-install.html">別の手順書</a>で説明します。</p>
+<p>用意するものは、インターネットにつながった Mac、Claude の有料プラン（Pro・Max・Team・Enterprise）のアカウント、Mac のログインパスワードです。無料プランでは Claude Code を使えません。パスワードは途中で1回聞かれます。</p>
+<p>画面の図はすべてイメージです。実際の表示とは少し違うことがあります。</p></div>
+<ul class="toc"><li><a href="#step1">ステップ 1　ターミナルを開く</a></li><li><a href="#step2">ステップ 2　Node.js を入れる</a></li><li><a href="#step3">ステップ 3　Claude Code を入れる</a></li><li><a href="#step4">ステップ 4　ログインして話しかける</a></li><li><a href="#trouble">うまくいかないとき</a></li></ul>
+<section class="step" id="step1"><h2><span class="no">ステップ 1</span>ターミナルを開く</h2>
+<p>ターミナルは、文字を打ち込んで Mac を操作するアプリです。Claude Code はターミナルの中で動きます。</p>
+<div class="substep"><h3 class="sub"><span class="sn">1</span>command キーとスペースキーを押す</h3><div class="sub-body">
+<p>⌘ の印が付いた command キーを押したまま、スペースキーを押します。</p>
+<figure><div class="mk-keys">
+  <div class="mk-keys-row">
+    <span class="mk-key">control</span><span class="mk-key">option</span>
+    <span class="mk-key mk-key--on">⌘<br>command</span>
+    <span class="mk-key mk-key--wide mk-key--on">スペース</span>
+    <span class="mk-key">⌘<br>command</span>
+  </div>
+  <div class="mk-keys-note"><b>①</b> command を押したまま <b>②</b> スペースを押す</div>
+</div>
+</figure>
+<details><summary>検索窓が出ないとき</summary>
+<p>Finder →「アプリケーション」→「ユーティリティ」と開き、「ターミナル」をダブルクリックします。</p>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">ユーティリティ</span></div>
+  <div class="mk-finder">
+    <ul class="mk-finder-side">
+      <li class="mk-head">よく使う項目</li><li>AirDrop</li><li>最近の項目</li><li class="mk-on">アプリケーション</li><li>デスクトップ</li><li>書類</li><li>ダウンロード</li>
+    </ul>
+    <div>
+      <div class="mk-finder-path">アプリケーション ＞ ユーティリティ</div>
+      <div class="mk-finder-grid">
+        <span><b class="mk-icon mk-icon--lg"></b>アクティビティモニタ</span>
+        <span><b class="mk-icon mk-icon--lg"></b>システム情報</span>
+        <span><b class="mk-icon mk-icon--lg"></b>ディスクユーティリティ</span>
+        <span class="mk-mark"><b class="mk-icon mk-icon--lg mk-icon--term"></b>ターミナル</span>
+        <span><b class="mk-icon mk-icon--lg"></b>スクリーンショット</span>
+        <span><b class="mk-icon mk-icon--lg"></b>キーチェーンアクセス</span>
+      </div>
+    </div>
+  </div>
+</div>
+</figure>
+</details>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">2</span>ターミナルを検索する</h3><div class="sub-body">
+<p>検索窓に「ターミナル」と打ち、return キー（Enter と同じ）を押します。</p>
+<figure><div class="mk-desk">
+  <div class="mk-spot">
+    <div class="mk-spot-q">ターミナル</div>
+    <div class="mk-spot-hit mk-mark"><span class="mk-icon mk-icon--term"></span>ターミナル<span class="mk-spot-kind">アプリケーション</span></div>
+  </div>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">3</span>ターミナルの窓を確認する</h3><div class="sub-body">
+<p>この画面が出れば準備完了です。打った文字は、点滅する四角の位置に出ます。</p>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh — 80×24</span></div>
+  <div class="mk-term">Last login: Tue Oct  6 09:12:03 on console
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-hl"><span class="mk-cursor"></span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">ここに文字を打てる</span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>ここに文字を打てる</li></ol>
+</div>
+</figure>
+<details><summary>次からすぐ開けるようにしたいとき</summary>
+<p>Dock のターミナルのアイコンを右クリックし、「オプション」→「Dock に追加」を選びます。</p>
+</details>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">4</span>コマンドを貼り付ける</h3><div class="sub-body">
+<p>灰色の枠の右にある「コピー」を押し、ターミナルをクリックして command+V で貼り付け、return を押します。「%」より左は Mac が表示している部分なので、打つ必要はありません。</p>
+<figure><div class="mk-co">
+<div class="mk-copybox"><pre>node -v</pre><span class="mk-mark">コピー</span></div>
+<div class="mk-arrow">↓ ターミナルをクリックして command＋V → return</div>
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-hl"><span class="mk-typed">node -v</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">貼り付けた文字</span>
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-cursor"></span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>貼り付けた文字</li></ol>
+</div>
+</figure>
+<div class="note "><strong>メモ</strong>return を押したあと、何も表示されずに次の行に「%」が出るだけのこともあります。それで正常です。</div>
+</div></div></section>
+<section class="step" id="step2"><h2><span class="no">ステップ 2</span>Node.js を入れる</h2>
+<p>MulmoClaude を動かすために、Node.js を入れます。</p>
+<div class="substep"><h3 class="sub"><span class="sn">1</span>Node.js が入っているか確かめる</h3><div class="sub-body">
+<p>次を貼り付けて return を押します。「command not found」と出たら次へ進みます。</p>
+<div class="cmd"><pre>node -v</pre><button type="button">コピー</button></div>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-typed">node -v</span>
+<span class="mk-hl">zsh: command not found: node<span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">まだ入っていない</span>
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-cursor"></span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>まだ入っていない</li></ol>
+</div>
+</figure>
+<details><summary>v22.19.0 のような数字が出たとき</summary>
+<p>Node.js はすでに入っています。v22.19.0 以上ならステップ3へ進み、古ければこのまま新しいものを入れてください。</p>
+</details>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">2</span>インストーラーをダウンロードする</h3><div class="sub-body">
+<p>ブラウザで <a href="https://nodejs.org/ja/download" target="_blank" rel="noopener">https://nodejs.org/ja/download</a> を開き、LTS の「macOS インストーラー（.pkg）」をダウンロードします。</p>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-url">nodejs.org/ja/download</span></div>
+  <div class="mk-page">
+    <span class="mk-page-title">Node.js をダウンロードする</span>
+    <div class="mk-tabs"><span class="mk-tab mk-tab--on">LTS</span><span class="mk-tab">Current</span></div>
+    <span class="mk-btn mk-btn--dark mk-mark">macOS インストーラー (.pkg)</span>
+    <span class="mk-page-sub">※ 実際のページの見た目とは異なります</span>
+  </div>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">3</span>インストーラーを進める</h3><div class="sub-body">
+<p>ダウンロードした node-○○.pkg をダブルクリックし、右下の青いボタン（「続ける」「同意する」「インストール」）を順に押して進めます。</p>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">Node.js のインストール</span></div>
+  <div class="mk-installer">
+    <ol><li>はじめに</li><li>使用許諾契約</li><li>インストール先</li><li class="mk-on">インストールの種類</li><li>インストール</li><li>概要</li></ol>
+    <div class="mk-installer-main">
+      <strong>“Macintosh HD”に標準インストール</strong>
+      <span>このコンピュータに約 200 MB の領域が必要です。</span>
+      <span>「インストール」をクリックすると、このソフトウェアの標準インストールを開始します。</span>
+      <div class="mk-btns"><span class="mk-btn">戻る</span><span class="mk-btn mk-btn--primary mk-mark">インストール</span></div>
+    </div>
+  </div>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">4</span>Mac のパスワードを入れる</h3><div class="sub-body">
+<p>Mac にログインするときのパスワードを入れ、インストールが終わったら「閉じる」を押します。</p>
+<figure><div class="mk-desk">
+  <div class="mk-auth">
+    <span class="mk-auth-icon">🔒</span>
+    <strong>インストーラ</strong>
+    <span>インストーラが新しいソフトウェアをインストールしようとしています。許可するにはパスワードを入力してください。</span>
+    <span class="mk-auth-gap"></span>
+    <span class="mk-field">yourname</span>
+    <span class="mk-field mk-mark">••••••••</span>
+    <span class="mk-auth-gap"></span>
+    <span class="mk-btn mk-btn--primary">ソフトウェアをインストール</span>
+    <span class="mk-btn">キャンセル</span>
+  </div>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">5</span>Node.js をもう一度確かめる</h3><div class="sub-body">
+<p>ターミナルを command+Q で終了して開き直し、次を貼り付けて return を押します。開き直さないと、新しく入れた Node.js が見つかりません。</p>
+<div class="cmd"><pre>node -v</pre><button type="button">コピー</button></div>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-typed">node -v</span>
+<span class="mk-hl">v24.11.0</span>
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-cursor"></span></div>
+</div>
+</figure>
+<div class="note ok"><strong>確認</strong>v で始まる数字が出れば成功です。数字は入れた時期によって変わります。</div>
+</div></div></section>
+<section class="step" id="step3"><h2><span class="no">ステップ 3</span>Claude Code を入れる</h2>
+<div class="substep"><h3 class="sub"><span class="sn">1</span>Claude Code をインストールする</h3><div class="sub-body">
+<p>次のコマンドを貼り付けて return を押し、1〜2分待ちます。<a href="https://code.claude.com/docs/ja/setup" target="_blank" rel="noopener">Claude Code の公式のセットアップ手順</a>と同じコマンドです。</p>
+<div class="cmd"><pre>curl -fsSL https://claude.ai/install.sh | bash</pre><button type="button">コピー</button></div>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-typed">curl -fsSL https://claude.ai/install.sh | bash</span>
+Setting up Claude Code...
+
+<span class="mk-hl"><span class="mk-ok">✔ Claude Code successfully installed!</span></span>
+
+  Version: 2.1.290
+
+  Location: ~/.local/bin/claude
+
+
+  Next: Run claude --help to get started
+
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-cursor"></span></div>
+</div>
+</figure>
+<div class="note ok"><strong>確認</strong>「Claude Code successfully installed!」と出れば成功です。</div>
+<details><summary>黄色い Setup notes が出たとき</summary>
+<p>画面に出た行と同じコマンドを、下の枠の「コピー」でコピーします。</p>
+<div class="cmd"><pre>echo &#x27;export PATH=&quot;$HOME/.local/bin:$PATH&quot;&#x27; &gt;&gt; ~/.zshrc &amp;&amp; source ~/.zshrc</pre><button type="button">コピー</button></div>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-ok">✔ Claude Code successfully installed!</span>
+  ...
+<span class="mk-warn">⚠ Setup notes:</span>
+<span class="mk-warn">  • Native installation exists but ~/.local/bin is not in your PATH. Run:</span>
+
+  <span class="mk-hl"><span class="mk-sel">echo 'export PATH="$HOME/.local/bin:$PATH"' &gt;&gt; ~/.zshrc &amp;&amp; source ~/.zshrc</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">上の枠と同じコマンド</span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>上の枠と同じコマンド</li></ol>
+</div>
+</figure>
+<p>インストールのコマンドを実行したのと同じターミナルで、一番下の「%」の後ろをクリックします。command+V で貼り付け、return を押します。</p>
+<p>何も表示されず、次の行に「%」が出れば終わりです。</p>
+</details>
+<div class="note warn"><strong>注意</strong>「curl: (28)」と出て止まったら、この手順書の最後にある「curl: (28) と出てインストールが止まったとき」へ進んでください。</div>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">2</span>Claude Code が入ったか確かめる</h3><div class="sub-body">
+<p>ターミナルを開き直し、次を貼り付けて return を押します。</p>
+<div class="cmd"><pre>claude --version</pre><button type="button">コピー</button></div>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-typed">claude --version</span>
+<span class="mk-hl">2.1.290 (Claude Code)</span>
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-cursor"></span></div>
+</div>
+</figure>
+<div class="note ok"><strong>確認</strong>数字が出れば成功です。</div>
+</div></div></section>
+<section class="step" id="step4"><h2><span class="no">ステップ 4</span>ログインして話しかける</h2>
+<div class="substep"><h3 class="sub"><span class="sn">1</span>Claude Code を起動する</h3><div class="sub-body">
+<p>次を貼り付けて return を押します。画面の色を聞かれたら、そのまま return を押します。</p>
+<div class="cmd"><pre>claude</pre><button type="button">コピー</button></div>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">claude</span></div>
+  <div class="mk-term"> Welcome to Claude Code
+
+ Let's get started.
+
+ Choose the text style that looks best with your terminal:
+
+ <span class="mk-hl"><span class="mk-sel">❯ 1. Dark mode ✔</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">そのまま return</span>
+   2. Light mode
+   3. Dark mode (colorblind-friendly)
+   4. Light mode (colorblind-friendly)</div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>そのまま return</li></ol>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">2</span>ログイン方法を選ぶ</h3><div class="sub-body">
+<p>「1. Claude account with subscription」が選ばれた状態のまま return を押します。</p>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">claude</span></div>
+  <div class="mk-term"> Claude Code can be used with your Claude subscription or billed
+ based on API usage through your Console account.
+
+ Select login method:
+
+ <span class="mk-hl"><span class="mk-sel">❯ 1. Claude account with subscription</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">ふつうはこちら</span> <span class="mk-dim">· Pro, Max, Team, or Enterprise</span>
+
+   2. Anthropic Console account <span class="mk-dim">· API usage billing</span>
+
+   3. 3rd-party platform <span class="mk-dim">· Amazon Bedrock, Microsoft Foundry, or Vertex AI</span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>ふつうはこちら</li></ol>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">3</span>ブラウザで承認する</h3><div class="sub-body">
+<p>開いたブラウザで普段使っている Claude のアカウントにログインし、「承認（Authorize）」を押します。</p>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-url">claude.ai/oauth/authorize?…</span></div>
+  <div class="mk-page">
+    <span class="mk-page-title">Claude Code がアカウントへの接続を求めています</span>
+    <span class="mk-page-sub">yourname@example.com としてログイン中</span>
+    <span class="mk-btn mk-btn--dark mk-mark">承認する</span>
+  </div>
+</div>
+</figure>
+<details><summary>ブラウザが開かないとき</summary>
+<p>ターミナルに出た https:// で始まる長い URL をコピーし、ブラウザに貼り付けて開きます。</p>
+</details>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">4</span>ターミナルに戻る</h3><div class="sub-body">
+<p>「Login successful」と出たら return を押します。続けて出る説明の画面も、return で進めます。</p>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">claude</span></div>
+  <div class="mk-term"> <span class="mk-hl"><span class="mk-ok">Login successful. Press Enter to continue…</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">return を押す</span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>return を押す</li></ol>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">5</span>フォルダの確認に答える</h3><div class="sub-body">
+<p>「Do you trust the files in this folder?」が出たら、「1. Yes, proceed」を選びます。Claude Code にこのフォルダの中身を読ませてよいか、という確認です。</p>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">claude</span></div>
+  <div class="mk-term"> Do you trust the files in this folder?
+
+ /Users/yourname
+
+ <span class="mk-hl"><span class="mk-sel">❯ 1. Yes, proceed</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">こちらを選ぶ</span>
+   2. No, exit</div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>こちらを選ぶ</li></ol>
+</div>
+</figure>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">6</span>日本語で話しかける</h3><div class="sub-body">
+<p>「何ができるか教えて」など、質問や頼みごとを日本語で打って return を押します。</p>
+<figure><div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">claude</span></div>
+  <div class="mk-term"><span class="mk-dim">╭──────────────────────────────────────────────╮</span>
+<span class="mk-dim">│</span> &gt; <span class="mk-typed">何ができるか教えて</span>                            <span class="mk-dim">│</span>
+<span class="mk-dim">╰──────────────────────────────────────────────╯</span>
+
+<span class="mk-ok">●</span> このフォルダのファイルを読んだり、
+  文章や表を作ったり、作業の手順を一緒に考えたりできます。
+  何から始めましょうか？</div>
+</div>
+</figure>
+<div class="note ok"><strong>確認</strong>返事が表示されれば完了です。</div>
+<p>終わるときは <code>/exit</code> と打って return を押します。次からは <code>claude</code> と打つだけで始まります。</p>
+</div></div></section>
+<section class="step" id="trouble"><h2><span class="no"></span>うまくいかないとき</h2>
+<div class="tbl"><table><thead><tr><th>画面に出た文字</th><th>意味と対処</th></tr></thead><tbody><tr><td><code>command not found: node</code></td><td>Node.js が入っていないか、ターミナルを開き直していない可能性があります。開き直してステップ2の確認をやり直し、数字が出なければステップ2から進めてください。</td></tr><tr><td><code>command not found: claude</code></td><td>インストール直後なら、ターミナルを開き直してください。それでも出る場合は、ステップ3の黄色い注意に表示された1行を貼っていない可能性があります。</td></tr><tr><td><code>curl: (28)</code>／<code>Failed to connect</code>／<code>timed out</code></td><td>ターミナルからインターネットにつながっていません。下の「curl: (28) と出てインストールが止まったとき」へ進んでください。</td></tr><tr><td><code>certificate</code> を含むエラー</td><td>会社のネットワークが通信を検査しているときに出ることがあります。自分で設定を変えず、情報システム担当に画面を見せてください。</td></tr><tr><td>その他</td><td>下の診断用コマンドで原因を調べてください。それでも分からなければ command+shift+4 で画面を撮り、詳しい人に見せてください。</td></tr></tbody></table></div>
+<p>診断用コマンド:</p>
+<div class="cmd"><pre>claude doctor</pre><button type="button">コピー</button></div></section>
+<section class="sub" id="stuck"><details class="stuck">
+<summary>curl: (28) と出てインストールが止まったとき</summary>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-typed">curl -fsSL https://claude.ai/install.sh | bash</span>
+<span class="mk-hl"><span class="mk-err">curl: (28) Failed to connect to claude.ai port 443 after 75004 ms: Couldn't connect to server</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">1分以上待ったあと、こう出て止まる</span>
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-cursor"></span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>1分以上待ったあと、こう出て止まる</li></ol>
+</div>
+<figcaption>接続がタイムアウトし、「curl: (28)」と表示された例です。</figcaption></figure>
+<p>会社の Mac は、「プロキシ」という中継サーバーを通してインターネットにつながる設定になっていることがあります。ブラウザはこの設定を自動で使うので、<code>claude.ai</code> が開けます。ターミナルは自動では使わないため、接続できずに止まることがあります。</p>
+<h4 class="minor">確かめ方</h4>
+<div class="substep"><h3 class="sub"><span class="sn">1</span>ブラウザで claude.ai を開く</h3><div class="sub-body">
+<p>ブラウザで <a href="https://claude.ai" target="_blank" rel="noopener">https://claude.ai</a> を開きます。開けなければ、会社のネットワークで <code>claude.ai</code> への接続が制限されている可能性があるため、管理者に相談してください。開けたら、次へ進みます。</p>
+</div></div>
+<div class="substep"><h3 class="sub"><span class="sn">2</span>プロキシの設定を表示する</h3><div class="sub-body">
+<p>ターミナルに次を貼り付け、return を押します。</p>
+<div class="cmd"><pre>scutil --proxy</pre><button type="button">コピー</button></div>
+<figure><div class="mk-co">
+<div class="mk-win">
+  <div class="mk-bar"><i></i><i></i><i></i><span class="mk-bar-title">yourname — -zsh</span></div>
+  <div class="mk-term"><span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-typed">scutil --proxy</span>
+&lt;dictionary&gt; {
+  ExceptionsList : &lt;array&gt; {
+    0 : *.local
+    1 : 169.254/16
+  }
+  FTPPassive : 1
+  <span class="mk-warn">HTTPEnable : 1</span>
+  HTTPPort : 8080
+  HTTPProxy : proxy.example.co.jp
+  <span class="mk-hl"><span class="mk-warn">HTTPSEnable : 1</span><span class="mk-co-lead"></span></span><span class="mk-pin">1</span><span class="mk-co-note">1 ならプロキシを使っている</span>
+  <span class="mk-warn">HTTPSPort : 8080</span>
+  <span class="mk-warn">HTTPSProxy : proxy.example.co.jp</span>
+}
+<span class="mk-prompt">yourname@MacBook-Air ~ %</span> <span class="mk-cursor"></span></div>
+</div>
+<ol class="mk-pins"><li><span class="mk-pin">1</span>1 ならプロキシを使っている</li></ol>
+</div>
+<figcaption>Mac のプロキシ設定をターミナルで確認した画面です。</figcaption></figure>
+<ul><li>「HTTPSEnable : 1」と「HTTPSProxy」「HTTPSPort」が出たら、プロキシを使う設定です。この画面を撮り、管理者への連絡に添えてください。</li><li>「ProxyAutoConfigEnable : 1」が出たら、自動設定ファイル（PAC）を使う方式です。これも画面を撮って添えてください。</li><li>どちらも出なければ、プロキシ以外の理由も考えられます。そのまま管理者に相談してください。</li></ul>
+<div class="note warn"><strong>注意</strong>Mac の「システム設定」でプロキシの設定を外したり、書き換えたりしないでください。スマホのテザリングで会社のネットワークを迂回する場合も、先に会社の規程を確認してください。</div>
+</div></div>
+<h4 class="minor">管理者に伝えること</h4>
+<p>撮った画面を添えて、管理者（情報システム担当）に次のことを伝えてください。</p>
+<ul><li>業務で、ターミナルから使う AI ツールの Claude Code（Anthropic 社）と、それを使って動くアプリ MulmoClaude を使いたいこと。社内で使ってよいか確認したいこと。</li><li>社内ネットワークではブラウザで <code>claude.ai</code> を開ける一方、ターミナルからの接続は「curl: (28)」でタイムアウトすること。ターミナルの通信が会社のプロキシを通っていないのが原因と考えていること。</li><li>添えた画面が <code>scutil --proxy</code> の結果であること。</li><li>ターミナルの通信もプロキシを通るよう、設定方法を教えてもらうか、設定してもらいたいこと。または、Claude Code をインストールして使える状態にしてもらいたいこと。</li><li>主な通信先は、<code>claude.ai</code>（インストール用スクリプトとログイン）、<code>downloads.claude.ai</code>（Claude Code 本体のダウンロード）、<code>api.anthropic.com</code>（Claude Code を使うときの通信）、<code>registry.npmjs.org</code>（MulmoClaude のダウンロードと更新の確認）であること。正式な一覧は Anthropic 社の公式ドキュメント（Claude Code のネットワーク設定）にあること。</li><li>会社が通信を検査している場合は、ターミナルに設定する社内の証明書が必要なこと。</li></ul>
+<h4 class="minor">管理者の方向けの技術補足</h4>
+<p><code>scutil --proxy</code> の <code>HTTPSProxy</code>／<code>HTTPSPort</code> を確認し、ホストとポートを置き換えてプロキシを設定してから、インストールを実行します。</p>
+<div class="cmd"><pre>export https_proxy=http://&lt;ホスト&gt;:&lt;ポート&gt;</pre><button type="button">コピー</button></div>
+<div class="cmd"><pre>curl -fsSL https://claude.ai/install.sh | bash</pre><button type="button">コピー</button></div>
+<p>設定を継続して使う場合は、<code>~/.zshrc</code> に <code>https_proxy</code> と <code>no_proxy=localhost,127.0.0.1,.local</code> を追記します。PAC を使っている場合、curl は PAC を直接読めないため、PAC 内の該当する <code>PROXY host:port</code> を指定します。TLS 検査がある場合は、必要に応じて社内ルート証明書を <code>NODE_EXTRA_CA_CERTS</code> で指定します。</p>
+<p>通信先の正式な一覧は、<a href="https://code.claude.com/docs/ja/network-config" target="_blank" rel="noopener">Claude Code のネットワーク設定</a>を参照してください。</p>
+</details></section>
+<footer><p>画面はすべてイメージ図です。実際の表示は Mac の設定やソフトウェアの版によって少し違います。</p></footer>
+</div>
+<script>
+document.querySelectorAll('.cmd button').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var pre=btn.parentElement.querySelector('pre');
+    function done(){btn.textContent='コピーしました';setTimeout(function(){btn.textContent='コピー'},1600)}
+    function fallback(){var r=document.createRange();r.selectNodeContents(pre);var s=getSelection();s.removeAllRanges();s.addRange(r);btn.textContent='選択しました'}
+    try{navigator.clipboard.writeText(pre.textContent).then(done,fallback)}catch(e){fallback()}
+  });
+});
+</script>
+<script>
+/*
+ * manual-kit / mock.js — 吹き出しの引き出し線を、実際の位置を測って引き直す
+ *
+ * CSS だけだと、複数行にまたがる赤枠（.mk-hl）の右端が取れず、線が枠の中から出てしまう。
+ * ここでは枠と吹き出しの位置を測り、線を「枠の右端の真ん中 → 吹き出し」に引き、
+ * 吹き出しを枠の高さの真ん中にそろえる。動かない環境では CSS の .mk-co-lead のまま。
+ * 狭い画面（吹き出しを出さないとき）は何もしない。
+ */
+(function () {
+  function layout(root) {
+    (root || document).querySelectorAll('.mk-co').forEach(function (co) {
+      co.querySelectorAll('.mk-co-drawn').forEach(function (e) { e.remove(); });
+      if (parseFloat(getComputedStyle(co).paddingRight) === 0) { co.classList.remove('mk-co--js'); return; }
+      co.classList.add('mk-co--js');
+      var cr = co.getBoundingClientRect();
+      co.querySelectorAll('.mk-co-note').forEach(function (note) {
+        var hl = note.previousElementSibling;
+        while (hl && !hl.classList.contains('mk-hl')) hl = hl.previousElementSibling;
+        if (!hl) return;
+        var hr = hl.getBoundingClientRect();
+        var y = hr.top + hr.height / 2 - cr.top;
+        note.style.marginTop = '0';
+        note.style.top = (y - note.offsetHeight / 2) + 'px';
+        var x1 = hr.right - cr.left + 2;                       // 枠線（2px）の外側から
+        var x2 = note.getBoundingClientRect().left - cr.left;
+        var line = document.createElement('span');
+        line.className = 'mk-co-drawn';
+        line.style.left = x1 + 'px';
+        line.style.top = y + 'px';
+        line.style.width = Math.max(0, x2 - x1) + 'px';
+        co.appendChild(line);
+      });
+    });
+  }
+  window.mkLayout = layout;
+  function run() { layout(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(run);
+  window.addEventListener('resize', run);
+})();
+</script>
+
+</body>
+</html>
