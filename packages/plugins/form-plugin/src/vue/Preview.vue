@@ -42,6 +42,7 @@ import { computed } from "vue";
 import type { ToolResult } from "gui-chat-protocol";
 import type { FormData } from "../core/types";
 import { toFormViewState, type FormViewState } from "../core/viewState";
+import { isInputField } from "../core/excerpt";
 import { useT } from "../lang";
 
 const t = useT();
@@ -59,14 +60,16 @@ const formData = computed<FormData | null>(() => {
 
 const viewState = computed<FormViewState | null>(() => toFormViewState(props.result?.viewState));
 
-const fieldCount = computed(() => formData.value?.fields.length || 0);
+const inputFields = computed(() => formData.value?.fields.filter(isInputField) ?? []);
+
+const fieldCount = computed(() => inputFields.value.length);
 
 const isSubmitted = computed(() => viewState.value?.submitted || false);
 
 const completionPercentage = computed(() => {
   if (!formData.value || isSubmitted.value) return 100;
 
-  const requiredFields = formData.value.fields.filter((field) => field.required);
+  const requiredFields = inputFields.value.filter((field) => field.required);
   if (requiredFields.length === 0) return 0;
 
   const responses = viewState.value?.userResponses || {};

@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+/* A keyframe cannot be a utility; the theme exposes it as `animate-shake` for the field-error nudge. */
+@theme {
+  --animate-shake: shake 0.3s ease;
+
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-5px);
+    }
+    75% {
+      transform: translateX(5px);
+    }
+  }
+}

@@ -25,4 +25,22 @@ export const samples: ToolSample[] = [
       ],
     },
   },
+  {
+    name: "Review comments",
+    args: {
+      title: "Review comments",
+      fields: [
+        {
+          id: "c1_excerpt",
+          type: "excerpt",
+          label: "Comment 1",
+          text: "The new release ships next week. It include several fixes for the importer.",
+          highlights: ["It include"],
+          description: "Subject-verb agreement.",
+        },
+        { id: "c1_choice", type: "radio", label: "Comment 1: fix", choices: ["A: It includes", "B: It will include", "Keep as is"], required: true },
+        { id: "c1_note", type: "textarea", label: "Comment 1: note", rows: 2 },
+      ],
+    },
+  },
 ];

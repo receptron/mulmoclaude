@@ -1,4 +1,4 @@
-export type FieldType = "text" | "textarea" | "radio" | "dropdown" | "checkbox" | "date" | "time" | "number";
+export type FieldType = "text" | "textarea" | "radio" | "dropdown" | "checkbox" | "date" | "time" | "number" | "excerpt";
 
 export interface BaseField {
   id: string;
@@ -70,7 +70,16 @@ export interface NumberField extends BaseField {
   defaultValue?: number;
 }
 
-export type FormField = TextField | TextareaField | RadioField | DropdownField | CheckboxField | DateField | TimeField | NumberField;
+/** A passage shown to the user, not asked of them: no value, never submitted. */
+export interface ExcerptField extends BaseField {
+  type: "excerpt";
+  text: string;
+  highlights?: string[];
+}
+
+export type InputField = TextField | TextareaField | RadioField | DropdownField | CheckboxField | DateField | TimeField | NumberField;
+
+export type FormField = InputField | ExcerptField;
 
 export interface FormData {
   title?: string | undefined;

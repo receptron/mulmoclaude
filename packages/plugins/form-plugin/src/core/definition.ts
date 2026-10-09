@@ -4,7 +4,7 @@ export const TOOL_DEFINITION = {
   type: "function" as const,
   name: TOOL_NAME,
   description:
-    "Create a structured form to collect information from the user. Supports various field types including text input, textarea, multiple choice (radio), dropdown menus, checkboxes, date/time pickers, and number inputs. Each field can have validation rules and help text.",
+    "Create a structured form to collect information from the user. Supports various field types including text input, textarea, multiple choice (radio), dropdown menus, checkboxes, date/time pickers, and number inputs. Each field can have validation rules and help text. An 'excerpt' field shows a passage with highlighted phrases instead of asking for input — put one right before the fields that ask about that passage (e.g. one excerpt + a radio + a textarea per review comment) so the user answers while looking at it.",
   parameters: {
     type: "object" as const,
     properties: {
@@ -29,9 +29,9 @@ export const TOOL_DEFINITION = {
             },
             type: {
               type: "string",
-              enum: ["text", "textarea", "radio", "dropdown", "checkbox", "date", "time", "number"],
+              enum: ["text", "textarea", "radio", "dropdown", "checkbox", "date", "time", "number", "excerpt"],
               description:
-                "Field type: 'text' for short text, 'textarea' for long text, 'radio' for 2-6 choices, 'dropdown' for many choices, 'checkbox' for multiple selections, 'date' for date picker, 'time' for time picker, 'number' for numeric input",
+                "Field type: 'text' for short text, 'textarea' for long text, 'radio' for 2-6 choices, 'dropdown' for many choices, 'checkbox' for multiple selections, 'date' for date picker, 'time' for time picker, 'number' for numeric input, 'excerpt' for a read-only passage (uses 'text' and 'highlights'; never submitted)",
             },
             label: {
               type: "string",
@@ -105,6 +105,16 @@ export const TOOL_DEFINITION = {
             step: {
               type: "number",
               description: "Step increment for number fields",
+            },
+            text: {
+              type: "string",
+              description: "For excerpt fields: the passage to show, verbatim. Line breaks are kept.",
+            },
+            highlights: {
+              type: "array",
+              items: { type: "string" },
+              description:
+                "For excerpt fields: phrases inside 'text' to highlight. Each must appear in 'text' exactly; every occurrence is marked, so pick a phrase long enough to be unique.",
             },
             defaultValue: {
               description:
