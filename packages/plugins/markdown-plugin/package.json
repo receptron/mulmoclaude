@@ -37,8 +37,8 @@
   "dependencies": {
     "@marp-team/marp-core": "^4.4.0",
     "@mulmoclaude/markdown-utils": "^3.0.1",
-    "js-yaml": "^5.4.2",
-    "marked": "^18.0.14",
+    "js-yaml": "^5.4.3",
+    "marked": "^18.1.0",
     "mathjax-full": "^3.2.2",
     "mermaid": "^12.1.0"
   },
@@ -64,7 +64,7 @@
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",
-    "vite": "^8.3.2",
+    "vite": "^8.3.4",
     "vue": "^3.5.43",
     "vue-eslint-parser": "^10.4.0",
     "vue-tsc": "^3.3.12"
