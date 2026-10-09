@@ -1,6 +1,6 @@
 {
   "name": "mulmoclaude",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "MulmoClaude — GUI-chat with Claude Code + long-term memory. One command to start.",
   "type": "module",
   "bin": {
@@ -39,7 +39,7 @@
     "@mulmoclaude/chart-plugin": "^4.0.1",
     "@mulmoclaude/collection-plugin": "^5.5.0",
     "@mulmoclaude/common": "^1.4.0",
-    "@mulmoclaude/core": "^5.11.1",
+    "@mulmoclaude/core": "^5.11.2",
     "@mulmoclaude/form-plugin": "^2.1.0",
     "@mulmoclaude/google-plugin": "^4.1.0",
     "@mulmoclaude/html-plugin": "^5.0.1",

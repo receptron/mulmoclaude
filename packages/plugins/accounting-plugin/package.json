@@ -38,7 +38,7 @@
   },
   "peerDependencies": {
     "@mulmoclaude/common": "^1.4.0",
-    "@mulmoclaude/core": "^5.11.1",
+    "@mulmoclaude/core": "^5.11.2",
     "express": "^5.2.1",
     "gui-chat-protocol": "^2.3.0",
     "vue": "^3.5.0",
@@ -60,7 +60,7 @@
   },
   "devDependencies": {
     "@mulmoclaude/common": "^1.4.0",
-    "@mulmoclaude/core": "^5.11.1",
+    "@mulmoclaude/core": "^5.11.2",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.4",

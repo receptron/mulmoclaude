@@ -1,7 +1,7 @@
 {
   "name": "mulmoclaude-monorepo",
   "private": true,
-  "version": "2.2.0",
+  "version": "2.2.1",
   "type": "module",
   "author": "snakajima",
   "license": "MIT",
@@ -54,6 +54,7 @@
     "build:hooks": "node scripts/build-hooks.mjs",
     "build:mcp-broker": "node scripts/build-mcp-broker.mjs",
     "memory:swap": "tsx scripts/memory-swap-topic-staging.ts",
+    "journal:repair-links": "tsx scripts/repair-journal-session-links.ts",
     "build:packages:dev": "yarn workspace @mulmoclaude/common run build && concurrently --kill-others-on-fail \"yarn workspace @mulmobridge/protocol run build\" \"yarn workspace @mulmobridge/web-push run build\" \"yarn workspace @mulmobridge/webhook-runtime run build\" \"yarn workspace @receptron/task-scheduler run build\" \"yarn workspace @mulmoclaude/markdown-utils run build\" && concurrently --kill-others-on-fail \"yarn workspace @mulmobridge/client run build\" \"yarn workspace @mulmobridge/chat-service run build\" \"yarn workspace @mulmoclaude/core run build\" && node scripts/build-workspaces.mjs packages/plugins @mulmoclaude --name-suffix=-plugin",
     "build:packages": "yarn workspace @mulmoclaude/common run build && concurrently --kill-others-on-fail \"yarn workspace @mulmobridge/protocol run build\" \"yarn workspace @mulmobridge/web-push run build\" \"yarn workspace @mulmobridge/webhook-runtime run build\" \"yarn workspace @receptron/task-scheduler run build\" \"yarn workspace @mulmoclaude/markdown-utils run build\" && concurrently --kill-others-on-fail \"yarn workspace @mulmobridge/client run build\" \"yarn workspace @mulmobridge/chat-service run build\" \"yarn workspace @mulmobridge/mock-server run build\" \"yarn workspace @mulmoclaude/core run build\" && node scripts/build-workspaces.mjs packages/bridges @mulmobridge && node scripts/build-workspaces.mjs packages/plugins @mulmoclaude --name-suffix=-plugin",
     "build": "yarn build:packages && yarn build:hooks && yarn build:mcp-broker && vite build",
