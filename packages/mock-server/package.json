@@ -24,12 +24,12 @@
   "author": "Receptron Team",
   "dependencies": {
     "@mulmobridge/protocol": "^1.1.0",
-    "express": "^5.1.0",
+    "express": "^5.3.0",
     "socket.io": "^4.8.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "typescript": "^6.0.3"
   },
   "homepage": "https://github.com/receptron/mulmoclaude/tree/main/packages/mock-server#readme",
