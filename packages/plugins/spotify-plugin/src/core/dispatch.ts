@@ -21,6 +21,7 @@ import {
   clientIdMissing,
   mapClientError,
   mapPlayerError,
+  PREMIUM_REQUIRED_RESPONSE,
   renderCallbackHtml,
   summariseListening,
   summarisePlayerResult,
@@ -345,18 +346,13 @@ async function invokePlayer(api: SpotifyApi, credentials: SpotifyCredentials, ar
   }
 }
 
-/** Premium is required for everything except `getDevices`; check it up front
- *  so we don't burn a Spotify call on a 403 we can already predict. */
+/** Premium is required for everything except `getDevices`. Refuse up front only when Spotify
+ *  said the account is not Premium; an unknown tier goes through, and the Player API's own 403
+ *  maps to the same response in `mapPlayerError`. */
 async function premiumGate(api: SpotifyApi, credentials: SpotifyCredentials) {
   const profileResult = await api.getProfile(credentials);
   if (!profileResult.ok) return mapClientError(profileResult.error);
-  if (isPremium(profileResult.profile)) return null;
-  return {
-    ok: false,
-    error: "premium_required",
-    message: "Spotify Premium が必要な操作です。Free アカウントでは再生制御は使えません。",
-    instructions: "Spotify Premium にアップグレードしてください。再生制御以外 (Liked / Playlists / Recent / Search) は Free でも引き続き利用できます。",
-  };
+  return isPremium(profileResult.profile) === false ? PREMIUM_REQUIRED_RESPONSE : null;
 }
 
 const playerKinds = async ({ api }: SpotifyDispatchContext, args: ArgsOf<PlayerKind>) => {

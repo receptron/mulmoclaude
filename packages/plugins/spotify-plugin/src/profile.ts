@@ -26,6 +26,10 @@ const PROFILE_TTL_MS = 24 * 60 * 60 * ONE_SECOND_MS;
 
 const PREMIUM_PRODUCT = "premium";
 
+// Snapshots written before this marker existed stored a fabricated "free" when `/v1/me` omitted
+// `product`, indistinguishable from a real one — so a snapshot without it is re-fetched.
+const PROFILE_CACHE_VERSION = 2;
+
 interface RawProfile {
   id?: unknown;
   product?: unknown;
@@ -43,8 +47,9 @@ export async function readProfile(files: FileOps): Promise<SpotifyProfile | null
   if (!(await files.exists(PROFILE_FILE))) return null;
   try {
     const raw = await files.read(PROFILE_FILE);
-    const parsed = JSON.parse(raw) as Partial<SpotifyProfile>;
-    if (typeof parsed.product !== "string") return null;
+    const parsed = JSON.parse(raw) as Partial<SpotifyProfile> & { cacheVersion?: unknown };
+    if (parsed.cacheVersion !== PROFILE_CACHE_VERSION) return null;
+    if (typeof parsed.product !== "string" && parsed.product !== null) return null;
     if (typeof parsed.fetchedAtMs !== "number" || !Number.isFinite(parsed.fetchedAtMs)) return null;
     return {
       // userId may be missing from caches written before the
@@ -62,7 +67,7 @@ export async function readProfile(files: FileOps): Promise<SpotifyProfile | null
 }
 
 export async function writeProfile(files: FileOps, profile: SpotifyProfile): Promise<void> {
-  await files.write(PROFILE_FILE, JSON.stringify(profile, null, 2));
+  await files.write(PROFILE_FILE, JSON.stringify({ ...profile, cacheVersion: PROFILE_CACHE_VERSION }, null, 2));
 }
 
 function isCacheFresh(profile: SpotifyProfile, now: Date): boolean {
@@ -100,13 +105,16 @@ async function fetchProfile(deps: ProfileDeps): Promise<{ ok: true; profile: Spo
   if (!result.ok) return result;
   const raw = result.data;
   const userId = typeof raw.id === "string" ? raw.id : "";
-  const product = typeof raw.product === "string" ? raw.product : "free";
+  const product = typeof raw.product === "string" ? raw.product : null;
   const displayName = typeof raw.display_name === "string" ? raw.display_name : "";
   const now = deps.now ?? (() => new Date());
   return { ok: true, profile: { userId, product, displayName, fetchedAtMs: now().getTime() } };
 }
 
-export function isPremium(profile: SpotifyProfile): boolean {
+/** `null` when Spotify did not say: `/v1/me` omits `product` without `user-read-private`, and
+ *  for Development Mode apps since Spotify's February 2026 change. */
+export function isPremium(profile: SpotifyProfile): boolean | null {
+  if (profile.product === null) return null;
   return profile.product === PREMIUM_PRODUCT;
 }
 
