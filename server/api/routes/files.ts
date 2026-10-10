@@ -453,23 +453,38 @@ export const RAW_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "X-Content-Type-Options": "nosniff",
 };
 
-// PDF responses skip `Content-Security-Policy: sandbox`. Issue
-// #1299: WebKit refuses to render `sandbox`-opaque PDFs and forces
-// a download, breaking the Files preview iframe on Safari. The
-// PDF viewer (PDFium on Chromium, the WebKit PDF renderer, pdf.js
-// on Firefox) runs embedded AcroJS inside its own sandbox; the
-// response-level CSP was never the layer enforcing PDF script
-// isolation. `nosniff` is kept so the response can't be
-// re-interpreted as HTML.
-export const RAW_SECURITY_HEADERS_PDF: Readonly<Record<string, string>> = {
+// Two kinds of response skip `Content-Security-Policy: sandbox`,
+// each because a browser cannot show the file under it at all:
+// - PDF (#1299): WebKit refuses to render a `sandbox`-opaque PDF and
+//   forces a download, breaking the Files preview iframe on Safari.
+//   The PDF viewer (PDFium on Chromium, the WebKit PDF renderer,
+//   pdf.js on Firefox) runs embedded AcroJS inside its own sandbox;
+//   the response-level CSP was never the layer enforcing PDF script
+//   isolation.
+// - audio / video (#3437): opened as a top-level document, Chrome's
+//   media page re-requests the file in CORS mode from the sandbox's
+//   `null` origin, the request is blocked, and the player has
+//   nothing to play.
+// Neither can run script in the document that shows it: a media
+// file is decoded, not parsed as markup. `nosniff` is kept so the
+// response can't be re-interpreted as HTML.
+export const RAW_SECURITY_HEADERS_NO_SANDBOX: Readonly<Record<string, string>> = {
   "X-Content-Type-Options": "nosniff",
 };
 
-/** Pick the header set for a given MIME. PDF is the only special
- *  case today — every other MIME (`image/*`, `text/*`,
- *  `application/octet-stream`, …) keeps the sandbox CSP. */
+const SANDBOX_EXEMPT_MIME_PREFIXES = ["audio/", "video/"] as const;
+
+/** True for the MIMEs a browser can only show without the sandbox
+ *  CSP: `application/pdf` and the `audio/*` / `video/*` the route's
+ *  MIME table emits. Every other MIME (`image/*`, `text/*`,
+ *  `application/octet-stream`, …) must stay sandboxed — an SVG
+ *  served without it is stored XSS against the app origin. */
+export function isSandboxExemptMime(mime: string): boolean {
+  return mime === "application/pdf" || SANDBOX_EXEMPT_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix));
+}
+
 export function rawSecurityHeadersForMime(mime: string): Readonly<Record<string, string>> {
-  return mime === "application/pdf" ? RAW_SECURITY_HEADERS_PDF : RAW_SECURITY_HEADERS;
+  return isSandboxExemptMime(mime) ? RAW_SECURITY_HEADERS_NO_SANDBOX : RAW_SECURITY_HEADERS;
 }
 
 function applyRawSecurityHeaders(res: Response, mime: string): void {
@@ -1254,9 +1269,9 @@ router.get(API_ROUTES.files.raw, (req: Request<object, unknown, unknown, PathQue
   res.setHeader("Content-Type", mime);
   // Sandbox the response so an `.svg` / `.html` with embedded
   // JavaScript can't escape into the localhost:3001 origin via
-  // direct navigation or <iframe>. PDFs get a narrower header set
-  // (no sandbox CSP) because Safari/WebKit refuses to render
-  // sandbox-opaque PDFs (#1299). See plans/done/
+  // direct navigation or <iframe>. PDFs (#1299) and audio / video
+  // (#3437) get a narrower header set (no sandbox CSP) because a
+  // browser cannot show them under it. See plans/done/
   // fix-files-raw-csp-sandbox.md for the full threat model.
   applyRawSecurityHeaders(res, mime);
 

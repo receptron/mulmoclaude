@@ -10,6 +10,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Highlights
 
+#### Audio and video opened from `/api/files/raw` play again (#3437)
+
+A sound or video file opened in its own tab, the way a collection's file link opens it, showed Chrome's player
+but never played: the response carried the `sandbox` content-security policy, Chrome's media page re-requested
+the file from the resulting `null` origin, and the request was blocked. Audio and video now join PDF outside
+the sandbox, with `nosniff` kept; SVG, HTML, text, images and unknown types stay sandboxed.
+
 #### The live-update socket requires the bearer token (#3433, PR #3435)
 
 The `/ws/pubsub` socket.io handshake now presents the same per-startup token every `/api/*` call carries, and the
