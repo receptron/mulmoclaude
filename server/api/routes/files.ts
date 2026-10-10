@@ -465,11 +465,26 @@ export const RAW_SECURITY_HEADERS_PDF: Readonly<Record<string, string>> = {
   "X-Content-Type-Options": "nosniff",
 };
 
-/** Pick the header set for a given MIME. PDF is the only special
- *  case today — every other MIME (`image/*`, `text/*`,
+// Audio / video responses skip `Content-Security-Policy: sandbox`
+// too. Opened as a top-level document (a collection's `file` link
+// in a new tab), Chrome's media page re-requests the file from the
+// sandbox's opaque `null` origin in CORS mode; the request is
+// blocked and the player opens with nothing to play (#3437). An
+// in-app `<audio>` / `<video>` was never affected. A media file is
+// decoded, not parsed as markup, so it cannot run script in the
+// document that shows it, and `nosniff` still keeps a mislabelled
+// file from being sniffed into HTML.
+export const RAW_SECURITY_HEADERS_MEDIA: Readonly<Record<string, string>> = {
+  "X-Content-Type-Options": "nosniff",
+};
+
+/** Pick the header set for a given MIME. PDF and audio/video are
+ *  the special cases — every other MIME (`image/*`, `text/*`,
  *  `application/octet-stream`, …) keeps the sandbox CSP. */
 export function rawSecurityHeadersForMime(mime: string): Readonly<Record<string, string>> {
-  return mime === "application/pdf" ? RAW_SECURITY_HEADERS_PDF : RAW_SECURITY_HEADERS;
+  if (mime === "application/pdf") return RAW_SECURITY_HEADERS_PDF;
+  if (mime.startsWith("audio/") || mime.startsWith("video/")) return RAW_SECURITY_HEADERS_MEDIA;
+  return RAW_SECURITY_HEADERS;
 }
 
 function applyRawSecurityHeaders(res: Response, mime: string): void {
@@ -1256,7 +1271,9 @@ router.get(API_ROUTES.files.raw, (req: Request<object, unknown, unknown, PathQue
   // JavaScript can't escape into the localhost:3001 origin via
   // direct navigation or <iframe>. PDFs get a narrower header set
   // (no sandbox CSP) because Safari/WebKit refuses to render
-  // sandbox-opaque PDFs (#1299). See plans/done/
+  // sandbox-opaque PDFs (#1299), and so do audio / video because
+  // Chrome's media page cannot fetch them from the sandbox's opaque
+  // origin (#3437). See plans/done/
   // fix-files-raw-csp-sandbox.md for the full threat model.
   applyRawSecurityHeaders(res, mime);
 

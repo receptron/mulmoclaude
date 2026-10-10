@@ -95,7 +95,8 @@
     "lodash-es": "^4.18.1",
     "shell-quote": "^1.12.0",
     "mulmocast": "^2.19.0",
-    "jsdom": "^29.1.1"
+    "jsdom": "^29.1.1",
+    "jinglescript": "^0.7.0"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
