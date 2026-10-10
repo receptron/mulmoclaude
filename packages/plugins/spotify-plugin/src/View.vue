@@ -468,14 +468,16 @@ onUnmounted(() => {
           <p v-else class="spotify-empty">{{ t.emptyNowPlaying }}</p>
 
           <!-- Player Controls (PR 3). Premium-gated: Free users see
-               a notice instead of buttons. The device dropdown is
+               a notice instead of buttons. An unknown tier (`isPremium`
+               null — `/v1/me` often omits `product`) shows the buttons and
+               lets Spotify's own 403 decide. The device dropdown is
                always visible (helps the user transfer playback to
                a different device + diagnose "no active device"). -->
           <section v-if="status?.isPremium === false" class="spotify-player-locked">
             <h3>{{ t.playerControls }}</h3>
             <p>{{ t.premiumRequired }}</p>
           </section>
-          <section v-else-if="status?.isPremium === true" class="spotify-player">
+          <section v-else class="spotify-player">
             <h3>{{ t.playerControls }}</h3>
             <div class="spotify-player-buttons">
               <button type="button" class="spotify-player-btn" :aria-label="t.btnPrevious" :disabled="isPlayerBusy" @click="playerPrevious">⏮</button>
@@ -503,7 +505,7 @@ onUnmounted(() => {
                 <span class="spotify-device-type">{{ device.type }}</span>
                 <span v-if="device.isActive" class="spotify-device-active">{{ t.deviceActive }}</span>
                 <button
-                  v-else-if="status?.isPremium === true"
+                  v-else-if="status?.isPremium !== false"
                   type="button"
                   class="spotify-device-transfer"
                   :disabled="isPlayerBusy || device.id === null"
