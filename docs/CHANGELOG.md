@@ -8,13 +8,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
-#### Forms can show the passage they ask about, with the phrase highlighted (#3426)
+## [2.3.0] - 2026-10-10
+
+**A form can now show the passage it asks about, with the phrase in question highlighted and the answer fields right under it.**
+
+### Highlights
+
+#### Forms can show the passage they ask about, with the phrase highlighted (#3426, PR #3427)
 
 `presentForm` gains a read-only `excerpt` field: a passage with highlighted phrases, placed right before the
 questions about it. Answering review comments no longer means checking the passage on a canvas and answering in a
 separate form — each comment's passage and its answer fields sit together, and Submit returns only the answers.
 A highlight that does not appear in the passage is refused, so a passage is never shown without its mark
 (`@mulmoclaude/form-plugin` 2.2.0).
+
+#### Dependency updates (PR #3419, PR #3428, PR #3430)
+
+`dotenv` 18 in the launcher (none of its removed features were in use), `mulmocast` / `@mulmocast/types` 2.19,
+`express` 5.3, and minor / patch updates across the workspaces. `resolutions` now pin `mulmocast` and `jsdom` so
+`yarn upgrade-interactive` no longer fails with an `Invariant Violation`.
 
 Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.0.1`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.4.0`, `@mulmoclaude/core@5.11.2`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.0.1`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.1`, `@mulmoclaude/mulmoscript-plugin@5.3.0`, `@mulmoclaude/spotify-plugin@2.0.2`, `@mulmoclaude/x-plugin@1.0.4`.
 
