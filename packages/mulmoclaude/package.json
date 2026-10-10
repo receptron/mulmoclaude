@@ -46,7 +46,7 @@
     "@mulmoclaude/markdown-plugin": "^5.2.0",
     "@mulmoclaude/markdown-utils": "^3.0.1",
     "@mulmoclaude/mulmoscript-plugin": "^5.3.0",
-    "@mulmoclaude/spotify-plugin": "^2.0.2",
+    "@mulmoclaude/spotify-plugin": "^2.0.3",
     "@mulmoclaude/x-plugin": "^1.0.4",
     "@receptron/task-scheduler": "^1.0.3",
     "cors": "^2.8.6",

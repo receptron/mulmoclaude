@@ -18,6 +18,17 @@ or anything relaying traffic to the port, from subscribing to a session's events
 restart a page that stayed open holds the old token; instead of retrying with it, the app shows a banner with a
 Reload button.
 
+#### Spotify playback works for Premium accounts again, and summaries carry each item's URI (#3432, PR #3434, PR #3436)
+
+Every playback control refused Premium accounts with `premium_required`. `/v1/me` stopped returning `product` for
+these apps, and the plugin read the missing field as Free. A missing tier now counts as unknown: playback goes
+through, and Spotify's own `PREMIUM_REQUIRED` refusal maps to the same message the plugin gave before. Profiles
+cached with the fabricated Free are fetched again. The search and listening summaries the agent reads now end each
+line with the item's `spotify:` URI, so a hit can be passed straight to `play`; a podcast episode gets none rather
+than a wrong track URI (`@mulmoclaude/spotify-plugin` 2.0.3).
+
+Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.0.1`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.4.0`, `@mulmoclaude/core@5.11.2`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.0.1`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.1`, `@mulmoclaude/mulmoscript-plugin@5.3.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+
 ## [2.3.0] - 2026-10-10
 
 **A form can now show the passage it asks about, with the phrase in question highlighted and the answer fields right under it.**
