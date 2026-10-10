@@ -6,13 +6,63 @@
 // regression — both exercise StackView's real watcher/DOM wiring.
 
 import type { Page, Route } from "@playwright/test";
+import { E2E_AUTH_TOKEN } from "./authToken";
 
 export function urlEndsWith(suffix: string): (url: URL) => boolean {
   return (url) => url.pathname === suffix;
 }
 
-interface MockSocket {
+export interface MockSocket {
   send: (data: string) => void;
+}
+
+// engine.io OPEN packet. The values are placeholders — the client only reads
+// `sid` and the timing fields.
+export const ENGINE_IO_OPEN_PACKET = `0${JSON.stringify({ sid: "mock-sid", upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1_000_000 })}`;
+
+// Wire protocol cheat sheet. engine.io packets are one character: 0=open,
+// 2=ping, 3=pong, 4=message. socket.io packets ride inside a message, so the
+// second character is the socket.io type: 0=connect, 2=event, 4=connect_error.
+const ENGINE_IO_PING = "2";
+const ENGINE_IO_PONG = "3";
+const SOCKET_IO_CONNECT = "40";
+const SOCKET_IO_CONNECT_ERROR = "44";
+
+/** What the server sends when the handshake's bearer token is missing or
+ *  wrong: a CONNECT_ERROR carrying the same generic message as a 401. */
+export const SOCKET_IO_CONNECT_REFUSED_PACKET = `${SOCKET_IO_CONNECT_ERROR}${JSON.stringify({ message: "unauthorized" })}`;
+
+/** The `auth.token` a socket.io CONNECT packet carries: `null` when the packet
+ *  has no string token, `undefined` when `text` is not a CONNECT packet. */
+export function readConnectPacketToken(text: string): string | null | undefined {
+  if (!text.startsWith(SOCKET_IO_CONNECT)) return undefined;
+  const payload = text.slice(SOCKET_IO_CONNECT.length);
+  if (payload === "") return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return null;
+  }
+  const token: unknown = typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "token") : undefined;
+  return typeof token === "string" ? token : null;
+}
+
+/** Answer the frames every socket.io client sends before any event: the
+ *  engine.io ping, and the CONNECT packet. A CONNECT is acked only when it
+ *  carries the token `playwright.config.ts` injects into the page; anything
+ *  else gets the server's refusal, so a client that stops sending the token
+ *  fails its spec instead of hanging in "connecting" (#3433). Returns true
+ *  when `text` was one of those frames. */
+export function answerSocketIoControlFrame(text: string, webSocket: MockSocket): boolean {
+  if (text === ENGINE_IO_PING) {
+    webSocket.send(ENGINE_IO_PONG);
+    return true;
+  }
+  const presentedToken = readConnectPacketToken(text);
+  if (presentedToken === undefined) return false;
+  webSocket.send(presentedToken === E2E_AUTH_TOKEN ? `${SOCKET_IO_CONNECT}${JSON.stringify({ sid: "mock-socket-sid" })}` : SOCKET_IO_CONNECT_REFUSED_PACKET);
+  return true;
 }
 
 // Relay a sequence of pub/sub events to the mocked WebSocket with a
@@ -83,14 +133,7 @@ async function streamEventsToSocket(page: Page, webSocket: MockSocket, channel: 
 }
 
 function handleSocketFrame(page: Page, text: string, webSocket: MockSocket, events: readonly unknown[], opts: StreamOptions): void {
-  if (text === "2") {
-    webSocket.send("3");
-    return;
-  }
-  if (text === "40") {
-    webSocket.send(`40${JSON.stringify({ sid: "mock-socket-sid" })}`);
-    return;
-  }
+  if (answerSocketIoControlFrame(text, webSocket)) return;
   if (!text.startsWith("42")) return;
   let parsed: unknown;
   try {
@@ -110,8 +153,7 @@ async function mockPubSubSocket(page: Page, events: readonly unknown[], opts: St
   await page.routeWebSocket(
     (url) => url.pathname.startsWith("/ws/pubsub"),
     (webSocket) => {
-      const handshake = { sid: "mock-sid", upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1_000_000 };
-      webSocket.send(`0${JSON.stringify(handshake)}`);
+      webSocket.send(ENGINE_IO_OPEN_PACKET);
       webSocket.onMessage((msg) => handleSocketFrame(page, String(msg), webSocket, events, opts));
     },
   );

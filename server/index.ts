@@ -1548,7 +1548,7 @@ process.on("SIGTERM", () => {
     // (CodeRabbit review on PR #1196). Both `createPubSub` and
     // `initNotifier` are sync, so wiring them up here costs nothing
     // and closes the window.
-    const earlyPubsub = createPubSub(httpServer);
+    const earlyPubsub = createPubSub(httpServer, { tokenProvider: getCurrentToken });
     initNotifier({
       publish: (channel, payload) => earlyPubsub.publish(channel, payload),
     });

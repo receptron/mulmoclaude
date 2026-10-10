@@ -143,6 +143,11 @@ const koMessages = {
     body: "다시 연결하기 전에는 휴대폰에서 이 기기로 보낼 수 없습니다.",
     reconnect: "다시 연결",
   },
+  liveUpdatesRefused: {
+    title: "실시간 업데이트가 거부되었습니다",
+    body: "서버가 이 페이지의 세션 토큰을 거부했습니다. 서버가 다시 시작된 것 같습니다. 새로 고침하면 새 토큰을 받습니다.",
+    reload: "새로 고침",
+  },
   remoteHost: {
     title: "원격 호스트",
     online: "원격 호스트 온라인",

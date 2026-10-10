@@ -139,6 +139,11 @@ const deMessages = {
     body: "Ihr Telefon kann erst nach dem erneuten Verbinden an dieses Gerät senden.",
     reconnect: "Erneut verbinden",
   },
+  liveUpdatesRefused: {
+    title: "Live-Updates wurden abgelehnt",
+    body: "Der Server hat das Sitzungstoken dieser Seite abgelehnt, er wurde wahrscheinlich neu gestartet. Laden Sie die Seite neu, um ein neues zu erhalten.",
+    reload: "Neu laden",
+  },
   remoteHost: {
     title: "Remote-Host",
     online: "Remote-Host online",

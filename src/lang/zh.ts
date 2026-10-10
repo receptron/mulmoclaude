@@ -138,6 +138,11 @@ const zhMessages = {
     body: "重新连接之前，手机将无法发送到此设备。",
     reconnect: "重新连接",
   },
+  liveUpdatesRefused: {
+    title: "实时更新被拒绝",
+    body: "服务器拒绝了此页面的会话令牌，服务器可能已重新启动。重新加载以获取新令牌。",
+    reload: "重新加载",
+  },
   remoteHost: {
     title: "远程主机",
     online: "远程主机在线",

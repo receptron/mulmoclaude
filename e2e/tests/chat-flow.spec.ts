@@ -10,6 +10,7 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
 import { SESSION_A, SESSION_B } from "../fixtures/sessions";
+import { answerSocketIoControlFrame, ENGINE_IO_OPEN_PACKET } from "../fixtures/pubsub";
 
 import { ONE_SECOND_MS } from "../../server/utils/time.ts";
 
@@ -36,29 +37,13 @@ async function mockAgentWithPubSub(page: Page, events: readonly unknown[]): Prom
     (webSocket) => {
       // Send the engine.io OPEN packet immediately so the socket.io
       // client can transition from "connecting" to "connected" and
-      // start emitting `subscribe` events. Values are placeholders —
-      // the client only inspects `sid` and the timing fields.
-      webSocket.send(
-        `0${JSON.stringify({
-          sid: "mock-sid",
-          upgrades: [],
-          pingInterval: 25000,
-          pingTimeout: 20000,
-          maxPayload: 1_000_000,
-        })}`,
-      );
+      // start emitting `subscribe` events.
+      webSocket.send(ENGINE_IO_OPEN_PACKET);
 
       webSocket.onMessage((msg) => {
         const text = String(msg);
-        if (text === "2") {
-          webSocket.send("3");
-          return;
-        }
-        // Client CONNECT to default namespace.
-        if (text === "40") {
-          webSocket.send(`40${JSON.stringify({ sid: "mock-socket-sid" })}`);
-          return;
-        }
+        // Ping, and the CONNECT packet (acked only with the bearer token).
+        if (answerSocketIoControlFrame(text, webSocket)) return;
         // Event: `42["subscribe", "session.…"]`.
         if (!text.startsWith("42")) return;
         let parsed: unknown;

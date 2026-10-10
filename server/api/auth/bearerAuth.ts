@@ -1,5 +1,3 @@
-import { timingSafeEqual } from "crypto";
-
 // Bearer token middleware (#272). Reject any `/api/*` request whose
 // `Authorization: Bearer <token>` header doesn't match the current
 // server token.
@@ -21,19 +19,13 @@ import { timingSafeEqual } from "crypto";
 // - **No token in logs**. Reject messages are generic ("unauthorized")
 //   so a leaked log line doesn't reveal whether "no header" vs
 //   "wrong token" — matches common auth-hardening guidance.
-// - **Token comparison is `===`**. These are 64-char hex strings of
-//   identical length, so early-exit timing on length is moot. A
-//   length-mismatched header is already caught at the shape check,
-//   leaving only equal-length compares for real candidates.
+// - **Token comparison is constant-time** (`tokenEquals`), shared with
+//   the `/ws/pubsub` handshake guard so both surfaces refuse the same way.
 
 import type { Request, Response, NextFunction } from "express";
 import { getCurrentToken } from "./token.js";
+import { tokenEquals } from "./tokenEquals.js";
 import { unauthorized } from "../../utils/httpError.js";
-
-function safeEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(Buffer.from(left), Buffer.from(right));
-}
 
 const BEARER_PREFIX = "Bearer ";
 
@@ -53,7 +45,7 @@ export function bearerAuth(req: Request, res: Response, next: NextFunction): voi
     return;
   }
   const provided = header.slice(BEARER_PREFIX.length);
-  if (!safeEqual(provided, expected)) {
+  if (!tokenEquals(provided, expected)) {
     unauthorized(res, "unauthorized");
     return;
   }

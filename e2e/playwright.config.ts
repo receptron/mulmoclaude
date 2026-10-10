@@ -1,5 +1,6 @@
 import { defineConfig } from "@playwright/test";
 import { ONE_SECOND_MS } from "../server/utils/time.ts";
+import { E2E_AUTH_TOKEN } from "./fixtures/authToken";
 
 // Every worker drives the SAME Vite dev server on 45173, so the server — not
 // the CPU — is the ceiling. Playwright's default (about half the cores) puts
@@ -61,6 +62,6 @@ export default defineConfig({
     // assert the auth flow end-to-end without touching the real
     // user's `~/mulmoclaude/.session-token`. See
     // vite.config.ts#readDevToken and #272 Phase 1 plan.
-    env: { MULMOCLAUDE_AUTH_TOKEN: "e2e-test-token" },
+    env: { MULMOCLAUDE_AUTH_TOKEN: E2E_AUTH_TOKEN },
   },
 });
