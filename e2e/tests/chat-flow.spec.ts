@@ -10,6 +10,7 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
 import { SESSION_A, SESSION_B } from "../fixtures/sessions";
+import { ackSocketIoConnect, ENGINE_IO_OPEN_PACKET, parseEventPacket } from "../fixtures/pubsub";
 
 import { ONE_SECOND_MS } from "../../server/utils/time.ts";
 
@@ -36,43 +37,20 @@ async function mockAgentWithPubSub(page: Page, events: readonly unknown[]): Prom
     (webSocket) => {
       // Send the engine.io OPEN packet immediately so the socket.io
       // client can transition from "connecting" to "connected" and
-      // start emitting `subscribe` events. Values are placeholders —
-      // the client only inspects `sid` and the timing fields.
-      webSocket.send(
-        `0${JSON.stringify({
-          sid: "mock-sid",
-          upgrades: [],
-          pingInterval: 25000,
-          pingTimeout: 20000,
-          maxPayload: 1_000_000,
-        })}`,
-      );
+      // start emitting `subscribe` events.
+      webSocket.send(ENGINE_IO_OPEN_PACKET);
 
       webSocket.onMessage((msg) => {
         const text = String(msg);
-        if (text === "2") {
-          webSocket.send("3");
-          return;
-        }
-        // Client CONNECT to default namespace.
-        if (text === "40") {
-          webSocket.send(`40${JSON.stringify({ sid: "mock-socket-sid" })}`);
-          return;
-        }
+        // The CONNECT packet. Whether it carries the bearer token is asserted
+        // by pubsub-handshake-auth.spec.ts, not here.
+        if (ackSocketIoConnect(text, webSocket)) return;
         // Event: `42["subscribe", "session.…"]`.
-        if (!text.startsWith("42")) return;
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(text.slice(2));
-        } catch {
+        const packet = parseEventPacket(text);
+        if (packet === null || packet.name !== "subscribe" || typeof packet.arg !== "string" || !packet.arg.startsWith("session.")) {
           return;
         }
-        if (!Array.isArray(parsed)) return;
-        const [name, arg] = parsed as [string, unknown];
-        if (name !== "subscribe" || typeof arg !== "string" || !arg.startsWith("session.")) {
-          return;
-        }
-        const channel = arg;
+        const channel = packet.arg;
         setTimeout(() => {
           for (const event of events) {
             webSocket.send(`42${JSON.stringify(["data", { channel, data: event }])}`);

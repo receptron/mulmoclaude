@@ -137,6 +137,11 @@ const frMessages = {
     body: "Votre téléphone ne pourra pas envoyer vers cet appareil tant que vous n'êtes pas reconnecté.",
     reconnect: "Se reconnecter",
   },
+  liveUpdatesRefused: {
+    title: "Les mises à jour en direct ont été refusées",
+    body: "Le serveur a refusé le jeton de session de cette page ; il a probablement redémarré. Rechargez pour en obtenir un nouveau.",
+    reload: "Recharger",
+  },
   remoteHost: {
     title: "Hôte distant",
     online: "Hôte distant en ligne",

@@ -137,6 +137,11 @@ const ptBRMessages = {
     body: "Seu telefone não conseguirá enviar para este dispositivo até você reconectar.",
     reconnect: "Reconectar",
   },
+  liveUpdatesRefused: {
+    title: "As atualizações ao vivo foram recusadas",
+    body: "O servidor recusou o token de sessão desta página; ele provavelmente foi reiniciado. Recarregue para obter um novo.",
+    reload: "Recarregar",
+  },
   remoteHost: {
     title: "Host remoto",
     online: "Host remoto on-line",

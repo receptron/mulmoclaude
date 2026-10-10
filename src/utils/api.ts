@@ -102,6 +102,14 @@ export function setAuthToken(token: string | null): void {
   authToken = token;
 }
 
+/**
+ * The token `setAuthToken` stored, for a client that authenticates outside
+ * `apiCall` — the `/ws/pubsub` socket.io handshake presents it as `auth.token`.
+ */
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
 // ── Types ────────────────────────────────────────────────────────────
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string; status: number };

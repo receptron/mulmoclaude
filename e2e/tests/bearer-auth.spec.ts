@@ -14,15 +14,14 @@
 
 import { test, expect } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
-
-const EXPECTED_TOKEN = "e2e-test-token";
+import { E2E_AUTH_TOKEN } from "../fixtures/authToken";
 
 test("meta tag contains the bearer token injected by Vite plugin", async ({ page }) => {
   await mockAllApis(page);
   await page.goto("/");
 
   const metaContent = await page.locator('meta[name="mulmoclaude-auth"]').getAttribute("content");
-  expect(metaContent).toBe(EXPECTED_TOKEN);
+  expect(metaContent).toBe(E2E_AUTH_TOKEN);
 });
 
 test("apiFetch attaches Authorization: Bearer <token> to /api/* requests", async ({ page }) => {
@@ -53,5 +52,5 @@ test("apiFetch attaches Authorization: Bearer <token> to /api/* requests", async
   // complete.
   await expect(page.getByTestId("app-title")).toBeVisible();
 
-  expect(capturedAuth).toBe(`Bearer ${EXPECTED_TOKEN}`);
+  expect(capturedAuth).toBe(`Bearer ${E2E_AUTH_TOKEN}`);
 });

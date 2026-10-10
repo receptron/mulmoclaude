@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Highlights
+
+#### The live-update socket requires the bearer token (#3433, PR #3435)
+
+The `/ws/pubsub` socket.io handshake now presents the same per-startup token every `/api/*` call carries, and the
+server refuses a handshake without it. Until now loopback binding was the only thing keeping another local process,
+or anything relaying traffic to the port, from subscribing to a session's events as they stream. After a server
+restart a page that stayed open holds the old token; instead of retrying with it, the app shows a banner with a
+Reload button.
+
 ## [2.3.0] - 2026-10-10
 
 **A form can now show the passage it asks about, with the phrase in question highlighted and the answer fields right under it.**

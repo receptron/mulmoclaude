@@ -301,6 +301,8 @@ Pre-#284 workspaces (with `chat/`, `summaries/`, `memory.md` at the workspace ro
 
 Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on top of the CSRF origin check (`server/api/csrfGuard.ts`): **both** must pass. The origin check stops cross-origin browser attacks; the bearer check stops sibling processes on the same machine that bypass browser CORS entirely.
 
+**`/ws/pubsub` (#3433)**: the socket.io handshake presents the same token as `auth.token` (`usePubSub.ts` reads it through `getAuthToken()`), and a server middleware refuses a handshake without it with the same generic `unauthorized`. socket.io does not retry a refused handshake — the client socket is destroyed, so `socket.active` is false — and the SPA shows a banner with a Reload button instead of spinning. That is what a server restart looks like from a page that stayed open: the token was regenerated, and only a reload fetches the new one.
+
 **Exception — `/api/files/*`**: exempt from bearer auth because rendered markdown (`presentDocument`, wiki pages) embeds `<img src="/api/files/raw?path=...">` tags, and the browser's native image fetcher cannot attach an `Authorization` header. CSRF origin check + loopback-only binding still apply, so the exposure is limited to processes on localhost. The exemption is a negative-lookahead regex in `server/index.ts`.
 
 **Token lifecycle**
@@ -318,13 +320,16 @@ Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on
 
 **Server-side pinning (#316)**: setting `MULMOCLAUDE_AUTH_TOKEN=…` before `yarn dev` (or any process that starts Express) makes `generateAndWriteToken()` use that value verbatim instead of generating a fresh random token. The same var is honoured by the Vite dev plugin and by `@mulmobridge/client`, so pinning it once in a shared shell / `.env` / docker-compose file keeps one token across restarts. **A bridge on this host does not need that.** Since #3078 the shared client re-reads `.session-token` and `.server-port` after a failed connection and rebuilds its socket, so a long-running bridge follows a restart on its own — pinned or not. Pin it for a client that cannot read the workspace AT ALL: another machine, or a container without it mounted, where there is no file to re-read. A warning logs if the override is shorter than 32 chars; no other validation. Use random-per-startup (the default) everywhere else — a pinned token is one that outlives the run that issued it.
 
-**Current scope**: Vue client, Express middleware, and every bridge through `@mulmobridge/client`. A bridge presents the token in the socket.io handshake (`auth`), not as a `fetch` header, and it resolves it from `MULMOCLAUDE_AUTH_TOKEN` or `<workspace>/.session-token` — re-reading that pair after a failed connection rather than once at startup (#3078).
+**Current scope**: Vue client (HTTP and the `/ws/pubsub` socket), Express middleware, the pub/sub handshake middleware, and every bridge through `@mulmobridge/client`. A bridge presents the token in the socket.io handshake (`auth`), not as a `fetch` header, and it resolves it from `MULMOCLAUDE_AUTH_TOKEN` or `<workspace>/.session-token` — re-reading that pair after a failed connection rather than once at startup (#3078).
 
 **Files**
 
 - `server/api/auth/token.ts` — generate / write / unlink
 - `server/api/auth/bearerAuth.ts` — Express middleware
-- `src/utils/api.ts` — `setAuthToken()` + header injection (no call site changes needed; `apiFetch` auto-attaches)
+- `server/api/auth/tokenGuard.ts` — the bearer rule (constant-time compare, non-empty checks, the generic message) shared by the middleware, the view-token check and the pub/sub handshake guard
+- `server/events/pub-sub/handshakeAuth.ts` — the `/ws/pubsub` handshake rule (pure); `server/events/pub-sub/index.ts` installs it as socket.io middleware
+- `src/utils/api.ts` — `setAuthToken()` + header injection (no call site changes needed; `apiFetch` auto-attaches); `getAuthToken()` for the socket handshake
+- `src/composables/usePubSub.ts` — presents the token in the socket.io handshake; `liveUpdatesRefused` drives `LiveUpdatesRefusedBanner.vue`
 - `vite.config.ts` — `mulmoclaudeAuthTokenPlugin` for dev HTML substitution
 - `@mulmobridge/client` (token.ts) — bridge-side resolver (env var → file)
 - `@mulmobridge/client` (client.ts) — shared socket.io setup for every bridge (see `docs/bridge-protocol.md`)

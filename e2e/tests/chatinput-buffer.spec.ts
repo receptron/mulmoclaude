@@ -13,8 +13,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
 import { SESSION_A, SESSION_B } from "../fixtures/sessions";
 import { chatInput } from "../fixtures/chat";
-
-const HANDSHAKE = { sid: "mock-sid", upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1_000_000 };
+import { ackSocketIoConnect, ENGINE_IO_OPEN_PACKET } from "../fixtures/pubsub";
 
 test.describe("chat input buffer while running", () => {
   // Set of session ids currently "running" — both sessions start running so
@@ -60,16 +59,9 @@ test.describe("chat input buffer while running", () => {
     await page.routeWebSocket(
       (url) => url.pathname.startsWith("/ws/pubsub"),
       (webSocket) => {
-        webSocket.send(`0${JSON.stringify(HANDSHAKE)}`);
+        webSocket.send(ENGINE_IO_OPEN_PACKET);
         webSocket.onMessage((msg) => {
-          const text = String(msg);
-          if (text === "2") {
-            webSocket.send("3");
-            return;
-          }
-          if (text === "40") {
-            webSocket.send(`40${JSON.stringify({ sid: "mock-socket-sid" })}`);
-          }
+          ackSocketIoConnect(String(msg), webSocket);
         });
         pushSessionsRefresh = () => webSocket.send(`42${JSON.stringify(["data", { channel: "sessions", data: { updated: true } }])}`);
       },
