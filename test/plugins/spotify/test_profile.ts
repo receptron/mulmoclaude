@@ -11,6 +11,7 @@ import type { SpotifyTokens } from "../../../packages/plugins/spotify-plugin/src
 
 const NOW_DATE = new Date("2026-05-05T00:00:00.000Z");
 const NOW = () => NOW_DATE;
+const CACHE_VERSION = 2;
 
 const validTokens: SpotifyTokens = {
   accessToken: "at-current",
@@ -100,9 +101,38 @@ describe("getProfile — fresh fetch + cache write", () => {
   });
 });
 
+describe("getProfile — a /v1/me without `product`", () => {
+  it("records the tier as unknown, not Free", async () => {
+    const handle = makeFakeRuntime([jsonResponse({ id: "u-1", display_name: "No Product" })]);
+    const result = await getProfile({ runtime: handle.runtime as never, clientId: "cid", tokens: validTokens, now: NOW });
+    assert.ok(result.ok);
+    assert.equal(result.profile.product, null);
+    assert.equal(isPremium(result.profile), null);
+  });
+
+  it("serves the unknown tier back from the cache it wrote", async () => {
+    const handle = makeFakeRuntime([jsonResponse({ id: "u-1", display_name: "No Product" })]);
+    const deps = { runtime: handle.runtime as never, clientId: "cid", tokens: validTokens, now: NOW };
+    await getProfile(deps);
+    const second = await getProfile(deps);
+    assert.ok(second.ok);
+    assert.equal(second.profile.product, null);
+    assert.equal(handle.calls.length, 1);
+  });
+
+  it("re-fetches a fresh snapshot written before the cache marker, since its Free may be fabricated", async () => {
+    const legacy = JSON.stringify({ userId: "u-1", product: "free", displayName: "Legacy", fetchedAtMs: NOW_DATE.getTime() - 1000 });
+    const handle = makeFakeRuntime([jsonResponse({ id: "u-1", product: "premium", display_name: "Refetched" })], { "profile.json": legacy });
+    const result = await getProfile({ runtime: handle.runtime as never, clientId: "cid", tokens: validTokens, now: NOW });
+    assert.ok(result.ok);
+    assert.equal(result.profile.product, "premium");
+    assert.equal(handle.calls.length, 1);
+  });
+});
+
 describe("getProfile — cache hit", () => {
   it("does not call /v1/me when cache is fresh (within TTL)", async () => {
-    const fresh = JSON.stringify({ product: "premium", displayName: "Cached", fetchedAtMs: NOW_DATE.getTime() - 1000 });
+    const fresh = JSON.stringify({ cacheVersion: CACHE_VERSION, product: "premium", displayName: "Cached", fetchedAtMs: NOW_DATE.getTime() - 1000 });
     const handle = makeFakeRuntime([], { "profile.json": fresh });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await getProfile({ runtime: handle.runtime as any, clientId: "cid", tokens: validTokens, now: NOW });
@@ -113,7 +143,12 @@ describe("getProfile — cache hit", () => {
   });
 
   it("re-fetches when cache is older than the TTL (24h)", async () => {
-    const stale = JSON.stringify({ product: "premium", displayName: "Stale", fetchedAtMs: NOW_DATE.getTime() - 25 * 60 * 60 * 1000 });
+    const stale = JSON.stringify({
+      cacheVersion: CACHE_VERSION,
+      product: "premium",
+      displayName: "Stale",
+      fetchedAtMs: NOW_DATE.getTime() - 25 * 60 * 60 * 1000,
+    });
     const handle = makeFakeRuntime([jsonResponse({ product: "free", display_name: "Refreshed" })], { "profile.json": stale });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await getProfile({ runtime: handle.runtime as any, clientId: "cid", tokens: validTokens, now: NOW });
@@ -126,7 +161,12 @@ describe("getProfile — cache hit", () => {
 
 describe("getProfile — fallback to stale cache on API failure", () => {
   it("returns the stale cache when /v1/me fails (network blip shouldn't block users)", async () => {
-    const stale = JSON.stringify({ product: "premium", displayName: "Stale", fetchedAtMs: NOW_DATE.getTime() - 25 * 60 * 60 * 1000 });
+    const stale = JSON.stringify({
+      cacheVersion: CACHE_VERSION,
+      product: "premium",
+      displayName: "Stale",
+      fetchedAtMs: NOW_DATE.getTime() - 25 * 60 * 60 * 1000,
+    });
     const handle = makeFakeRuntime([new Response("server err", { status: 500 })], { "profile.json": stale });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await getProfile({ runtime: handle.runtime as any, clientId: "cid", tokens: validTokens, now: NOW });
@@ -170,5 +210,6 @@ describe("isPremium discriminator", () => {
     assert.equal(isPremium({ userId: "u", product: "free", displayName: "", fetchedAtMs: 0 }), false);
     assert.equal(isPremium({ userId: "u", product: "open", displayName: "", fetchedAtMs: 0 }), false);
     assert.equal(isPremium({ userId: "u", product: "PREMIUM", displayName: "", fetchedAtMs: 0 }), false); // case-sensitive
+    assert.equal(isPremium({ userId: "u", product: null, displayName: "", fetchedAtMs: 0 }), null);
   });
 });

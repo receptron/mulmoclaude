@@ -86,6 +86,13 @@ export function summarisePlayerResult(kind: PlayerKind, data: NormalisedDevice[]
   return { ok: true, message: PLAYER_SUCCESS_MESSAGES[kind] };
 }
 
+export const PREMIUM_REQUIRED_RESPONSE = {
+  ok: false,
+  error: "premium_required",
+  message: "Spotify Premium が必要な操作です。Free アカウントでは再生制御は使えません。",
+  instructions: "Spotify Premium にアップグレードしてください。再生制御以外 (Liked / Playlists / Recent / Search) は Free でも引き続き利用できます。",
+} as const;
+
 export function mapPlayerError(error: SpotifyClientError, kind: PlayerKind) {
   // Spotify returns 404 for "no active device" on most player
   // endpoints. Surface a user-friendly hint that points at the
@@ -97,6 +104,9 @@ export function mapPlayerError(error: SpotifyClientError, kind: PlayerKind) {
       message: "アクティブな Spotify デバイスがありません。Spotify アプリ (デスクトップ / モバイル / Web) を起動してから再度お試しください。",
       instructions: "View の Player タブから対象デバイスを選んで「Transfer」を押すか、Spotify アプリ側で何か再生してから再試行してください。",
     };
+  }
+  if (error.kind === "spotify_api_error" && error.status === 403 && error.body.includes("PREMIUM_REQUIRED")) {
+    return PREMIUM_REQUIRED_RESPONSE;
   }
   if (error.kind === "spotify_api_error" && error.status === 403 && error.body.includes("scope")) {
     return {

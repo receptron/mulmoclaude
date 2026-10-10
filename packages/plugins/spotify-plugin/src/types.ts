@@ -170,8 +170,9 @@ export interface SpotifyProfile {
    *  records persisted before the account-scoping fix landed. */
   userId: string;
   /** "premium" / "free" / "open" (open is a legacy free-tier
-   *  marker Spotify still emits for some accounts). */
-  product: string;
+   *  marker Spotify still emits for some accounts), or `null` when
+   *  `/v1/me` did not return the field. */
+  product: string | null;
   /** Free-form display name from `/v1/me`; surfaced in `diagnose`. */
   displayName: string;
   /** Epoch ms when this snapshot was fetched. */

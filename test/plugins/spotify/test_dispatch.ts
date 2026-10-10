@@ -48,6 +48,8 @@ const premiumProfile: SpotifyProfile = { userId: "u-1", product: "premium", disp
 const freeProfile: SpotifyProfile = { ...premiumProfile, product: "free" };
 const PREMIUM_RESULT: ProfileResult = { ok: true, profile: premiumProfile };
 const FREE_RESULT: ProfileResult = { ok: true, profile: freeProfile };
+const UNKNOWN_TIER_RESULT: ProfileResult = { ok: true, profile: { ...premiumProfile, product: null } };
+const forbidden = (body: string): SpotifyClientResult<null> => ({ ok: false, error: { kind: "spotify_api_error", status: 403, body } });
 
 const LIKED_RESULT: SpotifyClientResult<NormalisedTrack[]> = { ok: true, data: [TRACK] };
 const PLAYLISTS_RESULT: SpotifyClientResult<NormalisedPlaylist[]> = { ok: true, data: [PLAYLIST] };
@@ -283,6 +285,31 @@ describe("player gating", () => {
       false,
     );
     assert.equal(field(result, "error"), "premium_required");
+  });
+
+  it("lets playback through when Spotify did not say which tier the account is on", async () => {
+    // `/v1/me` omits `product` for Development Mode apps; a Premium account must not be refused.
+    const { result, calls } = await dispatch({ kind: "pause" }, ({ spy }) => ({ getProfile: spy("getProfile", UNKNOWN_TIER_RESULT) }));
+    assert.equal(
+      calls.some((call) => call[0] === "playerPause"),
+      true,
+    );
+    assert.equal(field(result, "ok"), true);
+  });
+
+  it("answers a Player API PREMIUM_REQUIRED 403 with the same refusal the gate gives", async () => {
+    const premium403 = forbidden('{"error":{"status":403,"message":"Player command failed: Premium required","reason":"PREMIUM_REQUIRED"}}');
+    const { result: refusedBySpotify } = await dispatch({ kind: "pause" }, ({ spy }) => ({
+      getProfile: spy("getProfile", UNKNOWN_TIER_RESULT),
+      playerPause: spy("playerPause", premium403),
+    }));
+    const { result: refusedByGate } = await dispatch({ kind: "pause" }, ({ spy }) => ({ getProfile: spy("getProfile", FREE_RESULT) }));
+    assert.deepEqual(refusedBySpotify, refusedByGate);
+  });
+
+  it("still reads a scope 403 as a missing scope", async () => {
+    const { result } = await dispatch({ kind: "pause" }, ({ spy }) => ({ playerPause: spy("playerPause", forbidden("Insufficient client scope")) }));
+    assert.equal(field(result, "error"), "scope_missing");
   });
 
   it("lists devices on a Free account", async () => {
