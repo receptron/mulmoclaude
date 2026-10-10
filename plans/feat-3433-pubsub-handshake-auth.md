@@ -2,8 +2,8 @@
 
 ## Problem
 
-Every `/api/*` call presents the per-startup bearer token, but the `/ws/pubsub` socket.io
-handshake accepts anyone who can reach the port. Loopback binding is the only thing holding it
+Every `/api/*` call other than `/api/files/*` presents the per-startup bearer token, but the
+`/ws/pubsub` socket.io handshake accepts anyone who can reach the port. Loopback binding is the only thing holding it
 back, and a tunnel, reverse proxy or sibling process defeats that. Any such client can subscribe
 to `session.<id>` and read the agent's events as they stream.
 
