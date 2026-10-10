@@ -27,6 +27,7 @@ import {
   parseRange,
   classify,
   isSensitivePath,
+  MIME_BY_EXT,
   RAW_SECURITY_HEADERS,
   RAW_SECURITY_HEADERS_NO_SANDBOX,
   isSandboxExemptMime,
@@ -441,10 +442,22 @@ const MEDIA_MIMES = [
   "video/x-m4v",
   "video/ogg",
 ];
-// SVG and HTML are the original threat shapes the sandbox CSP was
-// added to defend (plans/done/fix-files-raw-csp-sandbox.md); the rest
-// are other types a file route could plausibly emit.
-const SANDBOXED_MIMES = ["image/svg+xml", "text/html", "image/png", "image/gif", "text/plain", "text/markdown", "application/json", "application/octet-stream"];
+// Everything else the table emits, plus what an unknown extension gets
+// (octet-stream) and the markup shapes the sandbox CSP was added to
+// defend (SVG, HTML — plans/done/fix-files-raw-csp-sandbox.md).
+const SANDBOXED_MIMES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/avif",
+  "image/x-icon",
+  "text/html",
+  "text/plain",
+  "application/octet-stream",
+];
 // Near-misses: a prefix or a substring is not a match.
 const NEAR_MISS_MIMES = ["application/x-pdf", "application/pdf+xml", "audiox/mpeg", "application/audio", "audio", "video", "x-audio/mpeg", "image/video"];
 
@@ -470,6 +483,15 @@ describe("isSandboxExemptMime", () => {
   it("is case-sensitive, as the MIME table is lowercase", () => {
     assert.equal(isSandboxExemptMime("AUDIO/MPEG"), false);
     assert.equal(isSandboxExemptMime("Application/PDF"), false);
+  });
+
+  it("has every MIME the route's table can emit placed in exactly one list, so a new entry cannot go unclassified", () => {
+    const exempt = new Set(["application/pdf", ...MEDIA_MIMES]);
+    const sandboxed = new Set(SANDBOXED_MIMES);
+    Object.entries(MIME_BY_EXT).forEach(([ext, mime]) => {
+      assert.equal(exempt.has(mime) !== sandboxed.has(mime), true, `${ext} → ${mime} must be in exactly one of the lists above`);
+      assert.equal(isSandboxExemptMime(mime), exempt.has(mime), `${ext} → ${mime}`);
+    });
   });
 });
 

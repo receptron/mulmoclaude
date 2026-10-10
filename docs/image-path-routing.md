@@ -33,7 +33,8 @@ HTML with src="/api/files/raw?path=<encoded-workspace-rel>"
 fs.createReadStream(absPath)   ← host's ~/mulmoclaude (always — server is host-side)
         │
         ▼
-Bytes streamed back with `Content-Type` per extension and CSP `sandbox` header
+Bytes streamed back with `Content-Type` per extension and the CSP `sandbox` header
+(not for PDF, audio or video — a browser cannot show those under it; `nosniff` always)
 ```
 
 1. **Plugin View** receives raw markdown / HTML from a tool result, runs the appropriate
@@ -42,9 +43,10 @@ Bytes streamed back with `Content-Type` per extension and CSP `sandbox` header
    `src/utils/image/rewriteHtmlImageRefs.ts`) that produce URLs of the shape
    `/api/files/raw?path=<workspace-relative>`.
 3. **Express file route** (`server/api/routes/files.ts`) accepts that shape, runs path-traversal
-   guards, classifies by extension, applies size caps, sets `Content-Security-Policy: sandbox`,
-   and pipes bytes from `~/mulmoclaude` back to the browser. Range requests are honoured for
-   audio/video.
+   guards, classifies by extension, applies size caps, sets `Content-Security-Policy: sandbox`
+   (except for PDF, audio and video, which a browser cannot show under the sandbox — #1299,
+   #3437; `X-Content-Type-Options: nosniff` on every response), and pipes bytes from
+   `~/mulmoclaude` back to the browser. Range requests are honoured for audio/video.
 4. **Docker sandbox** (`server/system/docker.ts`, `server/agent/sandboxMounts.ts`) is the
    agent's container only — the Express server runs on the host. The mount mapping affects what
    the LLM sees inside the container, not what the file server reads.

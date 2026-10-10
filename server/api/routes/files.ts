@@ -219,7 +219,9 @@ export function isWritableTextFile(absPath: string): boolean {
   return !BLOCKED_UPLOAD_EXTENSIONS.has(path.extname(absPath).toLowerCase());
 }
 
-const MIME_BY_EXT: Record<string, string> = {
+// Exported so the header tests can prove every MIME this table emits is
+// classified as sandboxed or exempt; a new entry fails them until placed.
+export const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",

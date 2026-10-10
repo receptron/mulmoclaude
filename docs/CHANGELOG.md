@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Highlights
 
-#### Audio and video opened from `/api/files/raw` play again (#3437)
+#### Audio and video opened from `/api/files/raw` play again (#3437, PR #3442)
 
 A sound or video file opened in its own tab, the way a collection's file link opens it, showed Chrome's player
 but never played: the response carried the `sandbox` content-security policy, Chrome's media page re-requested
