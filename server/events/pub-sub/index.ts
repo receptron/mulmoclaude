@@ -1,8 +1,9 @@
 import http from "http";
 import { Server as IOServer, type Socket } from "socket.io";
 
+import { UNAUTHORIZED_MESSAGE } from "../../api/auth/tokenGuard.js";
 import { log } from "../../system/logger/index.js";
-import { isAuthorizedPubSubHandshake, PUBSUB_HANDSHAKE_REFUSED } from "./handshakeAuth.js";
+import { isAuthorizedPubSubHandshake } from "./handshakeAuth.js";
 
 export interface IPubSub {
   /** Publish data to all clients subscribed to this channel. */
@@ -35,6 +36,17 @@ function bindRoomEvents(socket: Socket): void {
   });
 }
 
+// A refused handshake leaves the engine.io connection open, and that one
+// connection can keep sending CONNECT packets; one line per connection keeps
+// a misconfigured relay diagnosable without letting a loop fill the log.
+const warnedConnections = new WeakSet<object>();
+
+function warnRefusedOnce(socket: Socket): void {
+  if (warnedConnections.has(socket.conn)) return;
+  warnedConnections.add(socket.conn);
+  log.warn("pubsub", "handshake refused: bearer token missing or invalid", { address: socket.handshake.address });
+}
+
 // Channel names are treated as socket.io rooms — one room per
 // channel. Subscribe/unsubscribe is plain `socket.join` /
 // `socket.leave`. Publish broadcasts to the room. Reconnect /
@@ -65,8 +77,8 @@ export function createPubSub(server: http.Server, options: PubSubOptions): IPubS
       next();
       return;
     }
-    log.warn("pubsub", "handshake refused: bearer token missing or invalid", { address: socket.handshake.address });
-    next(new Error(PUBSUB_HANDSHAKE_REFUSED));
+    warnRefusedOnce(socket);
+    next(new Error(UNAUTHORIZED_MESSAGE));
   });
 
   ioServer.on("connection", bindRoomEvents);

@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="liveUpdatesRefused !== null"
+    v-if="liveUpdatesRefused"
     data-testid="live-updates-refused-banner"
     role="alert"
     class="flex items-center gap-2 px-3 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm"

@@ -21,11 +21,11 @@ const reconnectHandlers = new Set<ReconnectHandler>();
 // are lost because the pub/sub server has no replay buffer). See #1915.
 let hasConnectedOnce = false;
 
-/** The message the server refused the handshake with, `null` while it has not.
- *  The token is regenerated at every server start, so after a restart this
- *  page's token is stale and socket.io stops retrying; only a reload fetches a
- *  new one. `App.vue` shows a banner while this is set (#3433). */
-export const liveUpdatesRefused: Ref<string | null> = ref(null);
+/** True once the server refused the handshake. The token is regenerated at
+ *  every server start, so after a restart this page's token is stale and
+ *  socket.io stops retrying; only a reload fetches a new one. `App.vue`
+ *  shows a banner while this is set (#3433). */
+export const liveUpdatesRefused: Ref<boolean> = ref(false);
 
 function resendSubscriptions(sock: Socket): void {
   for (const channel of listeners.keys()) {
@@ -50,12 +50,13 @@ function connect(): Socket {
     path: "/ws/pubsub",
     // Server refuses long-polling fallback, so fail fast here too if the WS upgrade doesn't go through.
     transports: ["websocket"],
-    // The same bearer token every `apiCall` attaches (#3433).
-    auth: { token: getAuthToken() },
+    // The same bearer token every `apiCall` attaches (#3433). A function, so
+    // each CONNECT re-reads it instead of re-sending the first value.
+    auth: (provide) => provide({ token: getAuthToken() }),
   });
 
   sock.on("connect", () => {
-    liveUpdatesRefused.value = null;
+    liveUpdatesRefused.value = false;
     resendSubscriptions(sock);
     if (hasConnectedOnce) {
       fireReconnectHandlers();
@@ -69,7 +70,7 @@ function connect(): Socket {
     // own. A refusal from the server middleware destroys the socket (`active`
     // false) and nothing will retry it, so it has to reach the user.
     if (sock.active) return;
-    liveUpdatesRefused.value = err.message;
+    liveUpdatesRefused.value = true;
     console.error("[usePubSub] handshake refused by the server:", err.message);
   });
 

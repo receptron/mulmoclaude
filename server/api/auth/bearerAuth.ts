@@ -19,34 +19,28 @@
 // - **No token in logs**. Reject messages are generic ("unauthorized")
 //   so a leaked log line doesn't reveal whether "no header" vs
 //   "wrong token" — matches common auth-hardening guidance.
-// - **Token comparison is constant-time** (`tokenEquals`), shared with
-//   the `/ws/pubsub` handshake guard so both surfaces refuse the same way.
+// - **The token rule lives in `tokenGuard.ts`** (`isAuthorizedToken`):
+//   constant-time, byte-length-checked, and shared with the view-token
+//   check and the `/ws/pubsub` handshake guard, so every surface refuses
+//   the same way.
 
 import type { Request, Response, NextFunction } from "express";
 import { getCurrentToken } from "./token.js";
-import { tokenEquals } from "./tokenEquals.js";
+import { isAuthorizedToken, UNAUTHORIZED_MESSAGE } from "./tokenGuard.js";
 import { unauthorized } from "../../utils/httpError.js";
 
 const BEARER_PREFIX = "Bearer ";
 
 export function bearerAuth(req: Request, res: Response, next: NextFunction): void {
-  const expected = getCurrentToken();
-  if (expected === null) {
-    // Server hasn't finished bootstrap. This can only happen if a
-    // request beats `generateAndWriteToken()` to completion — the
-    // server fixes that by generating before `app.listen`, but we
-    // still defend the middleware against out-of-order init.
-    unauthorized(res, "unauthorized");
-    return;
-  }
   const header = req.headers.authorization;
   if (typeof header !== "string" || !header.startsWith(BEARER_PREFIX)) {
-    unauthorized(res, "unauthorized");
+    unauthorized(res, UNAUTHORIZED_MESSAGE);
     return;
   }
-  const provided = header.slice(BEARER_PREFIX.length);
-  if (!tokenEquals(provided, expected)) {
-    unauthorized(res, "unauthorized");
+  // `getCurrentToken()` is null until bootstrap, which the rule refuses too:
+  // a request that beats `generateAndWriteToken()` gets a 401, not a pass.
+  if (!isAuthorizedToken(header.slice(BEARER_PREFIX.length), getCurrentToken())) {
+    unauthorized(res, UNAUTHORIZED_MESSAGE);
     return;
   }
   next();

@@ -13,7 +13,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
 import { SESSION_A, SESSION_B } from "../fixtures/sessions";
 import { chatInput } from "../fixtures/chat";
-import { answerSocketIoControlFrame, ENGINE_IO_OPEN_PACKET } from "../fixtures/pubsub";
+import { ackSocketIoConnect, ENGINE_IO_OPEN_PACKET } from "../fixtures/pubsub";
 
 test.describe("chat input buffer while running", () => {
   // Set of session ids currently "running" — both sessions start running so
@@ -61,7 +61,7 @@ test.describe("chat input buffer while running", () => {
       (webSocket) => {
         webSocket.send(ENGINE_IO_OPEN_PACKET);
         webSocket.onMessage((msg) => {
-          answerSocketIoControlFrame(String(msg), webSocket);
+          ackSocketIoConnect(String(msg), webSocket);
         });
         pushSessionsRefresh = () => webSocket.send(`42${JSON.stringify(["data", { channel: "sessions", data: { updated: true } }])}`);
       },

@@ -20,9 +20,10 @@
 // sends `Origin: null`), so the unguessable scoped token is what stands in
 // for both. See the exemptions in `server/index.ts`.
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { getCurrentToken } from "./token.js";
+import { tokenEquals, UNAUTHORIZED_MESSAGE } from "./tokenGuard.js";
 import { unauthorized } from "../../utils/httpError.js";
 import { ONE_HOUR_MS } from "../../utils/time.js";
 import { isRecord, isUnknownArray } from "../../utils/types.js";
@@ -86,15 +87,7 @@ export function verifyViewToken(token: string, nowMs: number = Date.now()): View
   const payloadB64 = token.slice(0, dot);
   const providedSig = token.slice(dot + 1);
   const expectedSig = signPayload(payloadB64, key);
-  // Compare BYTE lengths (not string lengths) before timingSafeEqual — it
-  // throws a RangeError on a buffer-length mismatch, and a malformed signature
-  // with the same character count but multi-byte chars would otherwise crash
-  // the request (500) instead of failing closed. The lengths are non-secret
-  // (fixed-size HMAC), so the early-out leaks nothing useful.
-  const providedBuf = Buffer.from(providedSig);
-  const expectedBuf = Buffer.from(expectedSig);
-  if (providedBuf.length !== expectedBuf.length) return null;
-  if (!timingSafeEqual(providedBuf, expectedBuf)) return null;
+  if (!tokenEquals(providedSig, expectedSig)) return null;
   const payload = decodePayload(payloadB64);
   if (payload === null || nowMs >= payload.exp) return null;
   return payload;
@@ -129,12 +122,12 @@ export function requireViewToken(action: ViewCapability) {
   return function requireViewTokenMiddleware(req: Request, res: Response, next: NextFunction): void {
     const header = req.headers.authorization;
     if (typeof header !== "string" || !header.startsWith(BEARER_PREFIX)) {
-      unauthorized(res, "unauthorized");
+      unauthorized(res, UNAUTHORIZED_MESSAGE);
       return;
     }
     const payload = verifyViewToken(header.slice(BEARER_PREFIX.length));
     if (!payload || payload.slug !== req.params.slug || !payload.caps.includes(action)) {
-      unauthorized(res, "unauthorized");
+      unauthorized(res, UNAUTHORIZED_MESSAGE);
       return;
     }
     next();

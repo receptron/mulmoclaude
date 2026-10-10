@@ -6,7 +6,7 @@
 // regression — both exercise StackView's real watcher/DOM wiring.
 
 import type { Page, Route } from "@playwright/test";
-import { E2E_AUTH_TOKEN } from "./authToken";
+import { hasStringProp, isUnknownArray } from "../../src/utils/types";
 
 export function urlEndsWith(suffix: string): (url: URL) => boolean {
   return (url) => url.pathname === suffix;
@@ -17,51 +17,63 @@ export interface MockSocket {
 }
 
 // engine.io OPEN packet. The values are placeholders — the client only reads
-// `sid` and the timing fields.
+// `sid` and the timing fields. The mock never sends the server-side ping
+// engine.io v4 expects, so a page is closed for a missed heartbeat only after
+// pingInterval + pingTimeout, longer than any spec runs.
 export const ENGINE_IO_OPEN_PACKET = `0${JSON.stringify({ sid: "mock-sid", upgrades: [], pingInterval: 25000, pingTimeout: 20000, maxPayload: 1_000_000 })}`;
 
 // Wire protocol cheat sheet. engine.io packets are one character: 0=open,
-// 2=ping, 3=pong, 4=message. socket.io packets ride inside a message, so the
-// second character is the socket.io type: 0=connect, 2=event, 4=connect_error.
-const ENGINE_IO_PING = "2";
-const ENGINE_IO_PONG = "3";
+// 2=ping (server to client), 3=pong (the client's reply), 4=message. socket.io
+// packets ride inside a message, so the second character is the socket.io
+// type: 0=connect, 2=event, 4=connect_error.
 const SOCKET_IO_CONNECT = "40";
+const SOCKET_IO_EVENT = "42";
 const SOCKET_IO_CONNECT_ERROR = "44";
+
+/** What the server sends back for an accepted CONNECT. */
+export const SOCKET_IO_CONNECT_ACK_PACKET = `${SOCKET_IO_CONNECT}${JSON.stringify({ sid: "mock-socket-sid" })}`;
 
 /** What the server sends when the handshake's bearer token is missing or
  *  wrong: a CONNECT_ERROR carrying the same generic message as a 401. */
 export const SOCKET_IO_CONNECT_REFUSED_PACKET = `${SOCKET_IO_CONNECT_ERROR}${JSON.stringify({ message: "unauthorized" })}`;
 
-/** The `auth.token` a socket.io CONNECT packet carries: `null` when the packet
- *  has no string token, `undefined` when `text` is not a CONNECT packet. */
-export function readConnectPacketToken(text: string): string | null | undefined {
-  if (!text.startsWith(SOCKET_IO_CONNECT)) return undefined;
-  const payload = text.slice(SOCKET_IO_CONNECT.length);
-  if (payload === "") return null;
-  let parsed: unknown;
+/** The payload of a socket.io CONNECT packet (`40{…}`), `null` when `text` is
+ *  some other frame. `token` is `null` when the packet carries no string one. */
+export function parseConnectPacket(text: string): { token: string | null } | null {
+  if (!text.startsWith(SOCKET_IO_CONNECT)) return null;
+  let payload: unknown;
   try {
-    parsed = JSON.parse(payload);
+    payload = JSON.parse(text.slice(SOCKET_IO_CONNECT.length));
+  } catch {
+    return { token: null };
+  }
+  return { token: hasStringProp(payload, "token") ? payload.token : null };
+}
+
+/** A socket.io EVENT packet (`42["name", arg]`), `null` for any other frame. */
+export function parseEventPacket(text: string): { name: string; arg: unknown } | null {
+  if (!text.startsWith(SOCKET_IO_EVENT)) return null;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text.slice(SOCKET_IO_EVENT.length));
   } catch {
     return null;
   }
-  const token: unknown = typeof parsed === "object" && parsed !== null ? Reflect.get(parsed, "token") : undefined;
-  return typeof token === "string" ? token : null;
+  if (!isUnknownArray(payload)) return null;
+  const [name, arg] = payload;
+  if (typeof name !== "string") return null;
+  return { name, arg };
 }
 
-/** Answer the frames every socket.io client sends before any event: the
- *  engine.io ping, and the CONNECT packet. A CONNECT is acked only when it
- *  carries the token `playwright.config.ts` injects into the page; anything
- *  else gets the server's refusal, so a client that stops sending the token
- *  fails its spec instead of hanging in "connecting" (#3433). Returns true
- *  when `text` was one of those frames. */
-export function answerSocketIoControlFrame(text: string, webSocket: MockSocket): boolean {
-  if (text === ENGINE_IO_PING) {
-    webSocket.send(ENGINE_IO_PONG);
-    return true;
-  }
-  const presentedToken = readConnectPacketToken(text);
-  if (presentedToken === undefined) return false;
-  webSocket.send(presentedToken === E2E_AUTH_TOKEN ? `${SOCKET_IO_CONNECT}${JSON.stringify({ sid: "mock-socket-sid" })}` : SOCKET_IO_CONNECT_REFUSED_PACKET);
+/** Ack a socket.io CONNECT packet the way the server does. Any well-formed
+ *  CONNECT is accepted here: whether the page presents the bearer token is
+ *  asserted by `pubsub-handshake-auth.spec.ts` alone, so a stale Vite left on
+ *  the e2e port (its token differs) fails that one spec with a message instead
+ *  of every streaming spec with a locator timeout. Returns true when `text`
+ *  was a CONNECT. */
+export function ackSocketIoConnect(text: string, webSocket: MockSocket): boolean {
+  if (parseConnectPacket(text) === null) return false;
+  webSocket.send(SOCKET_IO_CONNECT_ACK_PACKET);
   return true;
 }
 
@@ -133,18 +145,10 @@ async function streamEventsToSocket(page: Page, webSocket: MockSocket, channel: 
 }
 
 function handleSocketFrame(page: Page, text: string, webSocket: MockSocket, events: readonly unknown[], opts: StreamOptions): void {
-  if (answerSocketIoControlFrame(text, webSocket)) return;
-  if (!text.startsWith("42")) return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text.slice(2));
-  } catch {
-    return;
-  }
-  if (!Array.isArray(parsed)) return;
-  const [name, arg] = parsed as [string, unknown];
-  if (name !== "subscribe" || typeof arg !== "string" || !arg.startsWith("session.")) return;
-  void streamEventsToSocket(page, webSocket, arg, events, opts);
+  if (ackSocketIoConnect(text, webSocket)) return;
+  const event = parseEventPacket(text);
+  if (event === null || event.name !== "subscribe" || typeof event.arg !== "string" || !event.arg.startsWith("session.")) return;
+  void streamEventsToSocket(page, webSocket, event.arg, events, opts);
 }
 
 // Accept the Socket.IO handshake and relay the scripted events on the

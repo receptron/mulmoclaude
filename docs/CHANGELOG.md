@@ -10,7 +10,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Highlights
 
-#### The live-update socket requires the bearer token (#3433)
+#### The live-update socket requires the bearer token (#3433, PR #3435)
 
 The `/ws/pubsub` socket.io handshake now presents the same per-startup token every `/api/*` call carries, and the
 server refuses a handshake without it. Until now loopback binding was the only thing keeping another local process,

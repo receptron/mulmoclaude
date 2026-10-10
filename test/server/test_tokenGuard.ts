@@ -1,13 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { tokenEquals } from "../../server/api/auth/tokenEquals.js";
+import { isAuthorizedToken, tokenEquals } from "../../server/api/auth/tokenGuard.js";
 
-// Constant-time token compare shared by `bearerAuth` and the `/ws/pubsub`
-// handshake guard. The cases that matter are the ones `timingSafeEqual`
-// alone gets wrong: it throws on a buffer-length mismatch, so a candidate
-// with the same character count but more bytes must come back `false`
-// rather than crash the request.
+// The bearer rule shared by `bearerAuth`, `verifyViewToken` and the
+// `/ws/pubsub` handshake guard. The cases that matter are the ones
+// `timingSafeEqual` alone gets wrong: it throws on a buffer-length mismatch,
+// so a candidate with the same character count but more bytes must come back
+// `false` rather than crash the request.
 
 const TOKEN_BYTES = 32;
 const randomToken = (): string => randomBytes(TOKEN_BYTES).toString("hex");
@@ -64,5 +64,37 @@ describe("tokenEquals — refuses", () => {
       assert.equal(tokenEquals(mutated, token), false);
       assert.equal(tokenEquals(token, mutated), false);
     });
+  });
+});
+
+describe("isAuthorizedToken", () => {
+  const token = randomToken();
+
+  it("accepts the server token presented as a string", () => {
+    assert.equal(isAuthorizedToken(token, token), true);
+  });
+
+  it("refuses every candidate while the server has no token, or an empty one", () => {
+    [null, ""].forEach((expected) => {
+      assert.equal(isAuthorizedToken(token, expected), false);
+      assert.equal(isAuthorizedToken("", expected), false);
+      assert.equal(isAuthorizedToken(undefined, expected), false);
+    });
+  });
+
+  it("never equates two empty strings, unlike the bare compare", () => {
+    assert.equal(tokenEquals("", ""), true);
+    assert.equal(isAuthorizedToken("", ""), false);
+  });
+
+  it("refuses a candidate that is not a non-empty string", () => {
+    [undefined, null, 42, true, "", [token], { token }].forEach((candidate) => {
+      assert.equal(isAuthorizedToken(candidate, token), false);
+    });
+  });
+
+  it("refuses a wrong token and a same-character-count multi-byte one, without throwing", () => {
+    assert.equal(isAuthorizedToken(randomToken(), token), false);
+    assert.equal(isAuthorizedToken("é".repeat(token.length), token), false);
   });
 });

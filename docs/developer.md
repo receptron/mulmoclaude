@@ -326,7 +326,7 @@ Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on
 
 - `server/api/auth/token.ts` — generate / write / unlink
 - `server/api/auth/bearerAuth.ts` — Express middleware
-- `server/api/auth/tokenEquals.ts` — constant-time token compare shared by the middleware and the pub/sub handshake guard
+- `server/api/auth/tokenGuard.ts` — the bearer rule (constant-time compare, non-empty checks, the generic message) shared by the middleware, the view-token check and the pub/sub handshake guard
 - `server/events/pub-sub/handshakeAuth.ts` — the `/ws/pubsub` handshake rule (pure); `server/events/pub-sub/index.ts` installs it as socket.io middleware
 - `src/utils/api.ts` — `setAuthToken()` + header injection (no call site changes needed; `apiFetch` auto-attaches); `getAuthToken()` for the socket handshake
 - `src/composables/usePubSub.ts` — presents the token in the socket.io handshake; `liveUpdatesRefused` drives `LiveUpdatesRefusedBanner.vue`

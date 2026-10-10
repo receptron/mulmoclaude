@@ -9,9 +9,13 @@ to `session.<id>` and read the agent's events as they stream.
 
 ## Approach
 
-Same shape as the bridge chat socket (`validateHandshake` in `@mulmobridge/chat-service`): the
-client sends the token in the socket.io `auth` payload, a server middleware compares it
-timing-safely and refuses the handshake otherwise.
+The client sends the token in the socket.io `auth` payload, and a server middleware applies the
+rule `bearerAuth` applies to the HTTP header (shared `isAuthorizedToken`: constant-time compare,
+non-empty on both sides, one generic refusal) and refuses the handshake otherwise. This is
+stricter than the bridge chat socket (`validateHandshake` in `@mulmobridge/chat-service`), which
+still compares with `!==`, answers with distinguishing messages and accepts every handshake when
+no token provider is given; that package is a leaf and cannot import the shared rule, so it is a
+follow-up of its own.
 
 ### Server
 
@@ -79,5 +83,6 @@ a client that stops sending the token fails the suite instead of timing out.
 - `/api/files/*` stays token-free (`<img src>` cannot carry a header).
 - Exposing the server beyond loopback still needs an authenticating proxy in front; documenting
   that setup belongs to #3425.
-- The server log is a per-refusal `warn`; rate-limiting it is not needed while socket.io stops
-  retrying after a refusal.
+- The server logs one `warn` per engine.io connection it refuses. A refused connection stays
+  open and can keep sending CONNECT packets, so a line per packet would let one client fill the
+  log; one per connection keeps a misconfigured relay diagnosable.

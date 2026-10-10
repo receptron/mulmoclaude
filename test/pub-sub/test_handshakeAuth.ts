@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isAuthorizedPubSubHandshake, PUBSUB_HANDSHAKE_REFUSED } from "../../server/events/pub-sub/handshakeAuth.js";
+import { isAuthorizedPubSubHandshake } from "../../server/events/pub-sub/handshakeAuth.js";
 
 // The pure rule behind the `/ws/pubsub` socket.io middleware (#3433). `auth`
 // is whatever the client put in `io({ auth })`, so every shape a client could
@@ -61,11 +61,5 @@ describe("isAuthorizedPubSubHandshake — refuses", () => {
 
   it("a candidate with the same character count but more bytes, without throwing", () => {
     assert.equal(isAuthorizedPubSubHandshake({ token: "é".repeat(64) }, TOKEN), false);
-  });
-});
-
-describe("PUBSUB_HANDSHAKE_REFUSED", () => {
-  it("is the same generic message bearerAuth sends, so neither surface says why", () => {
-    assert.equal(PUBSUB_HANDSHAKE_REFUSED, "unauthorized");
   });
 });

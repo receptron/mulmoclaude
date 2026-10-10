@@ -1,9 +1,12 @@
-import { describe, it, before, after, afterEach } from "node:test";
+import { describe, it, before, after, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { AddressInfo } from "node:net";
+import WebSocket from "ws";
 import { io as connect, type Socket } from "socket.io-client";
 import { createPubSub, type IPubSub } from "../../server/events/pub-sub/index.js";
+import { log } from "../../server/system/logger/index.js";
+import { ONE_SECOND_MS } from "../../server/utils/time.js";
 
 // Round-trip test for the socket.io-backed pub/sub transport.
 // Boots a real HTTP server on an ephemeral port, attaches the
@@ -14,6 +17,9 @@ import { createPubSub, type IPubSub } from "../../server/events/pub-sub/index.js
 
 const VALID_TOKEN = "a".repeat(64);
 const ROTATED_TOKEN = "b".repeat(64);
+// Every wait below is a few ms on an idle machine; the cap turns a late room
+// join under load into a red test instead of a hung `yarn test`.
+const SUITE_TIMEOUT_MS = 30 * ONE_SECOND_MS;
 
 interface Refusal {
   message: string;
@@ -21,7 +27,7 @@ interface Refusal {
   active: boolean;
 }
 
-describe("pub-sub (socket.io round trip)", () => {
+describe("pub-sub (socket.io round trip)", { timeout: SUITE_TIMEOUT_MS }, () => {
   let server: http.Server;
   let pubsub: IPubSub;
   let url: string;
@@ -61,17 +67,16 @@ describe("pub-sub (socket.io round trip)", () => {
 
   async function refused(auth: Record<string, unknown> | undefined): Promise<Refusal> {
     const socket = openSocket(auth);
-    const outcome = await new Promise<Refusal>((resolve, reject) => {
-      socket.once("connect", () => {
-        // Drop the connection before failing: an open socket keeps
-        // `server.close()` waiting, which turns a red test into a hung run.
-        socket.disconnect();
-        reject(new Error("handshake was accepted"));
+    try {
+      return await new Promise<Refusal>((resolve, reject) => {
+        socket.once("connect", () => reject(new Error("handshake was accepted")));
+        socket.once("connect_error", (err) => resolve({ message: err.message, active: socket.active }));
       });
-      socket.once("connect_error", (err) => resolve({ message: err.message, active: socket.active }));
-    });
-    socket.disconnect();
-    return outcome;
+    } finally {
+      // Also on the accepted path: an open socket keeps `server.close()`
+      // waiting, which turns a red test into a hung run.
+      socket.disconnect();
+    }
   }
 
   it("delivers publish() to a subscribed client", async () => {
@@ -170,6 +175,38 @@ describe("pub-sub (socket.io round trip)", () => {
 
       established.disconnect();
       fresh.disconnect();
+    });
+
+    // A refused handshake leaves the engine.io connection open, and socket.io
+    // runs the middleware again for every further CONNECT packet on it. The
+    // raw socket below sends three on one connection.
+    it("logs one refusal per connection, however many CONNECT packets it sends", async () => {
+      const warn = mock.method(log, "warn");
+      const raw = new WebSocket(`${url.replace("http://", "ws://")}/ws/pubsub/?EIO=4&transport=websocket`);
+      const wrongConnect = `40${JSON.stringify({ token: ROTATED_TOKEN })}`;
+      const CONNECT_ATTEMPTS = 3;
+      try {
+        const refusals = await new Promise<number>((resolve, reject) => {
+          let seen = 0;
+          raw.on("error", reject);
+          raw.on("message", (data) => {
+            const text = String(data);
+            if (text.startsWith("0")) {
+              Array.from({ length: CONNECT_ATTEMPTS }).forEach(() => raw.send(wrongConnect));
+              return;
+            }
+            if (text.startsWith("44")) {
+              seen += 1;
+              if (seen === CONNECT_ATTEMPTS) resolve(seen);
+            }
+          });
+        });
+        assert.equal(refusals, CONNECT_ATTEMPTS);
+        assert.equal(warn.mock.calls.filter((call) => call.arguments[0] === "pubsub").length, 1);
+      } finally {
+        warn.mock.restore();
+        raw.close();
+      }
     });
   });
 });

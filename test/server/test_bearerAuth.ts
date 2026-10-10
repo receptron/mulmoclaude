@@ -136,6 +136,14 @@ describe("bearerAuth — rejects mismatched token", () => {
     assert.equal(nextCalled, false);
     assert.equal(statusCode, 401);
   });
+
+  it("returns 401, not a throw, when the token has the same character count but more bytes", () => {
+    // "é" is one character and two UTF-8 bytes. A string-length compare let
+    // `timingSafeEqual` throw here, and Express answered 500 instead of 401.
+    const { nextCalled, statusCode } = run(makeReq(`Bearer ${"é".repeat(validToken.length)}`), makeRes());
+    assert.equal(nextCalled, false);
+    assert.equal(statusCode, 401);
+  });
 });
 
 describe("bearerAuth — defends against pre-bootstrap calls", () => {
