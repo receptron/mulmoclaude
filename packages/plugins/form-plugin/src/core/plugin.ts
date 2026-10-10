@@ -5,6 +5,7 @@ import type {
   FormField,
   CheckboxField,
   DateField,
+  ExcerptField,
   DropdownField,
   NumberField,
   RadioField,
@@ -13,6 +14,7 @@ import type {
   TimeField,
 } from "./types";
 import { TOOL_NAME, TOOL_DEFINITION } from "./definition";
+import { isInputField } from "./excerpt";
 
 function validateChoiceField(field: FormField): void {
   if (field.type === "radio") {
@@ -168,7 +170,7 @@ function validateTimeDefault(field: TimeField): void {
 }
 
 function validateDefaultValue(field: FormField): void {
-  if (field.defaultValue === undefined) return;
+  if (field.type === "excerpt" || field.defaultValue === undefined) return;
   if (field.type === "text" || field.type === "textarea") return validateTextDefault(field);
   if (field.type === "radio" || field.type === "dropdown") return validateChoiceDefault(field);
   if (field.type === "checkbox") return validateCheckboxDefault(field);
@@ -177,9 +179,22 @@ function validateDefaultValue(field: FormField): void {
   return validateTimeDefault(field);
 }
 
+/** A highlight the excerpt does not contain renders as no mark at all, so the
+ *  user would be asked about a passage without being shown where it is. */
+function validateExcerpt(field: ExcerptField): void {
+  const { id, text, highlights } = field;
+  if (typeof text !== "string" || text.trim() === "") throw new Error(`Field '${id}': excerpt fields must have a non-empty 'text'`);
+  if (highlights === undefined) return;
+  if (!Array.isArray(highlights)) throw new Error(`Field '${id}': highlights must be an array of strings`);
+  highlights.forEach((highlight) => {
+    if (typeof highlight !== "string" || highlight === "") throw new Error(`Field '${id}': each highlight must be a non-empty string`);
+    if (!text.includes(highlight)) throw new Error(`Field '${id}': highlight '${highlight}' does not appear in text`);
+  });
+}
+
 /** The types the view can render. A type outside this list renders as nothing at
  *  all, so it is refused here rather than presented as an empty row. */
-const FIELD_TYPES = ["text", "textarea", "radio", "dropdown", "checkbox", "date", "time", "number"];
+const FIELD_TYPES = ["text", "textarea", "radio", "dropdown", "checkbox", "date", "time", "number", "excerpt"];
 
 function validateField(field: FormField, index: number, seenIds: Set<string>): void {
   if (!field.id || typeof field.id !== "string") throw new Error(`Field ${index + 1} must have a valid 'id' property`);
@@ -188,6 +203,7 @@ function validateField(field: FormField, index: number, seenIds: Set<string>): v
   if (!FIELD_TYPES.includes(field.type)) throw new Error(`Field '${field.id}': unknown field type '${field.type}'`);
   if (seenIds.has(field.id)) throw new Error(`Duplicate field ID: '${field.id}'`);
   seenIds.add(field.id);
+  if (field.type === "excerpt") return validateExcerpt(field);
   validateChoiceField(field);
   validateRangeField(field);
   validateDefaultValue(field);
@@ -201,6 +217,7 @@ export const executeForm = async (_context: ToolContext, args: FormArgs): Promis
     }
     const seen = new Set<string>();
     fields.forEach((field, i) => validateField(field, i, seen));
+    if (!fields.some(isInputField)) throw new Error("At least one field must ask for input; excerpt fields only display text");
 
     const formData: FormData = { title, description, fields };
     const fieldCount = `${fields.length} field${fields.length > 1 ? "s" : ""}`;

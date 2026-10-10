@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+#### Forms can show the passage they ask about, with the phrase highlighted (#3426)
+
+`presentForm` gains a read-only `excerpt` field: a passage with highlighted phrases, placed right before the
+questions about it. Answering review comments no longer means checking the passage on a canvas and answering in a
+separate form — each comment's passage and its answer fields sit together, and Submit returns only the answers.
+A highlight that does not appear in the passage is refused, so a passage is never shown without its mark
+(`@mulmoclaude/form-plugin` 2.2.0).
+
+Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.0.1`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.4.0`, `@mulmoclaude/core@5.11.2`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.0.1`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.1`, `@mulmoclaude/mulmoscript-plugin@5.3.0`, `@mulmoclaude/spotify-plugin@2.0.2`, `@mulmoclaude/x-plugin@1.0.4`.
+
 ## [2.2.1] - 2026-10-09
 
 **Journal summaries now link to chat sessions that exist: new summaries point at `conversations/chat/`, and links already written by earlier releases open the right session in the viewer.**

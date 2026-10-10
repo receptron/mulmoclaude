@@ -12,6 +12,8 @@ export type {
   DateField,
   TimeField,
   NumberField,
+  ExcerptField,
+  InputField,
   FormField,
   FormData,
   FormArgs,

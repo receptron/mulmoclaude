@@ -30,224 +30,234 @@
       </div>
 
       <form class="space-y-6" @submit.prevent="handleSubmit">
-        <div
-          v-for="field in formData.fields"
-          :id="field.id"
-          :key="field.id"
-          class="form-field"
-          :class="{ 'has-error': hasError(field.id) && touched.has(field.id) }"
-        >
-          <label
-            :for="`input-${field.id}`"
-            class="block text-gray-800 font-semibold mb-2"
-            :class="{
-              'text-red-600': hasError(field.id) && touched.has(field.id),
-            }"
-          >
-            {{ field.label }}
-            <span v-if="field.required" class="text-red-500 ml-1" aria-label="required">{{ t.requiredMarker }}</span>
-          </label>
-
-          <p v-if="field.description" class="text-gray-600 text-sm mb-2">
-            {{ field.description }}
-          </p>
-
-          <input
-            v-if="field.type === 'text'"
-            :id="`input-${field.id}`"
-            v-model="formValues[field.id]"
-            type="text"
-            :placeholder="field.placeholder"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-            class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-            :class="{
-              'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
-              'border-gray-300': !hasError(field.id) || !touched.has(field.id),
-            }"
-            @blur="handleBlur(field.id)"
-            @input="handleInput(field.id)"
-          />
-
-          <textarea
-            v-else-if="field.type === 'textarea'"
-            :id="`input-${field.id}`"
-            v-model="formValues[field.id]"
-            :placeholder="field.placeholder"
-            :rows="field.rows || 4"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-            class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors resize-y"
-            :class="{
-              'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
-              'border-gray-300': !hasError(field.id) || !touched.has(field.id),
-            }"
-            @blur="handleBlur(field.id)"
-            @input="handleInput(field.id)"
-          />
-
-          <input
-            v-else-if="field.type === 'number'"
-            :id="`input-${field.id}`"
-            v-model.number="formValues[field.id]"
-            type="number"
-            :min="field.min"
-            :max="field.max"
-            :step="field.step"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-            class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-            :class="{
-              'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
-              'border-gray-300': !hasError(field.id) || !touched.has(field.id),
-            }"
-            @blur="handleBlur(field.id)"
-            @input="handleInput(field.id)"
-          />
-
-          <input
-            v-else-if="field.type === 'date'"
-            :id="`input-${field.id}`"
-            v-model="formValues[field.id]"
-            type="date"
-            :min="field.minDate"
-            :max="field.maxDate"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-            class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-            :class="{
-              'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
-              'border-gray-300': !hasError(field.id) || !touched.has(field.id),
-            }"
-            @blur="handleBlur(field.id)"
-            @change="handleInput(field.id)"
-          />
-
-          <input
-            v-else-if="field.type === 'time'"
-            :id="`input-${field.id}`"
-            v-model="formValues[field.id]"
-            type="time"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-            class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-            :class="{
-              'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
-              'border-gray-300': !hasError(field.id) || !touched.has(field.id),
-            }"
-            @blur="handleBlur(field.id)"
-            @change="handleInput(field.id)"
-          />
-
-          <div
-            v-else-if="field.type === 'radio'"
-            class="space-y-2"
-            role="radiogroup"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-          >
+        <template v-for="field in formData.fields" :key="field.id">
+          <section v-if="field.type === 'excerpt'" :id="field.id" data-testid="form-excerpt">
+            <h3 class="text-gray-800 font-semibold mb-2">{{ field.label }}</h3>
+            <blockquote class="border-l-4 border-amber-400 bg-gray-50 rounded-r-lg px-4 py-3 text-gray-800 leading-relaxed">
+              <component
+                :is="segment.highlighted ? 'mark' : 'span'"
+                v-for="(segment, index) in splitExcerpt(field.text, field.highlights)"
+                :key="index"
+                class="whitespace-pre-wrap"
+                :class="{ 'bg-amber-200 text-gray-900 rounded px-0.5': segment.highlighted }"
+                >{{ segment.text }}</component
+              >
+            </blockquote>
+            <p v-if="field.description" class="text-gray-600 text-sm mt-2">{{ field.description }}</p>
+          </section>
+          <div v-else :id="field.id" class="transition-all duration-200 ease-[ease]" :class="{ 'animate-shake': hasError(field.id) && touched.has(field.id) }">
             <label
-              v-for="(choice, index) in field.choices"
-              :key="index"
-              class="flex items-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+              :for="`input-${field.id}`"
+              class="block text-gray-800 font-semibold mb-2"
               :class="{
-                'border-blue-500 bg-blue-50': formValues[field.id] === index,
-                'border-gray-300': formValues[field.id] !== index,
+                'text-red-600': hasError(field.id) && touched.has(field.id),
               }"
             >
-              <input
-                v-model="formValues[field.id]"
-                type="radio"
-                :name="field.id"
-                :value="index"
-                class="mr-3 h-4 w-4 flex-shrink-0"
-                @change="handleInput(field.id)"
-                @blur="handleBlur(field.id)"
-              />
-              <span class="text-gray-800">{{ getChoiceLabel(choice) }}</span>
+              {{ field.label }}
+              <span v-if="field.required" class="text-red-500 ml-1" aria-label="required">{{ t.requiredMarker }}</span>
             </label>
-          </div>
 
-          <select
-            v-else-if="field.type === 'dropdown'"
-            :id="`input-${field.id}`"
-            v-model="formValues[field.id]"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-            class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors bg-white"
-            :class="{
-              'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
-              'border-gray-300': !hasError(field.id) || !touched.has(field.id),
-            }"
-            @blur="handleBlur(field.id)"
-            @change="handleInput(field.id)"
-          >
-            <option :value="null" disabled>{{ t.selectOption }}</option>
-            <option v-for="(choice, index) in field.choices" :key="index" :value="index">
-              {{ getChoiceLabel(choice) }}
-            </option>
-          </select>
+            <p v-if="field.description" class="text-gray-600 text-sm mb-2">
+              {{ field.description }}
+            </p>
 
-          <div
-            v-else-if="field.type === 'checkbox'"
-            class="space-y-2"
-            role="group"
-            :aria-invalid="hasError(field.id) && touched.has(field.id)"
-            :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
-          >
-            <label
-              v-for="(choice, index) in field.choices"
-              :key="index"
-              class="flex items-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+            <input
+              v-if="field.type === 'text'"
+              :id="`input-${field.id}`"
+              v-model="formValues[field.id]"
+              type="text"
+              :placeholder="field.placeholder"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+              class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
               :class="{
-                'border-blue-500 bg-blue-50': (formValues[field.id] || []).includes(index),
-                'border-gray-300': !(formValues[field.id] || []).includes(index),
+                'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
+                'border-gray-300': !hasError(field.id) || !touched.has(field.id),
+              }"
+              @blur="handleBlur(field.id)"
+              @input="handleInput(field.id)"
+            />
+
+            <textarea
+              v-else-if="field.type === 'textarea'"
+              :id="`input-${field.id}`"
+              v-model="formValues[field.id]"
+              :placeholder="field.placeholder"
+              :rows="field.rows || 4"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+              class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors resize-y"
+              :class="{
+                'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
+                'border-gray-300': !hasError(field.id) || !touched.has(field.id),
+              }"
+              @blur="handleBlur(field.id)"
+              @input="handleInput(field.id)"
+            />
+
+            <input
+              v-else-if="field.type === 'number'"
+              :id="`input-${field.id}`"
+              v-model.number="formValues[field.id]"
+              type="number"
+              :min="field.min"
+              :max="field.max"
+              :step="field.step"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+              class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              :class="{
+                'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
+                'border-gray-300': !hasError(field.id) || !touched.has(field.id),
+              }"
+              @blur="handleBlur(field.id)"
+              @input="handleInput(field.id)"
+            />
+
+            <input
+              v-else-if="field.type === 'date'"
+              :id="`input-${field.id}`"
+              v-model="formValues[field.id]"
+              type="date"
+              :min="field.minDate"
+              :max="field.maxDate"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+              class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              :class="{
+                'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
+                'border-gray-300': !hasError(field.id) || !touched.has(field.id),
+              }"
+              @blur="handleBlur(field.id)"
+              @change="handleInput(field.id)"
+            />
+
+            <input
+              v-else-if="field.type === 'time'"
+              :id="`input-${field.id}`"
+              v-model="formValues[field.id]"
+              type="time"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+              class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+              :class="{
+                'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
+                'border-gray-300': !hasError(field.id) || !touched.has(field.id),
+              }"
+              @blur="handleBlur(field.id)"
+              @change="handleInput(field.id)"
+            />
+
+            <div
+              v-else-if="field.type === 'radio'"
+              class="space-y-2"
+              role="radiogroup"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+            >
+              <label
+                v-for="(choice, index) in field.choices"
+                :key="index"
+                class="flex items-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+                :class="{
+                  'border-blue-500 bg-blue-50': formValues[field.id] === index,
+                  'border-gray-300': formValues[field.id] !== index,
+                }"
+              >
+                <input
+                  v-model="formValues[field.id]"
+                  type="radio"
+                  :name="field.id"
+                  :value="index"
+                  class="mr-3 h-4 w-4 flex-shrink-0"
+                  @change="handleInput(field.id)"
+                  @blur="handleBlur(field.id)"
+                />
+                <span class="text-gray-800">{{ getChoiceLabel(choice) }}</span>
+              </label>
+            </div>
+
+            <select
+              v-else-if="field.type === 'dropdown'"
+              :id="`input-${field.id}`"
+              v-model="formValues[field.id]"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+              class="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors bg-white"
+              :class="{
+                'border-red-500 focus:ring-red-500': hasError(field.id) && touched.has(field.id),
+                'border-gray-300': !hasError(field.id) || !touched.has(field.id),
+              }"
+              @blur="handleBlur(field.id)"
+              @change="handleInput(field.id)"
+            >
+              <option :value="null" disabled>{{ t.selectOption }}</option>
+              <option v-for="(choice, index) in field.choices" :key="index" :value="index">
+                {{ getChoiceLabel(choice) }}
+              </option>
+            </select>
+
+            <div
+              v-else-if="field.type === 'checkbox'"
+              class="space-y-2"
+              role="group"
+              :aria-invalid="hasError(field.id) && touched.has(field.id)"
+              :aria-describedby="hasError(field.id) && touched.has(field.id) ? `${field.id}-error` : undefined"
+            >
+              <label
+                v-for="(choice, index) in field.choices"
+                :key="index"
+                class="flex items-center p-3 border-2 border-gray-300 rounded-lg cursor-pointer transition-all hover:bg-gray-50"
+                :class="{
+                  'border-blue-500 bg-blue-50': (formValues[field.id] || []).includes(index),
+                  'border-gray-300': !(formValues[field.id] || []).includes(index),
+                }"
+              >
+                <input
+                  v-model="formValues[field.id]"
+                  type="checkbox"
+                  :value="index"
+                  class="mr-3 h-4 w-4 flex-shrink-0"
+                  @change="handleInput(field.id)"
+                  @blur="handleBlur(field.id)"
+                />
+                <span class="text-gray-800">{{ getChoiceLabel(choice) }}</span>
+              </label>
+            </div>
+
+            <div
+              v-if="hasError(field.id) && touched.has(field.id)"
+              :id="`${field.id}-error`"
+              class="flex items-center gap-2 mt-2 text-red-600 text-sm"
+              role="alert"
+            >
+              <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                <path
+                  fill-rule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clip-rule="evenodd"
+                />
+              </svg>
+              {{ fieldErrors.get(field.id)?.message }}
+            </div>
+
+            <div
+              v-if="showCharCount(field)"
+              class="text-sm mt-2"
+              :class="{
+                'text-amber-600 font-semibold': isNearLimit(field),
+                'text-gray-500': !isNearLimit(field),
               }"
             >
-              <input
-                v-model="formValues[field.id]"
-                type="checkbox"
-                :value="index"
-                class="mr-3 h-4 w-4 flex-shrink-0"
-                @change="handleInput(field.id)"
-                @blur="handleBlur(field.id)"
-              />
-              <span class="text-gray-800">{{ getChoiceLabel(choice) }}</span>
-            </label>
+              <template v-if="field.maxLength">
+                {{ t.charactersCount((formValues[field.id] || "").length, field.maxLength) }}
+              </template>
+              <template v-else>
+                {{ t.charactersCountNoMax((formValues[field.id] || "").length) }}
+              </template>
+            </div>
           </div>
-
-          <div
-            v-if="hasError(field.id) && touched.has(field.id)"
-            :id="`${field.id}-error`"
-            class="flex items-center gap-2 mt-2 text-red-600 text-sm"
-            role="alert"
-          >
-            <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-              <path
-                fill-rule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                clip-rule="evenodd"
-              />
-            </svg>
-            {{ fieldErrors.get(field.id)?.message }}
-          </div>
-
-          <div
-            v-if="showCharCount(field)"
-            class="text-sm mt-2"
-            :class="{
-              'text-amber-600 font-semibold': isNearLimit(field),
-              'text-gray-500': !isNearLimit(field),
-            }"
-          >
-            <template v-if="field.maxLength">
-              {{ t.charactersCount((formValues[field.id] || "").length, field.maxLength) }}
-            </template>
-            <template v-else>
-              {{ t.charactersCountNoMax((formValues[field.id] || "").length) }}
-            </template>
-          </div>
-        </div>
+        </template>
 
         <div class="mt-8 flex justify-center">
           <button
@@ -271,7 +281,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from "vue";
 import type { ToolResult } from "gui-chat-protocol";
-import type { FormData, FormField, TextField, TextareaField, NumberField, DateField, CheckboxField } from "../core/types";
+import type { FormData, FormField, InputField, TextField, TextareaField, NumberField, DateField, CheckboxField } from "../core/types";
+import { isInputField, splitExcerpt } from "../core/excerpt";
 import { toFormViewState, type FormViewState } from "../core/viewState";
 import { useT } from "../lang";
 
@@ -301,6 +312,8 @@ const submitted = ref<boolean>(false);
 const showErrorSummary = ref<boolean>(false);
 const isRestoring = ref<boolean>(false);
 
+const inputFields = computed<InputField[]>(() => formData.value?.fields.filter(isInputField) ?? []);
+
 function isFreshResult(newResult: ToolResult, oldResult: ToolResult | null | undefined): boolean {
   return !oldResult || !oldResult.jsonData || oldResult.uuid !== newResult.uuid || oldResult.jsonData !== newResult.jsonData;
 }
@@ -316,7 +329,7 @@ function applyNewResult(newResult: ToolResult): void {
   isRestoring.value = true;
   formData.value = newResult.jsonData as FormData;
   formValues.value = {};
-  formData.value.fields.forEach((field) => {
+  formData.value.fields.filter(isInputField).forEach((field) => {
     formValues.value[field.id] = getDefaultValue(field);
   });
   const viewState = toFormViewState(newResult.viewState);
@@ -523,7 +536,7 @@ function getErrorMessage(field: FormField, value: any): string | null {
 }
 
 function validateField(fieldId: string): boolean {
-  const field = formData.value?.fields.find((candidate) => candidate.id === fieldId);
+  const field = inputFields.value.find((candidate) => candidate.id === fieldId);
   if (!field) return true;
 
   const value = formValues.value[fieldId];
@@ -576,17 +589,14 @@ function isNearLimit(field: FormField): boolean {
   return currentLength / maxLength > 0.9;
 }
 
-const requiredFieldsCount = computed(() => formData.value?.fields.filter((field) => field.required).length || 0);
+const requiredFieldsCount = computed(() => inputFields.value.filter((field) => field.required).length);
 
-const filledRequiredCount = computed(() => {
-  if (!formData.value) return 0;
-  return formData.value.fields.filter((field) => field.required && !isEmpty(formValues.value[field.id])).length;
-});
+const filledRequiredCount = computed(() => inputFields.value.filter((field) => field.required && !isEmpty(formValues.value[field.id])).length);
 
 function handleSubmit(): void {
   if (submitted.value) return;
 
-  formData.value?.fields.forEach((field) => {
+  inputFields.value.forEach((field) => {
     touched.value.add(field.id);
     validateField(field.id);
   });
@@ -600,7 +610,7 @@ function handleSubmit(): void {
 
   const lines: string[] = [];
   if (formData.value?.title) lines.push(`**${singleLine(formData.value.title)}**`, "");
-  formData.value?.fields.forEach((field) => {
+  inputFields.value.forEach((field) => {
     lines.push(`- ${singleLine(field.label)}: ${renderValue(field, formValues.value[field.id])}`);
   });
 
@@ -648,26 +658,3 @@ function renderValue(field: FormField, value: any): string {
   return String(value);
 }
 </script>
-
-<style scoped>
-.form-field {
-  transition: all 0.2s ease;
-}
-
-.form-field.has-error {
-  animation: shake 0.3s ease;
-}
-
-@keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-5px);
-  }
-  75% {
-    transform: translateX(5px);
-  }
-}
-</style>
