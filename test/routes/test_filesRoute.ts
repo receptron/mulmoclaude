@@ -29,6 +29,7 @@ import {
   isSensitivePath,
   RAW_SECURITY_HEADERS,
   RAW_SECURITY_HEADERS_PDF,
+  RAW_SECURITY_HEADERS_MEDIA,
   rawSecurityHeadersForMime,
 } from "../../server/api/routes/files.js";
 
@@ -418,16 +419,37 @@ describe("RAW_SECURITY_HEADERS_PDF — Safari/WebKit carve-out (#1299)", () => {
   });
 });
 
+describe("RAW_SECURITY_HEADERS_MEDIA — opened-in-a-tab playback (#3437)", () => {
+  // Under `sandbox`, Chrome's media page re-fetches the file from
+  // the opaque `null` origin in CORS mode and the player never
+  // loads. These pin the carve-out and the nosniff it keeps.
+
+  it("does NOT set Content-Security-Policy on audio / video", () => {
+    assert.equal(RAW_SECURITY_HEADERS_MEDIA["Content-Security-Policy"], undefined);
+  });
+
+  it("still sets X-Content-Type-Options nosniff on audio / video", () => {
+    assert.equal(RAW_SECURITY_HEADERS_MEDIA["X-Content-Type-Options"], "nosniff");
+  });
+});
+
 describe("rawSecurityHeadersForMime", () => {
   it("returns the PDF-specific set for application/pdf", () => {
     assert.equal(rawSecurityHeadersForMime("application/pdf"), RAW_SECURITY_HEADERS_PDF);
   });
 
+  it("returns the media set for audio/* and video/* (#3437)", () => {
+    for (const mime of ["audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg", "video/mp4", "video/webm", "video/quicktime"]) {
+      assert.equal(rawSecurityHeadersForMime(mime), RAW_SECURITY_HEADERS_MEDIA, `expected media headers for ${mime}`);
+    }
+  });
+
   it("returns the default sandbox set for image/* / text/* / SVG / HTML", () => {
     // SVG and HTML are the original threat shapes the sandbox CSP
     // was added to defend (plans/done/fix-files-raw-csp-sandbox.md).
-    // Anything that isn't a PDF MUST stay on the default headers.
-    for (const mime of ["image/svg+xml", "text/html", "image/png", "text/plain", "application/octet-stream", "video/mp4", "audio/mpeg"]) {
+    // Anything that isn't a PDF or audio/video MUST stay on the
+    // default headers.
+    for (const mime of ["image/svg+xml", "text/html", "image/png", "text/plain", "application/octet-stream"]) {
       assert.equal(rawSecurityHeadersForMime(mime), RAW_SECURITY_HEADERS, `expected sandbox CSP for ${mime}`);
     }
   });
