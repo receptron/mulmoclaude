@@ -24,9 +24,15 @@ controls. The Player API itself works for a Premium account.
 Not done: adding `user-read-private` (no help for Development Mode apps per the report, and it
 would force every user to reconnect).
 
-## Separate PR
+## Separate PR — URIs in the agent-facing summaries
 
-Track / album / playlist URIs in the search summary, so a hit can be passed to `play`.
+The search summary listed titles and artists only, so the agent could not pass a hit to `play`.
+The same gap was in every listening summary (Liked Songs, playlist tracks, playlists, recently
+played, now playing). `src/spotifyUri.ts` appends the URI to each line that names a playable
+item. Album / artist / playlist lines build `spotify:<type>:<id>` (their normalisers only ever
+see that type). Track lines use the `spotify:track:` URI Spotify returned, kept as `trackUri` by
+`normaliseTrack`: playlist and now-playing items can be podcast episodes, which pass
+`normaliseTrack`, and those lines carry no URI rather than an invented track one.
 
 ## Tests
 

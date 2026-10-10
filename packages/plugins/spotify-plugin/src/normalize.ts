@@ -28,6 +28,7 @@ interface SpotifyTrack {
   album?: unknown;
   duration_ms?: unknown;
   external_urls?: unknown;
+  uri?: unknown;
 }
 
 interface SpotifyPlaylist {
@@ -72,6 +73,14 @@ function spotifyUrl(externalUrls: unknown): string | undefined {
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
 }
 
+// Playlist and now-playing items can be podcast episodes, which still pass `normaliseTrack`;
+// only Spotify's own track URI is kept, so an episode never gets a `spotify:track:` URI.
+const TRACK_URI_RE = /^spotify:track:[A-Za-z0-9]+$/;
+
+function trackUriOf(uri: unknown): string | undefined {
+  return typeof uri === "string" && TRACK_URI_RE.test(uri) ? uri : undefined;
+}
+
 function artistNames(artists: unknown): string[] {
   if (!Array.isArray(artists)) return [];
   return artists
@@ -90,6 +99,7 @@ export function normaliseTrack(raw: unknown): NormalisedTrack | null {
   const album = isRecord(track.album) ? (track.album as SpotifyAlbum) : null;
   const url = spotifyUrl(track.external_urls);
   const imageUrl = smallestImageUrl(album?.images);
+  const trackUri = trackUriOf(track.uri);
   return {
     id: track.id,
     name: track.name,
@@ -98,6 +108,7 @@ export function normaliseTrack(raw: unknown): NormalisedTrack | null {
     durationMs: typeof track.duration_ms === "number" && Number.isFinite(track.duration_ms) ? track.duration_ms : 0,
     ...(url !== undefined ? { url } : {}),
     ...(imageUrl !== undefined ? { imageUrl } : {}),
+    ...(trackUri !== undefined ? { trackUri } : {}),
   };
 }
 

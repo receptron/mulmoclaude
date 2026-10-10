@@ -18,36 +18,39 @@ import {
 
 describe("formatTrackLine", () => {
   it("prefixes 1-based index and joins artists with comma-space", () => {
-    assert.equal(formatTrackLine({ id: "x", name: "Song", artists: ["A", "B"], album: "", durationMs: 0 }, 0), "1. Song — A, B");
+    assert.equal(
+      formatTrackLine({ id: "x", name: "Song", artists: ["A", "B"], album: "", durationMs: 0, trackUri: "spotify:track:x" }, 0),
+      "1. Song — A, B · spotify:track:x",
+    );
   });
 });
 
 describe("formatArtistLine", () => {
   it("appends up to 3 genres in brackets when present", () => {
     const line = formatArtistLine({ id: "x", name: "Daft Punk", genres: ["french house", "electronic", "disco", "synth"] }, 0);
-    assert.equal(line, "1. Daft Punk [french house, electronic, disco]");
+    assert.equal(line, "1. Daft Punk [french house, electronic, disco] · spotify:artist:x");
   });
 
   it("omits the brackets when no genres", () => {
-    assert.equal(formatArtistLine({ id: "x", name: "Niche", genres: [] }, 4), "5. Niche");
+    assert.equal(formatArtistLine({ id: "x", name: "Niche", genres: [] }, 4), "5. Niche · spotify:artist:x");
   });
 });
 
 describe("formatAlbumLine", () => {
   it("uses the year prefix when releaseDate is set", () => {
     const line = formatAlbumLine({ id: "x", name: "Discovery", artists: ["Daft Punk"], releaseDate: "2001-03-12", totalTracks: 14 }, 0);
-    assert.equal(line, "1. Discovery — Daft Punk (2001)");
+    assert.equal(line, "1. Discovery — Daft Punk (2001) · spotify:album:x");
   });
 
   it('emits "?" when releaseDate is empty', () => {
     const line = formatAlbumLine({ id: "x", name: "Mystery", artists: [], releaseDate: "", totalTracks: 0 }, 0);
-    assert.equal(line, "1. Mystery —  (?)");
+    assert.equal(line, "1. Mystery —  (?) · spotify:album:x");
   });
 });
 
 describe("formatPlaylistLine", () => {
   it("includes the track count", () => {
-    assert.equal(formatPlaylistLine({ id: "x", name: "Mix", description: "", trackCount: 17 }, 0), "1. Mix (17 tracks)");
+    assert.equal(formatPlaylistLine({ id: "x", name: "Mix", description: "", trackCount: 17 }, 0), "1. Mix (17 tracks) · spotify:playlist:x");
   });
 });
 

@@ -3,6 +3,7 @@
 // #1168) without going through the full dispatch path. Pure
 // functions, no side effects.
 
+import { withTrackUri, withUri } from "./spotifyUri";
 import type { NormalisedAlbum, NormalisedArtist, NormalisedPlaylist, NormalisedTrack, SearchResult } from "./types";
 
 /** Build the LLM-facing message string for a search result. The
@@ -62,19 +63,19 @@ export function formatSearchSection<T>(label: string, items: T[], formatter: (it
 }
 
 export function formatTrackLine(track: NormalisedTrack, idx: number): string {
-  return `${idx + 1}. ${track.name} — ${track.artists.join(", ")}`;
+  return withTrackUri(`${idx + 1}. ${track.name} — ${track.artists.join(", ")}`, track);
 }
 
 export function formatArtistLine(artist: NormalisedArtist, idx: number): string {
   const genres = artist.genres.length > 0 ? ` [${artist.genres.slice(0, 3).join(", ")}]` : "";
-  return `${idx + 1}. ${artist.name}${genres}`;
+  return withUri(`${idx + 1}. ${artist.name}${genres}`, "artist", artist.id);
 }
 
 export function formatAlbumLine(album: NormalisedAlbum, idx: number): string {
   const year = album.releaseDate ? album.releaseDate.slice(0, 4) : "?";
-  return `${idx + 1}. ${album.name} — ${album.artists.join(", ")} (${year})`;
+  return withUri(`${idx + 1}. ${album.name} — ${album.artists.join(", ")} (${year})`, "album", album.id);
 }
 
 export function formatPlaylistLine(playlist: NormalisedPlaylist, idx: number): string {
-  return `${idx + 1}. ${playlist.name} (${playlist.trackCount} tracks)`;
+  return withUri(`${idx + 1}. ${playlist.name} (${playlist.trackCount} tracks)`, "playlist", playlist.id);
 }
