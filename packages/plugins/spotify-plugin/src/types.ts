@@ -79,6 +79,9 @@ export interface NormalisedTrack {
   /** Cover-art URL (smallest available). Optional: tracks under
    *  podcasts / locally-uploaded files don't carry album art. */
   imageUrl?: string;
+  /** Spotify's own `spotify:track:<id>` URI; absent for a podcast
+   *  episode, whose URI `play`'s `trackUris` does not take. */
+  trackUri?: string;
 }
 
 export interface NormalisedPlaylist {

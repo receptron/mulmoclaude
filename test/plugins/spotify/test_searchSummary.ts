@@ -18,7 +18,10 @@ import {
 
 describe("formatTrackLine", () => {
   it("prefixes 1-based index and joins artists with comma-space", () => {
-    assert.equal(formatTrackLine({ id: "x", name: "Song", artists: ["A", "B"], album: "", durationMs: 0 }, 0), "1. Song — A, B · spotify:track:x");
+    assert.equal(
+      formatTrackLine({ id: "x", name: "Song", artists: ["A", "B"], album: "", durationMs: 0, trackUri: "spotify:track:x" }, 0),
+      "1. Song — A, B · spotify:track:x",
+    );
   });
 });
 

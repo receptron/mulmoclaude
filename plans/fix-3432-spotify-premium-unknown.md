@@ -28,9 +28,11 @@ would force every user to reconnect).
 
 The search summary listed titles and artists only, so the agent could not pass a hit to `play`.
 The same gap was in every listening summary (Liked Songs, playlist tracks, playlists, recently
-played, now playing). One helper, `src/spotifyUri.ts`, appends ` · spotify:<type>:<id>` to each
-line that names a playable item. Normalisation already drops items without an id, so every line
-has one.
+played, now playing). `src/spotifyUri.ts` appends the URI to each line that names a playable
+item. Album / artist / playlist lines build `spotify:<type>:<id>` (their normalisers only ever
+see that type). Track lines use the `spotify:track:` URI Spotify returned, kept as `trackUri` by
+`normaliseTrack`: playlist and now-playing items can be podcast episodes, which pass
+`normaliseTrack`, and those lines carry no URI rather than an invented track one.
 
 ## Tests
 

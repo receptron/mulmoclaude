@@ -241,6 +241,7 @@ const TrackSchema = z.object({
   durationMs: z.number(),
   url: z.string().optional(),
   imageUrl: z.string().optional(),
+  trackUri: z.string().optional(),
 });
 
 const PlaylistSchema = z.object({

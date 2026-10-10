@@ -3,7 +3,7 @@
 // #1168) without going through the full dispatch path. Pure
 // functions, no side effects.
 
-import { withUri } from "./spotifyUri";
+import { withTrackUri, withUri } from "./spotifyUri";
 import type { NormalisedAlbum, NormalisedArtist, NormalisedPlaylist, NormalisedTrack, SearchResult } from "./types";
 
 /** Build the LLM-facing message string for a search result. The
@@ -63,7 +63,7 @@ export function formatSearchSection<T>(label: string, items: T[], formatter: (it
 }
 
 export function formatTrackLine(track: NormalisedTrack, idx: number): string {
-  return withUri(`${idx + 1}. ${track.name} — ${track.artists.join(", ")}`, "track", track.id);
+  return withTrackUri(`${idx + 1}. ${track.name} — ${track.artists.join(", ")}`, track);
 }
 
 export function formatArtistLine(artist: NormalisedArtist, idx: number): string {

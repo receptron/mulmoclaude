@@ -8,7 +8,16 @@ import { summariseListening } from "../../../packages/plugins/spotify-plugin/src
 import { spotifyUri } from "../../../packages/plugins/spotify-plugin/src/spotifyUri.ts";
 import type { NormalisedPlaylist, NormalisedTrack, RecentlyPlayedItem } from "../../../packages/plugins/spotify-plugin/src/types.ts";
 
-const track = (trackId: string, name: string): NormalisedTrack => ({ id: trackId, name, artists: ["Joni"], album: "Blue", durationMs: 1000 });
+const track = (trackId: string, name: string): NormalisedTrack => ({
+  id: trackId,
+  name,
+  artists: ["Joni"],
+  album: "Blue",
+  durationMs: 1000,
+  trackUri: `spotify:track:${trackId}`,
+});
+/** A podcast episode as `normaliseTrack` leaves it: it passes, but carries no track URI. */
+const EPISODE: NormalisedTrack = { id: "e-1", name: "Episode 12", artists: [], album: "", durationMs: 1000 };
 const TRACKS = [track("t-1", "Blue"), track("t-2", "River")];
 const PLAYLISTS: NormalisedPlaylist[] = [
   { id: "p-1", name: "Focus", description: "", trackCount: 12 },
@@ -25,7 +34,7 @@ describe("summariseListening — every line ends with the item's URI", () => {
       const lines = itemLines(summariseListening(kind, TRACKS));
       assert.deepEqual(
         lines.map((line) => line.split(" · ").pop()),
-        TRACKS.map((item) => spotifyUri("track", item.id)),
+        TRACKS.map((item) => item.trackUri),
         kind,
       );
     });
@@ -43,8 +52,14 @@ describe("summariseListening — every line ends with the item's URI", () => {
     const lines = itemLines(summariseListening("recent", RECENT));
     assert.deepEqual(
       lines.map((line) => line.split(" · ").pop()),
-      TRACKS.map((item) => spotifyUri("track", item.id)),
+      TRACKS.map((item) => item.trackUri),
     );
+  });
+
+  it("gives an episode no URI rather than an invented spotify:track: one", () => {
+    const lines = itemLines(summariseListening("playlistTracks", [TRACKS[0], EPISODE]));
+    assert.deepEqual(lines, ["1. Blue — Joni · spotify:track:t-1", "2. Episode 12 — "]);
+    assert.equal(summariseListening("nowPlaying", EPISODE), "Now playing: Episode 12 —  ()");
   });
 
   it("now playing ends with the track URI", () => {
@@ -59,7 +74,7 @@ describe("summariseListening — every line ends with the item's URI", () => {
 
 describe("spotifyUri", () => {
   it("builds the URI shape `play` takes", () => {
-    assert.equal(spotifyUri("track", "abc123"), "spotify:track:abc123");
+    assert.equal(spotifyUri("album", "abc123"), "spotify:album:abc123");
     assert.equal(spotifyUri("playlist", "p"), "spotify:playlist:p");
   });
 });
