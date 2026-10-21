@@ -153,8 +153,7 @@ describe("settleAll", () => {
 
   it("resolves when every load does, and wraps a non-Error failure", async () => {
     await settleAll([Promise.resolve(1), Promise.resolve()]);
-    // A rejection that is not an Error, as a failed dynamic import can give.
-    const offline: unknown = "offline";
-    await assert.rejects(settleAll([Promise.reject(offline)]), /offline/);
+    const nonErrorReason: unknown = "offline";
+    await assert.rejects(settleAll([Promise.reject(nonErrorReason)]), (error: unknown) => error instanceof Error && error.message === "offline");
   });
 });

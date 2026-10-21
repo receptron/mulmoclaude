@@ -7,7 +7,7 @@
 import type { TelegramApi, TelegramMessage } from "./api.js";
 import type { Allowlist } from "./allowlist.js";
 import type { Attachment } from "@mulmobridge/protocol";
-import { parseDataUrl, type MessageAck, type PushEvent } from "@mulmobridge/client";
+import { parseDataUrl, replyAfterProcessingIndicator, type MessageAck, type PushEvent } from "@mulmobridge/client";
 
 // Telegram caps a single message at 4096 chars. We split long
 // replies naively; pretty formatting (preserve markdown, break on
@@ -57,6 +57,12 @@ type MediaOutcome = { attachment: Attachment } | { failed: true } | null;
 // rate limits. 1 second is conservative; Telegram allows ~30 edits
 // per minute per chat.
 const STREAM_EDIT_INTERVAL_MS = 1000;
+
+// Telegram shows a chat action for about 5 s, or until the next message.
+const TYPING_REFRESH_MS = 4_000;
+
+/** Posts the final reply; runs once "typing…" is down. */
+type Deliver = () => Promise<void>;
 
 export function createMessageRouter(deps: RouterDeps): MessageRouter {
   const { api, allowlist, sendToMulmo } = deps;
@@ -176,13 +182,24 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     const mediaLabel = buildMediaLabel(msg);
     log.info(`[telegram] accepted chat=${chatId} user=@${userLabel(msg)} len=${text.length}${mediaLabel}`);
 
+    await replyAfterProcessingIndicator(
+      () => api.sendChatAction(chatId, "typing"),
+      { produce: () => relay(msg, chatId, text), post: (deliver) => deliver() },
+      { refreshMs: TYPING_REFRESH_MS, label: "telegram", log },
+    );
+  }
+
+  /** Everything up to the final reply, run while "typing…" shows; returns the
+   *  step that delivers the reply, which runs once the indicator is down. */
+  async function relay(msg: TelegramMessage, chatId: number, text: string): Promise<Deliver> {
     const { attachments, failed } = await tryDownloadAttachments(msg);
 
     // Attachment-only message where download failed: bail out instead
     // of sending a query without the actual file.
     if (failed && text.trim().length === 0) {
-      await api.sendMessage(chatId, "Sorry, I could not download the attachment. Please try again.").catch(() => {});
-      return;
+      return async () => {
+        await api.sendMessage(chatId, "Sorry, I could not download the attachment. Please try again.").catch(() => {});
+      };
     }
 
     // Surface the attachment failure so the user knows the file was lost.
@@ -196,10 +213,13 @@ export function createMessageRouter(deps: RouterDeps): MessageRouter {
     flushStream();
     const sentMsgId = streamMessageId;
     stopStream();
+    return () => deliverFinal(chatId, sentMsgId, ack);
+  }
 
-    // If streaming sent the text, do a final edit with the full ack
-    // to catch any trailing chunks. If no streaming happened,
-    // send the full reply as a new message.
+  // If streaming sent the text, do a final edit with the full ack
+  // to catch any trailing chunks. If no streaming happened,
+  // send the full reply as a new message.
+  async function deliverFinal(chatId: number, sentMsgId: number | null, ack: MessageAck): Promise<void> {
     if (sentMsgId !== null && ack.ok) {
       await api.editMessageText(chatId, sentMsgId, ack.reply ?? "").catch(() => {});
     } else if (sentMsgId === null) {

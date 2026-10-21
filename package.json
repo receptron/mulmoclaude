@@ -108,7 +108,7 @@
     "@gui-chat-plugin/shapescript": "^8.2.2",
     "@marp-team/marp-core": "^4.4.0",
     "@mulmobridge/client": "^1.5.0",
-    "@mulmobridge/telegram": "^1.2.0",
+    "@mulmobridge/telegram": "^1.3.0",
     "@mulmocast/beat-editor": "^1.1.1",
     "@mulmocast/deck": "^2.1.0",
     "@mulmocast/types": "^2.21.0",

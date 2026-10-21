@@ -61,6 +61,7 @@ The bridge enforces a **chat-ID allowlist**. Only messages from listed chat IDs 
 - Long-polling (no webhook setup needed)
 - Photo attachment support (downloads and forwards to Claude vision)
 - Long-message chunking (splits replies > 4096 chars)
+- "typing…" while MulmoClaude works on a reply, from receipt until the final reply is sent (including before the first streamed text and while tools run)
 - Server push delivery (Phase B of #268)
 - Graceful shutdown on SIGINT
 

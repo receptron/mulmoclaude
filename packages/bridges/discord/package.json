@@ -1,6 +1,6 @@
 {
   "name": "@mulmobridge/discord",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Discord bridge for MulmoBridge — connect a Discord bot to MulmoClaude",
   "type": "module",
   "main": "./dist/index.js",

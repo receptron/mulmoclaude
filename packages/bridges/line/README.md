@@ -91,6 +91,7 @@ Recommended: at least 32 characters of random data (the server logs a warning at
 
 - LINE reply tokens expire in **1 minute**. Since Claude responses can take longer, the bridge uses **push messages** instead of reply messages. This requires your bot to be a verified/certified account for push to work with all users, OR the user must have added the bot as a friend first.
 - LINE limits messages to 5 per push call and ~5000 chars per message. Long replies are automatically chunked.
+- **Loading animation** — while MulmoClaude works on a reply, the bot shows LINE's loading animation (`/v2/bot/chat/loading/start`), refreshed until the reply is pushed. LINE shows it only in one-on-one chats while the user has the chat open, so the bridge does not request it in groups or rooms. No extra setting or permission is needed.
 - **Inbound media** — text and image messages are forwarded to the agent. Image bytes are downloaded via the LINE Data API (`/v2/bot/message/<id>/content`) using the same channel access token; the actual format (JPEG / PNG / HEIC depending on sender) is preserved via the response Content-Type. The photo-EXIF auto-capture flow ([#1222](https://github.com/receptron/mulmoclaude/issues/1222)) writes a sidecar at `data/locations/...` when GPS data is present. Video / audio / file / sticker messages are not forwarded yet.
 
 ## Detailed Setup Guide

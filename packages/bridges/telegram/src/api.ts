@@ -73,12 +73,16 @@ export interface GetUpdatesOptions {
   signal?: AbortSignal | undefined;
 }
 
+export type TelegramChatAction = "typing";
+
 export interface TelegramApi {
   getUpdates(opts?: GetUpdatesOptions): Promise<TelegramUpdate[]>;
   /** Send a message and return its message_id (needed for editMessageText). */
   sendMessage(chatId: number, text: string): Promise<number>;
   /** Edit an existing message in place. Used for streaming text updates. */
   editMessageText(chatId: number, messageId: number, text: string): Promise<void>;
+  /** Show a chat action such as "typing…" until the next message or about 5 s. */
+  sendChatAction(chatId: number, action: TelegramChatAction): Promise<void>;
   /** Download any file by file_id via the Telegram getFile API.
    *  Returns a data URL (`data:<mime>;base64,...`).
    *  Works for photos, documents, audio, etc. */
@@ -153,6 +157,21 @@ export function createTelegramApi(opts: TelegramApiOptions): TelegramApi {
       }
     },
 
+    async sendChatAction(chatId, action) {
+      const res = await fetchImpl(`${base}/sendChatAction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, action }),
+      });
+      if (!res.ok) {
+        throw new Error(`sendChatAction failed: ${res.status} ${await safeText(res)}`);
+      }
+      const failure = apiFailureDescription(await res.json().catch(() => null));
+      if (failure !== null) {
+        throw new Error(`sendChatAction API error: ${failure}`);
+      }
+    },
+
     async downloadFile(fileId, fallbackMime = "application/octet-stream") {
       const getFileRes = await fetchImpl(`${base}/getFile?file_id=${encodeURIComponent(fileId)}`);
       if (!getFileRes.ok) {
@@ -181,6 +200,12 @@ export function createTelegramApi(opts: TelegramApiOptions): TelegramApi {
       return buildDataUrl(mediaType, b64);
     },
   };
+}
+
+/** The description of a `{ ok: false }` Bot API body, or null when the body does not report a failure. */
+export function apiFailureDescription(body: unknown): string | null {
+  if (typeof body !== "object" || body === null || !("ok" in body) || body.ok !== false) return null;
+  return "description" in body && typeof body.description === "string" ? body.description : "unknown";
 }
 
 async function safeText(res: Response): Promise<string> {

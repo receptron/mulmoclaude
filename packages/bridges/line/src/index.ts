@@ -16,9 +16,10 @@
 
 import "dotenv/config";
 import type { Request, Response } from "express";
-import { createBridgeClient, chunkText, formatAckReply, installProcessGuards } from "@mulmobridge/client";
+import { createBridgeClient, chunkText, formatAckReply, installProcessGuards, replyAfterProcessingIndicator } from "@mulmobridge/client";
 import { createWebhookApp, createWebhookRateLimit, verifyHmacSignature, listenWebhook } from "@mulmobridge/webhook-runtime";
-import { extractIncomingLineMessage, parseLineWebhookBody } from "./parse.js";
+import { extractIncomingLineMessage, parseLineWebhookBody, type IncomingLineMessage } from "./parse.js";
+import { LINE_LOADING_REFRESH_MS, loadingSenderFor, startLineLoading } from "./loading.js";
 
 const TRANSPORT_ID = "line";
 
@@ -126,38 +127,40 @@ app.post("/webhook", webhookRateLimit, async (req: Request, res: Response) => {
   for (const event of body.events) {
     const incoming = extractIncomingLineMessage(event);
     if (!incoming) continue;
+    const sendLoading = loadingSenderFor(event.source, () => startLineLoading(fetch, channelAccessToken, incoming.userId));
 
     try {
-      if (incoming.kind === "text") {
-        console.log(`[line] message user=${incoming.userId} len=${incoming.text.length}`);
-        const ack = await client.send(incoming.userId, incoming.text);
-        await pushMessage(incoming.userId, formatAckReply(ack));
-        continue;
-      }
-      // kind === "image"
-      console.log(`[line] image user=${incoming.userId} messageId=${incoming.imageMessageId}`);
-      const image = await downloadLineImage(incoming.imageMessageId);
-      if (!image) {
-        await pushMessage(incoming.userId, "Sorry, I couldn't fetch that image.");
-        continue;
-      }
-      // chat-service's `parseMessagePayload` rejects empty `text`
-      // (`text is required`) so attachment-only messages need a
-      // placeholder body. Mirror the Telegram convention (see
-      // `packages/bridges/telegram/src/router.ts`) — an instructive
-      // prompt rather than a caption, so the agent treats the
-      // attachment as the subject and produces a useful response.
-      // The post-save EXIF hook (#1222 PR-A) writes a sidecar if
-      // GPS data is present. (Codex review on PR #1255 / #1263.)
-      const attachments = [{ mimeType: image.mimeType, data: image.bytes.toString("base64") }];
-      const placeholderText = "Describe / analyze this file.";
-      const ack = await client.send(incoming.userId, placeholderText, attachments);
-      await pushMessage(incoming.userId, formatAckReply(ack));
+      await replyAfterProcessingIndicator(
+        sendLoading,
+        { produce: () => produceReply(incoming), post: (replyText) => pushMessage(incoming.userId, replyText) },
+        { refreshMs: LINE_LOADING_REFRESH_MS, label: TRANSPORT_ID, log: console },
+      );
     } catch (err) {
       console.error(`[line] message handling failed: ${err}`);
     }
   }
 });
+
+async function produceReply(incoming: IncomingLineMessage): Promise<string> {
+  if (incoming.kind === "text") {
+    console.log(`[line] message user=${incoming.userId} len=${incoming.text.length}`);
+    return formatAckReply(await client.send(incoming.userId, incoming.text));
+  }
+  console.log(`[line] image user=${incoming.userId} messageId=${incoming.imageMessageId}`);
+  const image = await downloadLineImage(incoming.imageMessageId);
+  if (!image) return "Sorry, I couldn't fetch that image.";
+  // chat-service's `parseMessagePayload` rejects empty `text`
+  // (`text is required`) so attachment-only messages need a
+  // placeholder body. Mirror the Telegram convention (see
+  // `packages/bridges/telegram/src/router.ts`) — an instructive
+  // prompt rather than a caption, so the agent treats the
+  // attachment as the subject and produces a useful response.
+  // The post-save EXIF hook (#1222 PR-A) writes a sidecar if
+  // GPS data is present. (Codex review on PR #1255 / #1263.)
+  const attachments = [{ mimeType: image.mimeType, data: image.bytes.toString("base64") }];
+  const placeholderText = "Describe / analyze this file.";
+  return formatAckReply(await client.send(incoming.userId, placeholderText, attachments));
+}
 
 listenWebhook(app, { envVar: "LINE_BRIDGE_PORT", fallback: 3002 }, (port) => {
   console.log("MulmoClaude LINE bridge");

@@ -14,6 +14,8 @@ declare module "*.vue" {
 declare module "*.css";
 declare module "*.scss";
 declare module "material-icons/iconfont/material-icons.css";
+// chart-plugin imports it only for what it registers with ECharts; it ships no types.
+declare module "echarts-gl" {}
 
 interface ImportMeta {
   glob: (pattern: string | readonly string[], options?: { eager?: boolean }) => Record<string, unknown>;
