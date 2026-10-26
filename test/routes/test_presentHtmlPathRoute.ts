@@ -15,6 +15,7 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type PresentHtmlModule = typeof import("../../server/api/routes/presentHtml.js");
 
@@ -67,17 +68,13 @@ const PAGE_HTML = "<!DOCTYPE html><html><body>hi</body></html>";
 let tmpRoot: string;
 let workspaceDir: string;
 let outsideAbsolutePath: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let createHandler: Handler;
 let updateHandler: Handler;
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-present-html-path-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
 
   const { workspacePath } = await import("../../server/workspace/workspace.js");
   workspaceDir = workspacePath;
@@ -95,10 +92,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

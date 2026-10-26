@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 // The roles route imports workspacePath at module load. Override HOME
 // so homedir() → temp root, then dynamic-import the modules.
 let tmpRoot: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 
 type RolesRoute = typeof import("../../server/api/routes/roles.js");
 type RolesIo = typeof import("../../server/utils/files/roles-io.js");
@@ -18,10 +18,7 @@ let rolesDir: string;
 
 before(async () => {
   tmpRoot = mkdtempSync(path.join(tmpdir(), "roles-manage-test-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   mkdirSync(path.join(tmpRoot, "mulmoclaude"), { recursive: true });
   rolesRoute = await import("../../server/api/routes/roles.js");
   rolesIo = await import("../../server/utils/files/roles-io.js");
@@ -29,10 +26,7 @@ before(async () => {
 });
 
 after(() => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 

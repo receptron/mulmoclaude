@@ -12,6 +12,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type RouteModule = typeof import("../../server/api/routes/files.js");
 
@@ -67,16 +68,12 @@ function mockRes() {
 
 let tmpRoot: string;
 let workspaceDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let createHandler: Handler;
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-files-create-route-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   const { workspacePath: workspacePth } = await import("../../server/workspace/workspace.js");
   workspaceDir = workspacePth;
   mkdirSync(workspaceDir, { recursive: true });
@@ -85,10 +82,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

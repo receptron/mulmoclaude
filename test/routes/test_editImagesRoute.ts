@@ -10,6 +10,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type ImageModule = typeof import("../../server/api/routes/image.js");
 
@@ -63,8 +64,7 @@ function req(body: unknown): Request {
 }
 
 let tmpRoot: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let editHandler: Handler;
 
 before(async () => {
@@ -72,20 +72,14 @@ before(async () => {
   // route module reads workspacePath at import time via the image
   // store, so this MUST happen before importing.
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-edit-images-route-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
 
   const imageMod: ImageModule = await import("../../server/api/routes/image.js");
   editHandler = extractRouteHandler(imageMod, "/api/edit-image", "post");
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

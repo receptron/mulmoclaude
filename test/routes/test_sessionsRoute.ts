@@ -14,6 +14,7 @@ import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
 import { encodeCursor } from "../../server/api/routes/sessionsCursor.js";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type RouteModule = typeof import("../../server/api/routes/sessions.js");
 let clearMetaCache: () => void;
@@ -86,8 +87,7 @@ let chatDir: string;
 // #1902 fixed the drift where the two used to point at different
 // trees).
 let manifestDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let getHandler: Handler;
 let markReadHandler: Handler;
 
@@ -148,13 +148,10 @@ async function resetChatDir(): Promise<void> {
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-sessions-route-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
   // The workspace path resolves once at module load from homedir(),
   // so we have to steer it BEFORE importing the route module. This
   // mirrors the setup in test_configRoute.ts.
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   // Resolve both roots from the real modules so the test still
   // agrees with production paths no matter how the layout evolves.
   const { WORKSPACE_PATHS } = await import("../../server/workspace/paths.js");
@@ -171,10 +168,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

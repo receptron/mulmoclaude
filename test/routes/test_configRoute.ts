@@ -18,13 +18,13 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type ConfigModule = typeof import("../../server/system/config.js");
 type RouteModule = typeof import("../../server/api/routes/config.js");
 
 let tmpRoot: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let configMod: ConfigModule;
 let routeMod: RouteModule;
 
@@ -80,11 +80,8 @@ function mockRes() {
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-config-route-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
   // homedir() uses HOME on POSIX and USERPROFILE on Windows.
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   mkdirSync(path.join(tmpRoot, "mulmoclaude"), { recursive: true });
   configMod = await import("../../server/system/config.js");
   routeMod = await import("../../server/api/routes/config.js");
@@ -94,10 +91,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

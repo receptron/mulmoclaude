@@ -5,35 +5,29 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 // The config module reads workspacePath at the time of each call,
 // so we swap HOME to a temp dir BEFORE importing it. Inline dynamic
 // import keeps the module under test pinned to this suite's HOME.
 let tmpRoot: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 
 type ConfigModule = typeof import("../../server/system/config.js");
 let mod: ConfigModule;
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-config-test-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
   // homedir() uses HOME on POSIX and USERPROFILE on Windows; set both
   // so the test's temp workspace is picked up regardless of platform.
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   // Pre-create the workspace root that workspace.ts expects.
   mkdirSync(path.join(tmpRoot, "mulmoclaude"), { recursive: true });
   mod = await import("../../server/system/config.js");
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

@@ -8,6 +8,7 @@ import { mkdirSync } from "fs";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type WorkspaceModule = typeof import("../../server/workspace/workspace.js");
 type PathsModule = typeof import("../../server/workspace/paths.js");
@@ -16,16 +17,12 @@ type ThemesModule = typeof import("../../server/workspace/marp-themes.js");
 let tmpRoot: string;
 let workspaceDir: string;
 let themesDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let listMarpThemes: ThemesModule["listMarpThemes"];
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-marp-themes-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   const workspaceMod = (await import("../../server/workspace/workspace.js")) as WorkspaceModule;
   workspaceDir = workspaceMod.workspacePath;
   const pathsMod = (await import("../../server/workspace/paths.js")) as PathsModule;
@@ -35,10 +32,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

@@ -19,6 +19,7 @@ import { lstat, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "fs/pr
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type PluginsModule = typeof import("../../server/api/routes/plugins.js");
 
@@ -84,8 +85,7 @@ const OUTSIDE_ARTIFACTS_REL = "docs/design.md";
 let tmpRoot: string;
 let workspaceDir: string;
 let documentsDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let createHandler: Handler;
 let updateHandler: Handler;
 // Assigned in `before` — a path outside the workspace entirely.
@@ -93,10 +93,7 @@ let outsideAbsolutePath: string;
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-present-document-route-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
 
   const { workspacePath } = await import("../../server/workspace/workspace.js");
   const { WORKSPACE_DIRS } = await import("../../server/workspace/paths.js");
@@ -120,10 +117,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

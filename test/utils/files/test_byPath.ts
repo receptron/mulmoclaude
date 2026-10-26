@@ -12,6 +12,7 @@ import { mkdirSync } from "fs";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { isolateHome } from "../../helpers/isolatedHome.js";
 
 type ByPathModule = typeof import("../../../server/utils/files/by-path.js");
 
@@ -21,17 +22,13 @@ const MARKDOWN = [".md"] as const;
 
 let tmpRoot: string;
 let workspaceDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let resolveByPath: ByPathModule["resolveByPath"];
 let fileOps: FileOpsUnderTest;
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-by-path-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
 
   const { workspacePath } = await import("../../../server/workspace/workspace.js");
   workspaceDir = workspacePath;
@@ -43,10 +40,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 
