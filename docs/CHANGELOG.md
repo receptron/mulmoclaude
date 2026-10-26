@@ -58,6 +58,13 @@ phone's custom views now read the file they checked, so a file swapped for a lin
 pipe given an image name is skipped. Before, it stopped the whole server during a PDF export and left an HTML share
 waiting forever.
 
+#### The file explorer reads only the file it checked (#3573)
+
+Opening a file in the file explorer, and the raw view that plays media and shows images and PDFs, checked the path and
+then opened it again by name, so a file or folder swapped for a link to somewhere else on the computer in between was
+read from there. Both now read the file they checked, in the workspace and in reference directories. A file that
+changes in that moment answers "not found".
+
 Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@5.13.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.9.0] - 2026-10-22
