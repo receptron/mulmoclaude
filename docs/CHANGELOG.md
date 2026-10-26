@@ -69,7 +69,15 @@ in that moment answers "not found".
 
 Saving an edited file checked its path and then wrote it by name, so a folder on the path swapped for a link to
 somewhere else on the computer in between had the save land there. The save now writes only into the folder it
-checked, and fails if that folder was swapped. Wiki pages, new files and dropped files are not covered yet.
+checked, and fails if that folder was swapped. Wiki pages are not covered yet.
+
+#### New files and dropped files get their content only inside the workspace (#3573)
+
+Making a new file in the file explorer, and dropping a file onto it, checked the path and then created the file by
+name, so a folder swapped for a link to somewhere else on the computer in between had the file created there. Both
+now write the file's content only into the folder they checked, and fail if that folder was swapped; the swapped-in
+folder can be left holding an empty file. This includes a new wiki page; saving over an existing wiki page is not
+covered yet. Ships in `@mulmoclaude/core@5.14.0`.
 
 #### Runtime plugins' files are served only from the plugin's own folder (#3573)
 
@@ -78,7 +86,7 @@ folder elsewhere on the computer made MulmoClaude serve that folder's files unde
 token. The plugin's folder must now sit inside the workspace, and each file is read from the one it checked. A folder
 asked for as a file now answers 404 instead of 500.
 
-Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@5.13.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@5.14.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.9.0] - 2026-10-22
 

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { Dirent, ReadStream, Stats, realpathSync } from "fs";
-import { mkdir, realpath, writeFile, type FileHandle } from "fs/promises";
+import { realpath, type FileHandle } from "fs/promises";
 import path from "path";
 import { workspacePath } from "../../workspace/workspace.js";
 import { statSafe, statSafeAsync, readDirSafeAsync, resolveWithinRoot } from "../../utils/files/index.js";
@@ -1114,9 +1114,10 @@ async function resolveNewFilePath(
 }
 
 // Perform the exclusive create write for POST /files/create. Atomic
-// create via `wx` (POSIX O_EXCL) — fails with EEXIST if the target
-// already exists, closing the check-then-write TOCTOU that Codex
-// flagged on earlier iterations. Wiki pages route through
+// create via O_EXCL — fails with EEXIST if the target already exists,
+// closing the check-then-write TOCTOU that Codex flagged on earlier
+// iterations — and verified to sit inside the workspace before any
+// byte is written, so a folder swapped for a link out is refused. Wiki pages route through
 // `writeWikiPage` with `exclusive: true` so the same exclusive
 // primitive applies after the frontmatter stamp. On failure this
 // writes the appropriate 4xx/5xx response and returns false; the
@@ -1137,8 +1138,7 @@ async function performCreateWrite(
     if (wikiClass.wiki) {
       await writeWikiPage(wikiClass.slug, content, { editor: "user" }, { workspaceRoot: resolved.workspaceRoot, exclusive: true });
     } else {
-      await mkdir(path.dirname(resolved.absPath), { recursive: true });
-      await writeFile(resolved.absPath, content, { flag: "wx" });
+      await writeNewFileExclusive(resolved.workspaceRoot, resolved.absPath, content);
     }
   } catch (err) {
     const code = isErrorWithCode(err) ? err.code : undefined;
@@ -1220,7 +1220,7 @@ export interface UploadWriteDeps {
 const defaultUploadWriteDeps: UploadWriteDeps = {
   resolve: resolveNewFilePath,
   // Exclusive create lives in its own I/O module; EEXIST drives the rename retry.
-  write: writeNewFileExclusive,
+  write: async (absPath, bytes) => writeNewFileExclusive(await getWorkspaceRealAsync(), absPath, bytes),
 };
 
 // Write the bytes under `dirRel`, never clobbering: on EEXIST the name gets a

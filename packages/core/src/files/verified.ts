@@ -117,8 +117,8 @@ export async function openVerifiedWithinScope(scope: VerifiedScope, relative: st
   return null;
 }
 
-/** The staging file's directory, re-resolved, if it is inside the scope now and holds exactly the opened staging file. */
-async function verifiedStagingDir(bound: BoundScope, dirReal: string, staging: string, handle: FileHandle): Promise<string | null> {
+/** The directory of a file this call created, re-resolved, if it is inside the scope now and holds exactly the opened file. */
+async function verifiedCreatedFileDir(bound: BoundScope, dirReal: string, staging: string, handle: FileHandle): Promise<string | null> {
   const scopeReal = await scopeRealNow(bound);
   const dirAgain = scopeReal === null ? null : await resolveExistingWithinRoot(scopeReal, dirReal);
   if (dirAgain === null) return null;
@@ -131,7 +131,7 @@ async function writeStaging(bound: BoundScope, dirReal: string, staging: string,
   const handle = await promises.open(path.join(dirReal, staging), CREATE_FLAGS);
   try {
     await hooks.afterOpen?.();
-    const stagingDir = await verifiedStagingDir(bound, dirReal, staging, handle);
+    const stagingDir = await verifiedCreatedFileDir(bound, dirReal, staging, handle);
     if (stagingDir === null) throw new Error(`refusing to write: ${dirReal} left the scope during the write`);
     await handle.writeFile(content);
     return stagingDir;
@@ -139,6 +139,13 @@ async function writeStaging(bound: BoundScope, dirReal: string, staging: string,
     await handle.close();
   }
 }
+
+// `leaf` is joined to a verified directory, so a separator or `..` in it would step out of what was verified.
+const assertSingleName = (leaf: string): void => {
+  if (leaf === "" || leaf === "." || leaf === ".." || path.basename(leaf) !== leaf || leaf.includes("/")) {
+    throw new Error(`refusing to write: ${JSON.stringify(leaf)} is not a single file name`);
+  }
+};
 
 const stagingNameFor = (leaf: string): string => `${leaf}.${randomBytes(STAGING_SUFFIX_BYTES).toString("hex")}.tmp`;
 
@@ -169,6 +176,7 @@ export async function writeFileVerifiedInScope(
   content: string | Uint8Array,
   hooks: VerifiedFileHooks = {},
 ): Promise<void> {
+  assertSingleName(leaf);
   const bound = await bindScope(scope);
   if (bound === null) throw new Error(`refusing to write: the trusted root ${scope.trustedReal} is gone`);
   const staging = stagingNameFor(leaf);
@@ -177,4 +185,29 @@ export async function writeFileVerifiedInScope(
     throw err;
   });
   await renameIntoPlace(stagingDir, staging, leaf, hooks);
+}
+
+/** Exclusive create of `leaf` in `dirReal` (an already-confined directory of the scope): throws EEXIST when `leaf`
+ *  exists, as `writeFile(…, { flag: "wx" })` does. The new file is verified to sit inside the scope before any byte is
+ *  written, and the bytes go through its handle. A parent swapped for a link before the create leaves an empty file
+ *  in the link's target and makes the call fail; it is not removed, because by then the name may be someone else's. */
+export async function createFileVerifiedInScope(
+  scope: VerifiedScope,
+  dirReal: string,
+  leaf: string,
+  content: string | Uint8Array,
+  hooks: VerifiedFileHooks = {},
+): Promise<void> {
+  assertSingleName(leaf);
+  const bound = await bindScope(scope);
+  if (bound === null) throw new Error(`refusing to write: the trusted root ${scope.trustedReal} is gone`);
+  await hooks.beforeOpen?.();
+  const handle = await promises.open(path.join(dirReal, leaf), CREATE_FLAGS);
+  try {
+    await hooks.afterOpen?.();
+    if ((await verifiedCreatedFileDir(bound, dirReal, leaf, handle)) === null) throw new Error(`refusing to write: ${dirReal} left the scope during the write`);
+    await handle.writeFile(content);
+  } finally {
+    await handle.close();
+  }
 }

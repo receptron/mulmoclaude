@@ -11,6 +11,7 @@ export { isEnoent, resolveWithinRoot } from "./safe.js";
 export {
   openVerifiedWithinScope,
   writeFileVerifiedInScope,
+  createFileVerifiedInScope,
   scopeRealpath,
   resolveExistingWithinRoot,
   realpathIfPresent,

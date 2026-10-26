@@ -79,6 +79,8 @@ mount fails (EXDEV). Closing it outright needs a descriptor-relative `renameat`.
 
 - `packages/core/src/files/verified.ts`: `openVerifiedWithinScope`, `writeFileVerifiedInScope`,
   `scopeRealpath` (+ `VerifiedScope`), exported from `@mulmoclaude/core/files`. Core gets a minor bump; ranges swept.
+- `createFileVerifiedInScope`, added later for the exclusive creates (`plans/fix-3573-files-route-create.md`): an
+  `O_EXCL` open, then the same proof as the staging file, then the bytes through the handle.
 - `server/plugins/confined-file-ops.ts` uses them for read / readBytes / write.
 - Other `resolveWithinRoot` call sites (files.ts, pdf.ts, /artifacts static, …) migrate in
   follow-up PRs, one per site group — each can be reverted on its own.
