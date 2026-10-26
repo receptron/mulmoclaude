@@ -11,12 +11,15 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, renameSync, symlinkSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import express from "express";
 import type { AddressInfo } from "node:net";
-import runtimePluginRouter, { resolvePluginRoot } from "../../../server/api/routes/runtime-plugin.ts";
+import runtimePluginRouter, { pluginAssetScope } from "../../../server/api/routes/runtime-plugin.ts";
+import { scopeRealpath } from "@mulmoclaude/core/files";
+import { workspacePath } from "../../../server/workspace/workspace.ts";
 import { registerRuntimePlugins, _resetRuntimeRegistryForTest } from "../../../server/plugins/runtime-registry.ts";
 import type { RuntimePlugin } from "../../../server/plugins/runtime-loader.ts";
 
@@ -62,55 +65,115 @@ const fakePlugin = (name: string, version: string, cachePath: string): RuntimePl
   oauthCallbackAlias: null,
 });
 
-describe("resolvePluginRoot — registry membership", () => {
-  it("returns the cachePath realpath for a registered (pkg, version)", () => {
+// The realpath assets of (pkg, version) are served from, or null.
+const resolvePluginRoot = async (pkg: string, version: string): Promise<string | null> => {
+  const scope = await pluginAssetScope(pkg, version);
+  return scope === null ? null : scopeRealpath(scope);
+};
+
+describe("pluginAssetScope — registry membership", async () => {
+  it("returns the cachePath realpath for a registered (pkg, version)", async () => {
     registerRuntimePlugins(new Set(), [fakePlugin("@fixture/anchor", "1.0.0", fixtureDir)]);
-    const result = resolvePluginRoot("@fixture/anchor", "1.0.0");
+    const result = await resolvePluginRoot("@fixture/anchor", "1.0.0");
     assert.ok(result, "expected a realpath for a registered plugin");
     // realpath may resolve OS-level symlinks (e.g. macOS /var → /private/var),
     // so just assert the returned path ends in the fixture's basename.
     assert.match(result ?? "", new RegExp(`${path.basename(fixtureDir)}$`));
   });
 
-  it("returns null when the (pkg, version) pair is not registered", () => {
+  it("returns null when the (pkg, version) pair is not registered", async () => {
     registerRuntimePlugins(new Set(), [fakePlugin("@fixture/anchor", "1.0.0", fixtureDir)]);
-    assert.equal(resolvePluginRoot("@fixture/anchor", "9.9.9"), null, "wrong version → 404");
-    assert.equal(resolvePluginRoot("@other/never-installed", "1.0.0"), null, "unknown package → 404");
+    assert.equal(await resolvePluginRoot("@fixture/anchor", "9.9.9"), null, "wrong version → 404");
+    assert.equal(await resolvePluginRoot("@other/never-installed", "1.0.0"), null, "unknown package → 404");
   });
 
-  it("returns null when registered cachePath does not exist on disk", () => {
+  it("returns null when registered cachePath does not exist on disk", async () => {
     const ghost = path.join(fixtureDir, "vanished");
     registerRuntimePlugins(new Set(), [fakePlugin("@fixture/ghost", "1.0.0", ghost)]);
-    assert.equal(resolvePluginRoot("@fixture/ghost", "1.0.0"), null);
+    assert.equal(await resolvePluginRoot("@fixture/ghost", "1.0.0"), null);
   });
 
-  it("encoded `../` in pkg cannot match a registered name", () => {
+  it("encoded `../` in pkg cannot match a registered name", async () => {
     // Even with a directory traversal that points at `outsideDir` on
     // disk, the registry lookup uses the literal name string. The
     // pkg `..` is not a registered name, so 404.
     registerRuntimePlugins(new Set(), [fakePlugin("@fixture/anchor", "1.0.0", fixtureDir)]);
-    assert.equal(resolvePluginRoot("../../../../etc", "passwd"), null);
-    assert.equal(resolvePluginRoot("..", "1.0.0"), null);
-    assert.equal(resolvePluginRoot("", "1.0.0"), null);
+    assert.equal(await resolvePluginRoot("../../../../etc", "passwd"), null);
+    assert.equal(await resolvePluginRoot("..", "1.0.0"), null);
+    assert.equal(await resolvePluginRoot("", "1.0.0"), null);
   });
 
-  it("encoded `../` in version cannot match a registered version", () => {
+  it("encoded `../` in version cannot match a registered version", async () => {
     registerRuntimePlugins(new Set(), [fakePlugin("@fixture/anchor", "1.0.0", fixtureDir)]);
-    assert.equal(resolvePluginRoot("@fixture/anchor", "../../tmp"), null);
-    assert.equal(resolvePluginRoot("@fixture/anchor", ""), null);
+    assert.equal(await resolvePluginRoot("@fixture/anchor", "../../tmp"), null);
+    assert.equal(await resolvePluginRoot("@fixture/anchor", ""), null);
   });
 
-  it("an attacker registering a cachePath outside the workspace can only serve from THAT path", () => {
+  it("an attacker registering a cachePath outside the workspace can only serve from THAT path", async () => {
     // The trust model: registry membership is the boundary. If a
     // server-side caller (preset list, ledger) registers a cachePath
     // pointing outside the workspace, that's by design (presets live
     // in node_modules). The route's job is to ensure NO OTHER path
     // is reachable — verified by the negative cases above.
     registerRuntimePlugins(new Set(), [fakePlugin("@fixture/outside", "1.0.0", outsideDir)]);
-    const result = resolvePluginRoot("@fixture/outside", "1.0.0");
+    const result = await resolvePluginRoot("@fixture/outside", "1.0.0");
     assert.ok(result, "registered cachePath resolves regardless of where on disk it points");
     // But a different (pkg, version) still doesn't reach it.
-    assert.equal(resolvePluginRoot(`../${path.basename(outsideDir)}`, "1.0.0"), null);
+    assert.equal(await resolvePluginRoot(`../${path.basename(outsideDir)}`, "1.0.0"), null);
+  });
+});
+
+// A plugin installed into the workspace's cache is served only while its folder sits inside the workspace (#3573).
+describe("GET /api/plugins/runtime/:pkg/:version/* — a workspace-installed plugin", () => {
+  const name = "@fixture/installed";
+  let cache = "";
+
+  const serve = async (relPath: string): Promise<{ status: number; type: string | null; body: string }> => {
+    const app = express();
+    app.use(runtimePluginRouter);
+    const server = app.listen(0);
+    try {
+      const { port } = server.address() as AddressInfo;
+      const res = await fetch(`http://127.0.0.1:${port}/api/plugins/runtime/${encodeURIComponent(name)}/1.0.0/${relPath}`);
+      return { status: res.status, type: res.headers.get("content-type"), body: await res.text() };
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  };
+
+  beforeEach(() => {
+    cache = path.join(workspacePath, "plugins", ".cache", "@fixture", `installed-${randomBytes(4).toString("hex")}`, "1.0.0");
+    mkdirSync(path.join(cache, "dist"), { recursive: true });
+    writeFileSync(path.join(cache, "dist", "index.js"), "// installed");
+    writeFileSync(path.join(outsideDir, "dist.js"), "should-not-leak");
+    registerRuntimePlugins(new Set(), [fakePlugin(name, "1.0.0", cache)]);
+  });
+
+  afterEach(() => rmSync(path.dirname(cache), { recursive: true, force: true }));
+
+  it("serves an asset with its content type", async () => {
+    assert.deepEqual(await serve("dist/index.js"), { status: 200, type: "application/javascript; charset=utf-8", body: "// installed" });
+  });
+
+  it("answers 404 for a folder, a missing file and an escaping path", async () => {
+    assert.equal((await serve("dist")).status, 404);
+    assert.equal((await serve("dist/missing.js")).status, 404);
+    assert.equal((await serve("..%2F..%2Fsecret.txt")).status, 404);
+  });
+
+  const posixOnly = { skip: process.platform === "win32" ? "symlinks need POSIX" : false };
+
+  it("does not serve from a cache folder replaced by a link out of the workspace", posixOnly, async () => {
+    renameSync(cache, `${cache}.parked`);
+    symlinkSync(outsideDir, cache);
+    const reply = await serve("secret.txt");
+    assert.equal(reply.status, 404);
+    assert.ok(!reply.body.includes("should-not-leak"), reply.body);
+  });
+
+  it("does not serve a link inside the tree that points out of it", posixOnly, async () => {
+    symlinkSync(path.join(outsideDir, "secret.txt"), path.join(cache, "dist", "leak.js"));
+    assert.equal((await serve("dist/leak.js")).status, 404);
   });
 });
 
