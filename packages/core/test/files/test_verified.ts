@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rename
 import path from "node:path";
 import { tmpdir } from "node:os";
 import {
+  createFileVerifiedInScope,
   openVerifiedWithinScope,
   resolveExistingWithinRoot,
   writeFileVerifiedInScope,
@@ -140,6 +141,34 @@ describe("verified file access", () => {
     await assert.rejects(writeFileVerifiedInScope(scope(), dir, "in.json", "planted", { beforeRename: swapOut }));
     assert.equal(readFileSync(path.join(outside, "in.json"), "utf8"), "secret");
     assert.deepEqual(readdirSync(outside), ["in.json"]);
+  });
+
+  it("creates a new file exclusively in a verified directory", async () => {
+    await createFileVerifiedInScope(scope(), dir, "new.json", "created");
+    assert.equal(readFileSync(path.join(dir, "new.json"), "utf8"), "created");
+    assert.deepEqual(readdirSync(dir).sort(), ["in.json", "new.json"]);
+  });
+
+  it("refuses to create over an existing file with EEXIST, leaving it as it was", async () => {
+    await assert.rejects(createFileVerifiedInScope(scope(), dir, "in.json", "planted"), { code: "EEXIST" });
+    assert.equal(readFileSync(path.join(dir, "in.json"), "utf8"), "inside");
+  });
+
+  it("creates nothing outside with content when the parent is swapped before the create", async () => {
+    await assert.rejects(createFileVerifiedInScope(scope(), dir, "new.json", "planted", { beforeOpen: swapOut, afterOpen: swapBack }), /left the scope/);
+    assert.equal(readFileSync(path.join(outside, "in.json"), "utf8"), "secret");
+    assert.deepEqual(readdirSync(dir), ["in.json"]);
+    readdirSync(outside).forEach((name) => assert.notEqual(readFileSync(path.join(outside, name), "utf8"), "planted"));
+  });
+
+  it("creates nothing with content when the parent is swapped out and left there", { skip: process.platform === "win32" }, async () => {
+    await assert.rejects(createFileVerifiedInScope(scope(), dir, "new.json", "planted", { beforeOpen: swapOut }), /left the scope/);
+    readdirSync(outside).forEach((name) => assert.notEqual(readFileSync(path.join(outside, name), "utf8"), "planted"));
+  });
+
+  it("creates nothing with content when the scope is swapped for a link out of the anchor before the create", async () => {
+    await assert.rejects(createFileVerifiedInScope(scope(), dir, "new.json", "planted", { beforeOpen: linkScopeFar }), /left the scope/);
+    readdirSync(path.join(far, "dir")).forEach((name) => assert.notEqual(readFileSync(path.join(far, "dir", name), "utf8"), "planted"));
   });
 
   it("lands in the verified directory itself when it is moved after verification and a link to it put in its place", async () => {
