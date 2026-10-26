@@ -140,7 +140,7 @@ Cover:
 - `loadPresetPlugins` reads every entry from `server/plugins/preset-list.ts`, resolves it against `node_modules/<pkg>/`, and produces `RuntimePlugin` records with non-empty version + valid `TOOL_DEFINITION`.
 - `loadPluginFromCacheDir` (used by both loader paths) handles missing `package.json`, malformed JSON, missing `TOOL_DEFINITION`, wrong shape, missing entry file, and the legacy `main` fallback.
 - `registerRuntimePlugins` enforces the collision policy: static names win, runtime first-loaded wins on intra-runtime collision, repeated registration replaces the set.
-- `resolvePluginRoot` returns the realpath of a registered plugin's cachePath; encoded `../` in either segment never matches a registered name.
+- `pluginAssetScope` gives the verified scope a registered plugin's assets are served from: a plugin installed into the workspace is anchored at the workspace, so a cache folder replaced by a link out is refused; a preset at its own realpath. Encoded `../` in either segment never matches a registered name.
 
 ### Automated: Docker MCP smoke
 
