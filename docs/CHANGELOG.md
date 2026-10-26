@@ -69,7 +69,14 @@ in that moment answers "not found".
 
 Saving an edited file checked its path and then wrote it by name, so a folder on the path swapped for a link to
 somewhere else on the computer in between had the save land there. The save now writes only into the folder it
-checked, and fails if that folder was swapped. Wiki pages, new files and dropped files are not covered yet.
+checked, and fails if that folder was swapped. Wiki pages are not covered yet.
+
+#### New files and dropped files are created only inside the workspace (#3573)
+
+Making a new file in the file explorer, and dropping a file onto it, checked the path and then created the file by
+name, so a folder swapped for a link to somewhere else on the computer in between had the file created there. Both
+now create the file only in the folder they checked, and fail if that folder was swapped. Wiki pages are not covered
+yet. Ships with the next `@mulmoclaude/core`.
 
 Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@5.13.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
