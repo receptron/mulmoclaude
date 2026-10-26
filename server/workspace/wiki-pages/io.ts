@@ -19,9 +19,10 @@
 // site wired up means PR 2 is purely an internal change.
 
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { realpath } from "node:fs/promises";
 import { readTextSafe } from "../../utils/files/safe.js";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
+import { writeNewFileExclusive } from "../../utils/files/upload-io.js";
 import { mergeFrontmatter, parseFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
 import { isSafeSlug } from "@mulmoclaude/core/wiki";
 import { wikiSlugFromAbsPath } from "@mulmoclaude/core/wiki/paths";
@@ -56,7 +57,7 @@ export interface WikiPageWriteOptions {
    *  injection. Tests pass a fixed `Date` so the round-trip is
    *  deterministic; production uses the wall clock. */
   now?: (() => Date) | undefined;
-  /** Create-only mode: write via `O_EXCL` (`flag: "wx"`) so the
+  /** Create-only mode: write via `O_EXCL` so the
    *  call atomically refuses to overwrite an existing page. The
    *  thrown error has `code: "EEXIST"` — used by the
    *  `POST /api/files/create` route (#1598) to map to a 409 and
@@ -107,7 +108,7 @@ export async function writeWikiPage(slug: string, content: string, meta: WikiWri
   const finalContent = stampFrontmatter(oldContent, content, meta, opts);
   if (opts.exclusive) {
     // Re-anchor the absolute path against the workspace root before
-    // handing it to `mkdir`/`writeFile`. `wikiPagePath` already
+    // handing it to the create. `wikiPagePath` already
     // enforces containment via `isSafeSlug` + `path.join`, but
     // CodeQL's `js/path-injection` analysis doesn't trace through
     // those — the explicit `relative` + `startsWith` containment
@@ -120,11 +121,11 @@ export async function writeWikiPage(slug: string, content: string, meta: WikiWri
       throw new Error(`wiki-pages: refusing to write outside workspace root: ${JSON.stringify(absPath)}`);
     }
     const safeAbsPath = path.join(root, relFromRoot);
-    await mkdir(path.dirname(safeAbsPath), { recursive: true });
-    // `flag: "wx"` is the POSIX `O_EXCL`: atomic create-or-fail.
-    // On a concurrent create race only one call wins; the other
-    // throws `EEXIST`, which the route handler maps to HTTP 409.
-    await writeFile(safeAbsPath, finalContent, { flag: "wx" });
+    // `O_EXCL`: atomic create-or-fail. On a concurrent create race
+    // only one call wins; the other throws `EEXIST`, which the route
+    // handler maps to HTTP 409. The new file is also proven to sit
+    // inside the workspace before any byte is written (#3573).
+    await writeNewFileExclusive(await realpath(root), safeAbsPath, finalContent);
   } else {
     await writeFileAtomic(absPath, finalContent, { uniqueTmp: true });
   }

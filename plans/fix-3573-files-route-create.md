@@ -5,7 +5,7 @@ the wiki writer is its own PR.
 
 ## Problem
 
-`POST /api/files/create` (a file that is not a wiki page) and `POST /api/files/upload` check the path with
+`POST /api/files/create` and `POST /api/files/upload` check the path with
 `resolveNewFilePath` (containment, hidden folders, sensitive names, the realpath of the deepest existing ancestor), and
 then create it by path: `mkdir -p` and `writeFile(…, { flag: "wx" })`. A folder on the path swapped for a link out in
 between sends the create through the link.
@@ -25,7 +25,9 @@ replace an existing file instead of failing with EEXIST, and the upload's rename
 - When the proof fails, the empty file the open created in the link's target is left there, and the call fails. It is
   not removed: by then the name in that folder may belong to a file someone else just created.
 - `writeNewFileExclusive(workspaceRoot, absPath, content)` (`server/utils/files/upload-io.ts`) uses it, anchored at the
-  async realpath of the workspace. `POST create`'s plain-file branch and the upload's default writer call it.
+  async realpath of the workspace. `POST create`'s plain-file branch and the upload's default writer call it, and so
+  does the create-only mode of `writeWikiPage` (the wiki branch of `POST create`, its only user), anchored at the
+  realpath of its workspace root.
 - Missing parent folders are still made with `mkdir -p` first. A swap there can leave empty folders in a link's
   target; the create that follows is refused.
 
@@ -42,11 +44,12 @@ replace an existing file instead of failing with EEXIST, and the upload's rename
   paths, a file used as a folder, and uploads with a collision (the second upload of a name). Each compared the reply
   and the whole resulting tree, inside and outside the workspace. No difference. The harness is in the PR description.
 - Core: new tests for `createFileVerifiedInScope`. With its proof removed, the three swap tests fail.
-- `test/utils/files/test_upload_io.ts` fails on `main`'s `writeNewFileExclusive`.
+- `test/utils/files/test_upload_io.ts` fails on `main`'s `writeNewFileExclusive`, and
+  `test/workspace/wiki-pages/test_writeWikiPageExclusive.ts` on `main`'s `writeWikiPage`.
 
 ## Not in this PR
 
-- Wiki page writes (`writeWikiPage`), including the wiki branch of `POST create`.
+- Wiki page overwrites (`writeWikiPage` without `exclusive`), which every wiki writer and the wiki branch of `PUT` use.
 - `mulmoscript-plugin` ops, `exportShapeScriptUsdz`, `runtime-plugin` assets.
 
 ## Release
