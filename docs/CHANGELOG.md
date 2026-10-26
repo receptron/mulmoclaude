@@ -71,6 +71,13 @@ Saving an edited file checked its path and then wrote it by name, so a folder on
 somewhere else on the computer in between had the save land there. The save now writes only into the folder it
 checked, and fails if that folder was swapped. Wiki pages, new files and dropped files are not covered yet.
 
+#### Runtime plugins' files are served only from the plugin's own folder (#3573)
+
+A plugin installed into the workspace keeps its files in `plugins/.cache/`. Replacing that folder with a symlink to a
+folder elsewhere on the computer made MulmoClaude serve that folder's files under the plugin's address, which needs no
+token. The plugin's folder must now sit inside the workspace, and each file is read from the one it checked. A folder
+asked for as a file now answers 404 instead of 500.
+
 Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@5.13.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.9.0] - 2026-10-22
