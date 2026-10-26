@@ -143,6 +143,15 @@ describe("verified file access", () => {
     assert.deepEqual(readdirSync(outside), ["in.json"]);
   });
 
+  it("refuses a leaf that is not a single file name, before touching the disk", async () => {
+    for (const leaf of ["", ".", "..", "../escape.json", "sub/x.json", `..${path.sep}x.json`]) {
+      await assert.rejects(createFileVerifiedInScope(scope(), dir, leaf, "planted"), /not a single file name/, leaf);
+      await assert.rejects(writeFileVerifiedInScope(scope(), dir, leaf, "planted"), /not a single file name/, leaf);
+    }
+    assert.deepEqual(readdirSync(root).sort(), ["dir"]);
+    assert.deepEqual(readdirSync(dir), ["in.json"]);
+  });
+
   it("creates a new file exclusively in a verified directory", async () => {
     await createFileVerifiedInScope(scope(), dir, "new.json", "created");
     assert.equal(readFileSync(path.join(dir, "new.json"), "utf8"), "created");

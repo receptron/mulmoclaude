@@ -140,6 +140,13 @@ async function writeStaging(bound: BoundScope, dirReal: string, staging: string,
   }
 }
 
+// `leaf` is joined to a verified directory, so a separator or `..` in it would step out of what was verified.
+const assertSingleName = (leaf: string): void => {
+  if (leaf === "" || leaf === "." || leaf === ".." || path.basename(leaf) !== leaf || leaf.includes("/")) {
+    throw new Error(`refusing to write: ${JSON.stringify(leaf)} is not a single file name`);
+  }
+};
+
 const stagingNameFor = (leaf: string): string => `${leaf}.${randomBytes(STAGING_SUFFIX_BYTES).toString("hex")}.tmp`;
 
 const removeQuietly = async (absPath: string): Promise<void> => {
@@ -169,6 +176,7 @@ export async function writeFileVerifiedInScope(
   content: string | Uint8Array,
   hooks: VerifiedFileHooks = {},
 ): Promise<void> {
+  assertSingleName(leaf);
   const bound = await bindScope(scope);
   if (bound === null) throw new Error(`refusing to write: the trusted root ${scope.trustedReal} is gone`);
   const staging = stagingNameFor(leaf);
@@ -190,6 +198,7 @@ export async function createFileVerifiedInScope(
   content: string | Uint8Array,
   hooks: VerifiedFileHooks = {},
 ): Promise<void> {
+  assertSingleName(leaf);
   const bound = await bindScope(scope);
   if (bound === null) throw new Error(`refusing to write: the trusted root ${scope.trustedReal} is gone`);
   await hooks.beforeOpen?.();
