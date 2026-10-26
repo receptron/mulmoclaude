@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-10-26
+
+**A file the workspace has been made to point outside of is no longer read or written: the file explorer, artifact
+pages, image and attachment stores, PDF export, HTML sharing and runtime-plugin files all use the file they checked.
+And a `presentHtml` page written to hand decisions back can send them without the confirmation bar.**
+
 ### Added
 
 #### A page written to hand decisions back can send without the confirmation bar (#3591, PR #3592)
