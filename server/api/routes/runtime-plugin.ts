@@ -30,7 +30,6 @@
 // routes means the plugin isn't installed (or failed to load — see
 // boot logs).
 
-import { realpathSync } from "node:fs";
 import { Router, type Request, type Response } from "express";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { getRuntimePluginByOauthAlias, getRuntimePlugins } from "../../plugins/runtime-registry.js";
@@ -39,8 +38,10 @@ import { notFound, serverError } from "../../utils/httpError.js";
 import { errorMessage } from "../../utils/errors.js";
 import { escapeHtml } from "@mulmoclaude/core/wiki";
 import { isRecord } from "../../utils/types.js";
-import { resolveWithinRoot } from "../../utils/files/safe.js";
+import { realpathIfPresent, scopeRealpath, type VerifiedScope } from "@mulmoclaude/core/files";
+import { lexicallyInside } from "../../utils/files/artifactMount.js";
 import { readPluginAsset } from "../../utils/files/plugins-io.js";
+import { workspacePath } from "../../workspace/workspace.js";
 import { log } from "../../system/logger/index.js";
 import { singleLineForLog } from "../../utils/logPreview.js";
 
@@ -185,28 +186,28 @@ function renderFallbackCallbackHtml(title: string, body: string): string {
 //      this is the trust boundary that prevents arbitrary-file reads
 //      via percent-encoded `../` in `pkg` / `version` (the bearer-
 //      auth exemption makes this an unauthenticated path).
-//   2. realpath the registered cachePath. Symlinks inside the
-//      extracted tree (e.g. dist/foo.js → /etc/passwd) cannot escape
-//      because `resolveWithinRoot(rootReal, subPath)` rejects any
-//      target that resolves outside the plugin's own root.
-//
-// The earlier "must be inside WORKSPACE_PATHS.pluginCache" anchor is
-// gone — presets live under `node_modules/<pkg>/`, not in the
-// workspace cache. The registry-membership check replaces that
-// anchor: the registry is server-set, so its cachePath values are
-// already trusted regardless of where on disk they point.
-/** Look up a registered plugin and return the realpath of its root.
- *  Returns null when the (pkg, version) pair is not registered, when
- *  the cachePath does not exist on disk, or when realpath fails.
- *  Exported for tests. */
-export function resolvePluginRoot(pkg: string, version: string): string | null {
+//   2. Serve from a verified scope. A plugin installed into the
+//      workspace's plugin cache is anchored at the workspace, so a
+//      cache folder replaced by a link out of the workspace is refused
+//      instead of becoming the root (#3573). A preset, under the app's
+//      node_modules, is anchored at its own realpath. Symlinks inside
+//      the extracted tree (e.g. dist/foo.js → /etc/passwd) cannot
+//      escape, and the bytes come from a handle proven to be the
+//      in-scope file, so a path swapped mid-request is not followed.
+/** The verified scope of a registered plugin's assets; null when the (pkg, version) pair is not registered or its
+ *  anchor cannot be resolved. Exported for tests. */
+export async function pluginAssetScope(pkg: string, version: string): Promise<VerifiedScope | null> {
   const plugin = getRuntimePlugins().find((entry) => entry.name === pkg && entry.version === version);
   if (!plugin) return null;
-  try {
-    return realpathSync(plugin.cachePath);
-  } catch {
-    return null;
-  }
+  const withinWorkspace = lexicallyInside(workspacePath, plugin.cachePath);
+  const trustedReal = await realpathIfPresent(withinWorkspace === null ? plugin.cachePath : workspacePath).catch(() => null);
+  return trustedReal === null ? null : { trustedReal, scopeWithinTrusted: withinWorkspace ?? "" };
+}
+
+// The in-scope relative path of a request, or null when the plugin's folder is gone or led out, or `subPath` escapes.
+async function assetRelPath(scope: VerifiedScope, subPath: string): Promise<string | null> {
+  const scopeReal = await scopeRealpath(scope).catch(() => null);
+  return scopeReal === null ? null : lexicallyInside(scopeReal, subPath);
 }
 
 router.get(API_ROUTES.plugins.runtimeAsset, async (req: Request<{ pkg: string; version: string; splat?: string | string[] }>, res: Response) => {
@@ -218,20 +219,20 @@ router.get(API_ROUTES.plugins.runtimeAsset, async (req: Request<{ pkg: string; v
   // path so downstream `path.join` works on every shape.
   const rawSplat = req.params.splat;
   const subPath = Array.isArray(rawSplat) ? rawSplat.join("/") : (rawSplat ?? "");
-  const rootReal = resolvePluginRoot(pkg, version);
-  if (!rootReal) {
-    notFound(res, "asset not found");
-    return;
-  }
-  const resolved = resolveWithinRoot(rootReal, subPath);
-  if (!resolved) {
+  const scope = await pluginAssetScope(pkg, version);
+  const relPath = scope === null ? null : await assetRelPath(scope, subPath);
+  if (scope === null || relPath === null) {
     notFound(res, "asset not found");
     return;
   }
   try {
-    const { data, contentType } = await readPluginAsset(resolved);
-    res.setHeader("Content-Type", contentType);
-    res.send(data);
+    const asset = await readPluginAsset(scope, relPath);
+    if (asset === null) {
+      notFound(res, "asset not found");
+      return;
+    }
+    res.setHeader("Content-Type", asset.contentType);
+    res.send(asset.data);
   } catch (err) {
     log.error(LOG_PREFIX, "asset read failed", {
       pkg: singleLineForLog(pkg),
