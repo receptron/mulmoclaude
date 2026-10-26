@@ -1,13 +1,14 @@
 import { Router, Request, Response } from "express";
-import { Dirent, ReadStream, Stats, createReadStream, readFileSync, realpathSync } from "fs";
-import { mkdir, realpath, writeFile } from "fs/promises";
+import { Dirent, ReadStream, Stats, realpathSync } from "fs";
+import { mkdir, realpath, writeFile, type FileHandle } from "fs/promises";
 import path from "path";
 import { workspacePath } from "../../workspace/workspace.js";
 import { statSafe, statSafeAsync, readDirSafeAsync, resolveWithinRoot, writeFileAtomic } from "../../utils/files/index.js";
 import { stripDataUri } from "../../utils/files/attachment-store.js";
 import { writeNewFileExclusive } from "../../utils/files/upload-io.js";
 import { MAX_RENAME_ATTEMPTS, renamedCandidate, sanitizeUploadFilename, uploadRelPath } from "../../utils/files/upload-name.js";
-import { joinPosixRelPath, toPosixRelPath } from "@mulmoclaude/core/files";
+import { joinPosixRelPath, realpathIfPresent, toPosixRelPath } from "@mulmoclaude/core/files";
+import { openArtifactFile } from "../../utils/files/artifactMount.js";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, notFound, sendError, serverError } from "../../utils/httpError.js";
 import { jsonSyntaxError, MAX_PREVIEW_BYTES } from "../../utils/files/content-write-validate.js";
@@ -362,7 +363,7 @@ function isRefPath(relPath: string): boolean {
  * the label is unknown, the path escapes the ref root, or the
  * resolved file is sensitive / hidden.
  */
-function resolveRefPath(prefixedPath: string): string | null {
+function resolveRefPath(prefixedPath: string): { rootReal: string; absPath: string } | null {
   const afterPrefix = prefixedPath.slice(REF_PREFIX.length);
   const slashIdx = afterPrefix.indexOf("/");
   const label = slashIdx >= 0 ? afterPrefix.slice(0, slashIdx) : afterPrefix;
@@ -381,7 +382,7 @@ function resolveRefPath(prefixedPath: string): string | null {
   const rootReal = target.realPath;
 
   // For root of the reference dir (no remainder), return the dir itself
-  if (!remainder) return rootReal;
+  if (!remainder) return { rootReal, absPath: rootReal };
 
   const resolved = resolveWithinRoot(rootReal, remainder);
   if (!resolved) return null;
@@ -395,7 +396,7 @@ function resolveRefPath(prefixedPath: string): string | null {
   }
   if (isSensitivePath(resolved)) return null;
 
-  return resolved;
+  return { rootReal, absPath: resolved };
 }
 
 export interface ByteRange {
@@ -704,7 +705,7 @@ router.get(API_ROUTES.files.dir, async (req: Request<object, unknown, unknown, P
 
   // Reference directory branch — resolve against the registered ref dir
   if (isRefPath(relPath)) {
-    const absPath = resolveRefPath(relPath);
+    const absPath = resolveRefPath(relPath)?.absPath;
     if (!absPath) {
       log.warn("files", "GET dir: ref dir not found", { pathPreview: previewSnippet(relPath) });
       notFound(res, "Not found");
@@ -756,6 +757,14 @@ interface PathQuery {
   path?: string;
 }
 
+interface ResolvedFile {
+  relPath: string;
+  absPath: string;
+  /** The root `absPath` is confined to: the workspace or a reference directory. */
+  rootReal: string;
+  stat: Stats;
+}
+
 // Shared validation preamble for /files/content and /files/raw. Both
 // endpoints need to: read `path` from the query, validate it's
 // inside the workspace (with symlink hardening), stat it, and
@@ -771,14 +780,11 @@ interface PathQuery {
 // for symlink escapes (which would return 400). Doing them in this
 // order keeps 404 reachable for the common "file not found" case
 // instead of conflating it with traversal attempts.
-function resolveAndStatFile<T>(
-  req: Request<object, unknown, unknown, PathQuery>,
-  res: Response<T | ErrorResponse>,
-): { relPath: string; absPath: string; stat: Stats } | null {
+function resolveAndStatFile<T>(req: Request<object, unknown, unknown, PathQuery>, res: Response<T | ErrorResponse>): ResolvedFile | null {
   return resolveAndStatFileByPath(getOptionalStringQuery(req, "path") ?? "", res);
 }
 
-function resolveAndStatFileByPath<T>(relPath: string, res: Response<T | ErrorResponse>): { relPath: string; absPath: string; stat: Stats } | null {
+function resolveAndStatFileByPath<T>(relPath: string, res: Response<T | ErrorResponse>): ResolvedFile | null {
   if (!relPath) {
     badRequest(res, "path required");
     return null;
@@ -786,17 +792,17 @@ function resolveAndStatFileByPath<T>(relPath: string, res: Response<T | ErrorRes
 
   // Reference directory branch
   if (isRefPath(relPath)) {
-    const absPath = resolveRefPath(relPath);
-    if (!absPath) {
+    const target = resolveRefPath(relPath);
+    if (!target) {
       notFound(res, "Not found");
       return null;
     }
-    const stat = statSafe(absPath);
+    const stat = statSafe(target.absPath);
     if (!stat || !stat.isFile()) {
       notFound(res, "File not found");
       return null;
     }
-    return { relPath, absPath, stat };
+    return { relPath, ...target, stat };
   }
 
   // Workspace path — existing logic
@@ -829,7 +835,32 @@ function resolveAndStatFileByPath<T>(relPath: string, res: Response<T | ErrorRes
     badRequest(res, "Path outside workspace");
     return null;
   }
-  return { relPath, absPath, stat };
+  return { relPath, absPath, rootReal: workspaceReal, stat };
+}
+
+// The checks above ran on a path that can be swapped before it is read, so the bytes come from a handle
+// proven to be that in-root file. The anchor is the async realpath: the form the verified open compares
+// against (the forms differ on Windows; see getWorkspaceRealAsync).
+async function openResolvedFile(file: ResolvedFile): Promise<FileHandle | null> {
+  const trustedReal = await realpathIfPresent(file.rootReal);
+  if (trustedReal === null) return null;
+  return openArtifactFile({ trustedReal, scopeWithinTrusted: "" }, path.relative(file.rootReal, file.absPath));
+}
+
+// A file gone or swapped since the check is a 404; an open that fails outright is the read failure it always was.
+async function openForRead<T>(file: ResolvedFile, res: Response<T | ErrorResponse>, label: string): Promise<FileHandle | null> {
+  try {
+    const handle = await openResolvedFile(file);
+    if (handle === null) {
+      log.warn("files", `${label}: changed before it was read`, { pathPreview: previewSnippet(file.relPath) });
+      notFound(res, "File not found");
+    }
+    return handle;
+  } catch (err) {
+    log.error("files", `${label}: open threw`, { pathPreview: previewSnippet(file.relPath), error: errorMessage(err) });
+    serverError(res, "Failed to read file");
+    return null;
+  }
 }
 
 // Decide the metadata-only response for a resolved file based on its
@@ -871,7 +902,31 @@ export function decideContentResponse(kind: ContentKind, meta: { path: string; s
   return null;
 }
 
-router.get(API_ROUTES.files.content, (req: Request<object, unknown, unknown, PathQuery>, res: Response<FileContentResponse | ErrorResponse>) => {
+const fileMeta = (relPath: string, stat: Stats) => ({ path: relPath, size: stat.size, modifiedMs: stat.mtimeMs });
+
+async function sendTextContent(res: Response<FileContentResponse | ErrorResponse>, file: ResolvedFile, kind: ContentKind): Promise<void> {
+  const handle = await openForRead(file, res, "GET content");
+  if (!handle) return;
+  try {
+    const meta = fileMeta(file.relPath, await handle.stat());
+    // Judged again on the opened file, so the size cap holds for the bytes actually read.
+    const preview = decideContentResponse(kind, meta);
+    if (preview) {
+      res.json(preview);
+      return;
+    }
+    const content = await handle.readFile("utf-8");
+    log.info("files", "GET content: ok", { pathPreview: previewSnippet(file.relPath), bytes: meta.size });
+    res.json({ kind: "text", ...meta, content });
+  } catch (err) {
+    log.error("files", "GET content: read threw", { pathPreview: previewSnippet(file.relPath), error: errorMessage(err) });
+    serverError(res, "Failed to read file");
+  } finally {
+    await handle.close();
+  }
+}
+
+router.get(API_ROUTES.files.content, async (req: Request<object, unknown, unknown, PathQuery>, res: Response<FileContentResponse | ErrorResponse>) => {
   const requestedPath = getOptionalStringQuery(req, "path") ?? "";
   log.info("files", "GET content: start", { pathPreview: previewSnippet(requestedPath) });
   const ctx = resolveAndStatFile(req, res);
@@ -882,30 +937,13 @@ router.get(API_ROUTES.files.content, (req: Request<object, unknown, unknown, Pat
     log.warn("files", "GET content: gated by resolve/stat", { pathPreview: previewSnippet(requestedPath) });
     return;
   }
-  const { relPath, absPath, stat } = ctx;
-
-  const meta = {
-    path: relPath,
-    size: stat.size,
-    modifiedMs: stat.mtimeMs,
-  };
-
-  const kind = classify(absPath);
-  const preview = decideContentResponse(kind, meta);
+  const kind = classify(ctx.absPath);
+  const preview = decideContentResponse(kind, fileMeta(ctx.relPath, ctx.stat));
   if (preview) {
     res.json(preview);
     return;
   }
-  let content: string;
-  try {
-    content = readFileSync(absPath, "utf-8");
-  } catch (err) {
-    log.error("files", "GET content: read threw", { pathPreview: previewSnippet(relPath), error: errorMessage(err) });
-    serverError(res, "Failed to read file");
-    return;
-  }
-  log.info("files", "GET content: ok", { pathPreview: previewSnippet(relPath), bytes: stat.size });
-  res.json({ kind: "text", ...meta, content });
+  await sendTextContent(res, ctx, kind);
 });
 
 type ResolvedTextFile = { ok: true; absPath: string } | { ok: false; status: 400 | 404; message: string };
@@ -1248,23 +1286,19 @@ router.put(API_ROUTES.files.content, async (req: Request<object, unknown, WriteC
   await respondWithWrittenFile(res, { absPath: resolved.absPath, relPath, fallbackBytes: contentBytes, logLabel: "PUT content" });
 });
 
-router.get(API_ROUTES.files.raw, (req: Request<object, unknown, unknown, PathQuery>, res: Response<ErrorResponse>) => {
-  const requestedPath = getOptionalStringQuery(req, "path") ?? "";
-  log.info("files", "GET raw: start", { pathPreview: previewSnippet(requestedPath) });
-  const ctx = resolveAndStatFile(req, res);
-  if (!ctx) {
-    log.warn("files", "GET raw: gated by resolve/stat", { pathPreview: previewSnippet(requestedPath) });
-    return;
-  }
-  const { absPath, stat } = ctx;
-
+const rawSizeCapFor = (absPath: string): number => {
   const rawKind = classify(absPath);
-  const rawSizeCap = rawKind === "audio" || rawKind === "video" ? MAX_MEDIA_BYTES : MAX_RAW_BYTES;
-  if (stat.size > rawSizeCap) {
-    log.warn("files", "GET raw: too large", { pathPreview: previewSnippet(requestedPath), bytes: stat.size, cap: rawSizeCap });
-    sendError(res, 413, `File too large to stream (${stat.size} bytes, limit ${rawSizeCap})`);
-    return;
-  }
+  return rawKind === "audio" || rawKind === "video" ? MAX_MEDIA_BYTES : MAX_RAW_BYTES;
+};
+
+function rejectedAsTooLarge(res: Response<ErrorResponse>, size: number, cap: number, requestedPath: string): boolean {
+  if (size <= cap) return false;
+  log.warn("files", "GET raw: too large", { pathPreview: previewSnippet(requestedPath), bytes: size, cap });
+  sendError(res, 413, `File too large to stream (${size} bytes, limit ${cap})`);
+  return true;
+}
+
+function setRawHeaders(res: Response<ErrorResponse>, absPath: string): void {
   const ext = path.extname(absPath).toLowerCase();
   const mime = MIME_BY_EXT[ext] ?? "application/octet-stream";
   res.setHeader("Accept-Ranges", "bytes");
@@ -1276,33 +1310,79 @@ router.get(API_ROUTES.files.raw, (req: Request<object, unknown, unknown, PathQue
   // browser cannot show them under it. See plans/done/
   // fix-files-raw-csp-sandbox.md for the full threat model.
   applyRawSecurityHeaders(res, mime);
+}
 
-  // Range support is required for `<video>` playback (Safari refuses
-  // to play media without 206 responses) and for seek-past-buffered
-  // in `<audio>`. When no Range header is sent we fall through to
-  // the existing full-file pipe.
+// The stream closes the handle when it ends or is destroyed; a client that leaves mid-body destroys it.
+function pipeHandle(handle: FileHandle, res: Response<ErrorResponse>, range?: ByteRange): void {
+  const stream = handle.createReadStream(range ?? {});
+  res.on("close", () => stream.destroy());
+  pipeWithErrorHandling(stream, res);
+}
+
+// Range support is required for `<video>` playback (Safari refuses
+// to play media without 206 responses) and for seek-past-buffered
+// in `<audio>`. When no Range header is sent we fall through to
+// the full-file pipe.
+function streamRaw(req: Request<object, unknown, unknown, PathQuery>, res: Response<ErrorResponse>, handle: FileHandle, size: number): void {
   const rangeHeader = req.headers.range;
-  if (rangeHeader) {
-    const range = parseRange(rangeHeader, stat.size);
-    if (!range) {
-      // The media MIME was set above so the 206 success path
-      // doesn't have to repeat it, but on a 416 we want JSON so
-      // `res.json` doesn't lie about the body's content-type. Set
-      // the Content-Range per RFC 7233 §4.4 before sending.
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.setHeader("Content-Range", `bytes */${stat.size}`);
-      sendError(res, 416, "Range not satisfiable");
-      return;
-    }
-    res.status(206);
-    res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${stat.size}`);
-    res.setHeader("Content-Length", String(range.end - range.start + 1));
-    pipeWithErrorHandling(createReadStream(absPath, { start: range.start, end: range.end }), res);
+  if (!rangeHeader) {
+    res.setHeader("Content-Length", String(size));
+    pipeHandle(handle, res);
     return;
   }
+  const range = parseRange(rangeHeader, size);
+  if (!range) {
+    // The media MIME was set above so the 206 success path
+    // doesn't have to repeat it, but on a 416 we want JSON so
+    // `res.json` doesn't lie about the body's content-type. Set
+    // the Content-Range per RFC 7233 §4.4 before sending.
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Content-Range", `bytes */${size}`);
+    sendError(res, 416, "Range not satisfiable");
+    handle.close().catch(() => {});
+    return;
+  }
+  res.status(206);
+  res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${size}`);
+  res.setHeader("Content-Length", String(range.end - range.start + 1));
+  pipeHandle(handle, res, range);
+}
 
-  res.setHeader("Content-Length", String(stat.size));
-  pipeWithErrorHandling(createReadStream(absPath), res);
+// Size, range and length are taken from the opened file, so they describe the bytes that are sent.
+async function sendRaw(
+  req: Request<object, unknown, unknown, PathQuery>,
+  res: Response<ErrorResponse>,
+  file: ResolvedFile,
+  requestedPath: string,
+): Promise<void> {
+  const handle = await openForRead(file, res, "GET raw");
+  if (!handle) return;
+  const size = await handle.stat().then(
+    (stats) => stats.size,
+    (err: unknown) => {
+      log.error("files", "GET raw: stat threw", { pathPreview: previewSnippet(requestedPath), error: errorMessage(err) });
+      serverError(res, "Failed to read file");
+      return null;
+    },
+  );
+  if (size === null || rejectedAsTooLarge(res, size, rawSizeCapFor(file.absPath), requestedPath)) {
+    await handle.close();
+    return;
+  }
+  setRawHeaders(res, file.absPath);
+  streamRaw(req, res, handle, size);
+}
+
+router.get(API_ROUTES.files.raw, async (req: Request<object, unknown, unknown, PathQuery>, res: Response<ErrorResponse>) => {
+  const requestedPath = getOptionalStringQuery(req, "path") ?? "";
+  log.info("files", "GET raw: start", { pathPreview: previewSnippet(requestedPath) });
+  const ctx = resolveAndStatFile(req, res);
+  if (!ctx) {
+    log.warn("files", "GET raw: gated by resolve/stat", { pathPreview: previewSnippet(requestedPath) });
+    return;
+  }
+  if (rejectedAsTooLarge(res, ctx.stat.size, rawSizeCapFor(ctx.absPath), requestedPath)) return;
+  await sendRaw(req, res, ctx, requestedPath);
 });
 
 // ── Reference directory roots ───────────────────────────────────
