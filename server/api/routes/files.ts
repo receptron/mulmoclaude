@@ -927,10 +927,18 @@ export function decideContentResponse(kind: ContentKind, meta: { path: string; s
 
 const fileMeta = (relPath: string, stat: Stats) => ({ path: relPath, size: stat.size, modifiedMs: stat.mtimeMs });
 
+// One read may return fewer bytes than asked before EOF (network and FUSE mounts), so it repeats until full or EOF.
+async function readInto(handle: FileHandle, buffer: Buffer, offset: number): Promise<number> {
+  if (offset >= buffer.length) return offset;
+  const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
+  return bytesRead === 0 ? offset : readInto(handle, buffer, offset + bytesRead);
+}
+
 // At most `size` bytes, so a file appended to while it is read stays within the cap it was judged by.
 async function readTextBounded(handle: FileHandle, size: number): Promise<string> {
-  const { bytesRead, buffer } = await handle.read(Buffer.alloc(size), 0, size, 0);
-  return buffer.toString("utf-8", 0, bytesRead);
+  const buffer = Buffer.alloc(size);
+  const filled = await readInto(handle, buffer, 0);
+  return buffer.toString("utf-8", 0, filled);
 }
 
 async function answerText(res: Response<FileContentResponse | ErrorResponse>, relPath: string, kind: ContentKind, opened: OpenedFile): Promise<void> {
