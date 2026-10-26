@@ -21,17 +21,24 @@ Reproduced on `main`:
 
 - `resolveAndStatFileByPath` also returns the root it confined the path to (`rootReal`); `resolveRefPath` returns its
   root with the path.
-- `openResolvedFile` opens the checked path through `openArtifactFile` with that root as the anchor. The anchor is the
-  async realpath, the form the verified open compares against; the forms differ on Windows (`getWorkspaceRealAsync`).
+- `openResolvedFile` opens the checked path through `openArtifactFile` with that root as the anchor, and keeps the handle
+  only if it is the file the check `stat`ed (same device and inode). The anchor is the async realpath, the form the
+  verified open compares against; the forms differ on Windows. The workspace's is the cached `getWorkspaceRealAsync`.
+- A path component that turns into a link or a file while it is opened (`ELOOP`, `ENOTDIR`) is a 404, like any other
+  change.
 - `content`: the metadata-only answers (image, PDF, media, binary, too large) are still decided from the path's `stat`,
   without opening. A text file is opened, judged again on the handle's `stat` so the size cap holds for the bytes read,
-  and read from the handle.
+  and at most that many bytes are read from the handle.
 - `raw`: the size cap is checked on the path's `stat` first, as before, then on the handle's. Range, `Content-Length`
-  and the body come from the handle. A client that leaves mid-body destroys the stream, which closes the handle.
+  and the body come from the handle, and the stream ends at the checked size. A client that leaves mid-body destroys the
+  stream, which closes the handle; one that left while the file was being opened gets no stream, and the handle is
+  closed.
 
 ## Behaviour changes
 
-- A file gone or swapped between the check and the open answers 404.
+- A file gone, swapped for a link, or replaced by another file between the check and the open answers 404.
+- A file appended to while it is read is cut at the size it was judged by. Before, the read ran to the end, past the
+  preview cap and past the `Content-Length` already sent.
 - An unreadable file (`raw`) answers 500 with a JSON body before any Range is judged. Before, the 500 carried the file's
   MIME type and security headers, and an unsatisfiable Range on it answered 416.
 

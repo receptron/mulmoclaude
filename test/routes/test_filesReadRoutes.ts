@@ -8,7 +8,7 @@
 import { after, before, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, mkdirSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { PassThrough } from "node:stream";
 import { tmpdir } from "node:os";
@@ -141,6 +141,12 @@ describe("GET /api/files/raw", () => {
     assert.deepEqual({ status: beyond.status, range: beyond.headers["content-range"] }, { status: 416, range: `bytes */${INSIDE.length}` });
   });
 
+  it("streams an empty file as an empty 200", async () => {
+    await writeFile(path.join(workspaceDir, "d", "empty.txt"), "");
+    const reply = await start(rawHandler, "d/empty.txt");
+    assert.deepEqual({ status: reply.status, length: reply.headers["content-length"], body: reply.body }, { status: 200, length: "0", body: "" });
+  });
+
   it("answers 404 for a missing file and 400 for a folder", async () => {
     assert.equal((await start(rawHandler, "d/missing.txt")).status, 404);
     assert.equal((await start(rawHandler, "d")).status, 400);
@@ -154,6 +160,11 @@ describe("a path swapped after the check", posixOnly, () => {
   function swapFileForLinkOut(): void {
     rmSync(path.join(workspaceDir, "d", "f.txt"));
     symlinkSync(path.join(outsideDir, "f.txt"), path.join(workspaceDir, "d", "f.txt"));
+  }
+
+  function swapFileForAnotherFile(): void {
+    writeFileSync(path.join(workspaceDir, "d", "other.txt"), "other bytes");
+    renameSync(path.join(workspaceDir, "d", "other.txt"), path.join(workspaceDir, "d", "f.txt"));
   }
 
   function swapFolderForLinkOut(): void {
@@ -170,6 +181,14 @@ describe("a path swapped after the check", posixOnly, () => {
       swapFileForLinkOut();
       const reply = await pending;
       assert.ok(!reply.body.includes(OUTSIDE), reply.body);
+      assert.equal(reply.status, 404);
+    });
+
+    it(`${name}: a file replaced by another file is not read in its place`, async () => {
+      const pending = start(handlerOf(), "d/f.txt");
+      swapFileForAnotherFile();
+      const reply = await pending;
+      assert.ok(!reply.body.includes("other bytes"), reply.body);
       assert.equal(reply.status, 404);
     });
 

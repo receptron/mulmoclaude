@@ -838,27 +838,50 @@ function resolveAndStatFileByPath<T>(relPath: string, res: Response<T | ErrorRes
   return { relPath, absPath, rootReal: workspaceReal, stat };
 }
 
-// The checks above ran on a path that can be swapped before it is read, so the bytes come from a handle
-// proven to be that in-root file. The anchor is the async realpath: the form the verified open compares
-// against (the forms differ on Windows; see getWorkspaceRealAsync).
-async function openResolvedFile(file: ResolvedFile): Promise<FileHandle | null> {
-  const trustedReal = await realpathIfPresent(file.rootReal);
-  if (trustedReal === null) return null;
-  return openArtifactFile({ trustedReal, scopeWithinTrusted: "" }, path.relative(file.rootReal, file.absPath));
+interface OpenedFile {
+  handle: FileHandle;
+  stat: Stats;
+}
+
+// A path component that became a link (ELOOP) or a file (ENOTDIR) while it was being opened.
+const SWAPPED_DURING_OPEN = new Set(["ELOOP", "ENOTDIR"]);
+
+// The async realpath is the form the verified open compares against (the forms differ on Windows). The workspace's is
+// cached, so a workspace folder replaced after start-up is not taken as the new anchor.
+const anchorFor = (file: ResolvedFile): Promise<string | null> =>
+  file.rootReal === workspaceReal ? getWorkspaceRealAsync() : realpathIfPresent(file.rootReal);
+
+const sameInode = (opened: Stats, checked: Stats): boolean => opened.dev === checked.dev && opened.ino === checked.ino;
+
+// The checks above ran on a path that can be swapped before it is read, so the bytes come from a handle proven to be the
+// in-root file the check stat'ed.
+async function openResolvedFile(file: ResolvedFile): Promise<OpenedFile | null> {
+  const trustedReal = await anchorFor(file);
+  const handle = trustedReal === null ? null : await openArtifactFile({ trustedReal, scopeWithinTrusted: "" }, path.relative(file.rootReal, file.absPath));
+  if (handle === null) return null;
+  const stat = await handle.stat().catch(async (err: unknown) => {
+    await handle.close();
+    throw err;
+  });
+  if (sameInode(stat, file.stat)) return { handle, stat };
+  await handle.close();
+  return null;
 }
 
 // A file gone or swapped since the check is a 404; an open that fails outright is the read failure it always was.
-async function openForRead<T>(file: ResolvedFile, res: Response<T | ErrorResponse>, label: string): Promise<FileHandle | null> {
+async function openForRead<T>(file: ResolvedFile, res: Response<T | ErrorResponse>, label: string): Promise<OpenedFile | null> {
   try {
-    const handle = await openResolvedFile(file);
-    if (handle === null) {
+    const opened = await openResolvedFile(file);
+    if (opened === null) {
       log.warn("files", `${label}: changed before it was read`, { pathPreview: previewSnippet(file.relPath) });
       notFound(res, "File not found");
     }
-    return handle;
+    return opened;
   } catch (err) {
-    log.error("files", `${label}: open threw`, { pathPreview: previewSnippet(file.relPath), error: errorMessage(err) });
-    serverError(res, "Failed to read file");
+    const swapped = isErrorWithCode(err) && SWAPPED_DURING_OPEN.has(String(err.code));
+    log.warn("files", `${label}: open threw`, { pathPreview: previewSnippet(file.relPath), error: errorMessage(err) });
+    if (swapped) notFound(res, "File not found");
+    else serverError(res, "Failed to read file");
     return null;
   }
 }
@@ -904,25 +927,35 @@ export function decideContentResponse(kind: ContentKind, meta: { path: string; s
 
 const fileMeta = (relPath: string, stat: Stats) => ({ path: relPath, size: stat.size, modifiedMs: stat.mtimeMs });
 
+// At most `size` bytes, so a file appended to while it is read stays within the cap it was judged by.
+async function readTextBounded(handle: FileHandle, size: number): Promise<string> {
+  const { bytesRead, buffer } = await handle.read(Buffer.alloc(size), 0, size, 0);
+  return buffer.toString("utf-8", 0, bytesRead);
+}
+
+async function answerText(res: Response<FileContentResponse | ErrorResponse>, relPath: string, kind: ContentKind, opened: OpenedFile): Promise<void> {
+  const meta = fileMeta(relPath, opened.stat);
+  // Judged again on the opened file: it may have been rewritten in place since the check.
+  const preview = decideContentResponse(kind, meta);
+  if (preview) {
+    res.json(preview);
+    return;
+  }
+  const content = await readTextBounded(opened.handle, meta.size);
+  log.info("files", "GET content: ok", { pathPreview: previewSnippet(relPath), bytes: meta.size });
+  res.json({ kind: "text", ...meta, content });
+}
+
 async function sendTextContent(res: Response<FileContentResponse | ErrorResponse>, file: ResolvedFile, kind: ContentKind): Promise<void> {
-  const handle = await openForRead(file, res, "GET content");
-  if (!handle) return;
+  const opened = await openForRead(file, res, "GET content");
+  if (!opened) return;
   try {
-    const meta = fileMeta(file.relPath, await handle.stat());
-    // Judged again on the opened file, so the size cap holds for the bytes actually read.
-    const preview = decideContentResponse(kind, meta);
-    if (preview) {
-      res.json(preview);
-      return;
-    }
-    const content = await handle.readFile("utf-8");
-    log.info("files", "GET content: ok", { pathPreview: previewSnippet(file.relPath), bytes: meta.size });
-    res.json({ kind: "text", ...meta, content });
+    await answerText(res, file.relPath, kind, opened);
   } catch (err) {
     log.error("files", "GET content: read threw", { pathPreview: previewSnippet(file.relPath), error: errorMessage(err) });
     serverError(res, "Failed to read file");
   } finally {
-    await handle.close();
+    await opened.handle.close();
   }
 }
 
@@ -1312,40 +1345,65 @@ function setRawHeaders(res: Response<ErrorResponse>, absPath: string): void {
   applyRawSecurityHeaders(res, mime);
 }
 
-// The stream closes the handle when it ends or is destroyed; a client that leaves mid-body destroys it.
-function pipeHandle(handle: FileHandle, res: Response<ErrorResponse>, range?: ByteRange): void {
-  const stream = handle.createReadStream(range ?? {});
+// A client that left before the stream exists fired `close` already, so it is recorded from the start.
+function watchClientGone(res: Response<ErrorResponse>): () => boolean {
+  const state = { gone: false };
+  res.once("close", () => {
+    state.gone = true;
+  });
+  return () => state.gone;
+}
+
+const wholeFile = (size: number): ByteRange | null => (size > 0 ? { start: 0, end: size - 1 } : null);
+
+// The stream closes the handle when it ends or is destroyed; a client that leaves mid-body destroys it. `null` is an
+// empty body. The end is bounded, so a file appended to meanwhile still matches its Content-Length.
+function pipeHandle(handle: FileHandle, res: Response<ErrorResponse>, range: ByteRange | null, clientGone: () => boolean): void {
+  if (range === null || clientGone()) {
+    handle.close().catch(() => {});
+    if (range === null) res.end();
+    return;
+  }
+  const stream = handle.createReadStream(range);
   res.on("close", () => stream.destroy());
   pipeWithErrorHandling(stream, res);
+}
+
+// The media MIME was set by setRawHeaders so the 206 success path doesn't have to repeat it, but on a 416 we want JSON
+// so `res.json` doesn't lie about the body's content-type. Content-Range per RFC 7233 §4.4.
+function refuseRange(res: Response<ErrorResponse>, size: number): void {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Range", `bytes */${size}`);
+  sendError(res, 416, "Range not satisfiable");
 }
 
 // Range support is required for `<video>` playback (Safari refuses
 // to play media without 206 responses) and for seek-past-buffered
 // in `<audio>`. When no Range header is sent we fall through to
 // the full-file pipe.
-function streamRaw(req: Request<object, unknown, unknown, PathQuery>, res: Response<ErrorResponse>, handle: FileHandle, size: number): void {
+function streamRaw(
+  req: Request<object, unknown, unknown, PathQuery>,
+  res: Response<ErrorResponse>,
+  handle: FileHandle,
+  size: number,
+  clientGone: () => boolean,
+): void {
   const rangeHeader = req.headers.range;
   if (!rangeHeader) {
     res.setHeader("Content-Length", String(size));
-    pipeHandle(handle, res);
+    pipeHandle(handle, res, wholeFile(size), clientGone);
     return;
   }
   const range = parseRange(rangeHeader, size);
   if (!range) {
-    // The media MIME was set above so the 206 success path
-    // doesn't have to repeat it, but on a 416 we want JSON so
-    // `res.json` doesn't lie about the body's content-type. Set
-    // the Content-Range per RFC 7233 §4.4 before sending.
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Content-Range", `bytes */${size}`);
-    sendError(res, 416, "Range not satisfiable");
+    refuseRange(res, size);
     handle.close().catch(() => {});
     return;
   }
   res.status(206);
   res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${size}`);
   res.setHeader("Content-Length", String(range.end - range.start + 1));
-  pipeHandle(handle, res, range);
+  pipeHandle(handle, res, range, clientGone);
 }
 
 // Size, range and length are taken from the opened file, so they describe the bytes that are sent.
@@ -1355,22 +1413,15 @@ async function sendRaw(
   file: ResolvedFile,
   requestedPath: string,
 ): Promise<void> {
-  const handle = await openForRead(file, res, "GET raw");
-  if (!handle) return;
-  const size = await handle.stat().then(
-    (stats) => stats.size,
-    (err: unknown) => {
-      log.error("files", "GET raw: stat threw", { pathPreview: previewSnippet(requestedPath), error: errorMessage(err) });
-      serverError(res, "Failed to read file");
-      return null;
-    },
-  );
-  if (size === null || rejectedAsTooLarge(res, size, rawSizeCapFor(file.absPath), requestedPath)) {
-    await handle.close();
+  const clientGone = watchClientGone(res);
+  const opened = await openForRead(file, res, "GET raw");
+  if (!opened) return;
+  if (rejectedAsTooLarge(res, opened.stat.size, rawSizeCapFor(file.absPath), requestedPath)) {
+    await opened.handle.close();
     return;
   }
   setRawHeaders(res, file.absPath);
-  streamRaw(req, res, handle, size);
+  streamRaw(req, res, opened.handle, opened.stat.size, clientGone);
 }
 
 router.get(API_ROUTES.files.raw, async (req: Request<object, unknown, unknown, PathQuery>, res: Response<ErrorResponse>) => {
