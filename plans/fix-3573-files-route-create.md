@@ -54,5 +54,6 @@ replace an existing file instead of failing with EEXIST, and the upload's rename
 
 ## Release
 
-The host side imports `createFileVerifiedInScope`, so `@mulmoclaude/core` with it must be published before the next
-`mulmoclaude` launcher publish.
+`@mulmoclaude/core` goes to 5.14.0 here, with every declared range swept, because the publish-drift gate reports a new
+export at an unchanged version. The host side imports `createFileVerifiedInScope`, so core 5.14.0 must be published
+before the next `mulmoclaude` launcher publish.
