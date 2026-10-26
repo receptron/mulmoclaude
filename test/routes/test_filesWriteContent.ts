@@ -16,6 +16,7 @@ let workspaceDir: string;
 let outsideDir: string;
 let originalHome: string | undefined;
 let originalUserProfile: string | undefined;
+let originalWorkspaceEnv: string | undefined;
 let routeMod: RouteModule;
 
 before(async () => {
@@ -24,8 +25,12 @@ before(async () => {
   originalUserProfile = process.env.USERPROFILE;
   process.env.HOME = tmpRoot;
   process.env.USERPROFILE = tmpRoot;
+  // A configured workspace would win over HOME, and beforeEach empties the workspace.
+  originalWorkspaceEnv = process.env.MULMOCLAUDE_WORKSPACE_PATH;
+  delete process.env.MULMOCLAUDE_WORKSPACE_PATH;
   const { workspacePath } = await import("../../server/workspace/workspace.js");
   workspaceDir = workspacePath;
+  assert.ok(workspaceDir.startsWith(tmpRoot + path.sep), `workspace ${workspaceDir} is not under the test's temp folder`);
   mkdirSync(workspaceDir, { recursive: true });
   outsideDir = path.join(tmpRoot, "outside");
   mkdirSync(outsideDir, { recursive: true });
@@ -37,13 +42,15 @@ after(async () => {
   else process.env.HOME = originalHome;
   if (originalUserProfile === undefined) delete process.env.USERPROFILE;
   else process.env.USERPROFILE = originalUserProfile;
+  if (originalWorkspaceEnv === undefined) delete process.env.MULMOCLAUDE_WORKSPACE_PATH;
+  else process.env.MULMOCLAUDE_WORKSPACE_PATH = originalWorkspaceEnv;
   await rm(tmpRoot, { recursive: true, force: true });
 });
 
 // files.ts captured the workspace realpath at load, so the folder itself stays.
 beforeEach(async () => {
-  for (const entry of [...readdirSync(workspaceDir), ...readdirSync(outsideDir).map((name) => path.join("..", "outside", name))]) {
-    await rm(path.join(workspaceDir, entry), { recursive: true, force: true });
+  for (const dir of [workspaceDir, outsideDir]) {
+    for (const entry of readdirSync(dir)) await rm(path.join(dir, entry), { recursive: true, force: true });
   }
   mkdirSync(path.join(workspaceDir, "d"));
   await writeFile(path.join(workspaceDir, "d", "f.txt"), "inside");
