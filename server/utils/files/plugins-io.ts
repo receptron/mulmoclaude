@@ -15,8 +15,9 @@
 // written ledger never bricks server boot. Writes go through the
 // atomic helper, so a crashed install can't leave a corrupt file.
 
-import { readFile } from "node:fs/promises";
 import path from "node:path";
+import type { VerifiedScope } from "@mulmoclaude/core/files";
+import { openArtifactFile } from "./artifactMount.js";
 import { loadJsonFile } from "./json.js";
 import { hasStringProp } from "../types.js";
 import { WORKSPACE_PATHS } from "../../workspace/paths.js";
@@ -57,10 +58,17 @@ export interface PluginAsset {
   contentType: string;
 }
 
-export async function readPluginAsset(absPath: string): Promise<PluginAsset> {
-  const data = await readFile(absPath);
-  const ext = path.extname(absPath).toLowerCase();
-  return { data, contentType: pluginAssetContentType(ext) };
+/** Null for a path that is missing, not a regular file, or outside the scope (also when swapped mid-read); other
+ *  read errors propagate. The bytes come from the verified handle (#3573). */
+export async function readPluginAsset(scope: VerifiedScope, relPath: string): Promise<PluginAsset | null> {
+  const handle = await openArtifactFile(scope, relPath);
+  if (handle === null) return null;
+  try {
+    const data = await handle.readFile();
+    return { data, contentType: pluginAssetContentType(path.extname(relPath).toLowerCase()) };
+  } finally {
+    await handle.close();
+  }
 }
 
 // Lookup table over a switch — flat data structure stays under
