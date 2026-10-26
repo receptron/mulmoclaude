@@ -3,11 +3,11 @@ import { Dirent, ReadStream, Stats, realpathSync } from "fs";
 import { mkdir, realpath, writeFile, type FileHandle } from "fs/promises";
 import path from "path";
 import { workspacePath } from "../../workspace/workspace.js";
-import { statSafe, statSafeAsync, readDirSafeAsync, resolveWithinRoot, writeFileAtomic } from "../../utils/files/index.js";
+import { statSafe, statSafeAsync, readDirSafeAsync, resolveWithinRoot } from "../../utils/files/index.js";
 import { stripDataUri } from "../../utils/files/attachment-store.js";
 import { writeNewFileExclusive } from "../../utils/files/upload-io.js";
 import { MAX_RENAME_ATTEMPTS, renamedCandidate, sanitizeUploadFilename, uploadRelPath } from "../../utils/files/upload-name.js";
-import { joinPosixRelPath, realpathIfPresent, toPosixRelPath } from "@mulmoclaude/core/files";
+import { joinPosixRelPath, realpathIfPresent, toPosixRelPath, writeFileVerifiedInScope } from "@mulmoclaude/core/files";
 import { openArtifactFile } from "../../utils/files/artifactMount.js";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, notFound, sendError, serverError } from "../../utils/httpError.js";
@@ -1016,22 +1016,24 @@ async function resolveExistingTextFile(relPathRaw: string): Promise<ResolvedText
 
 // Wiki pages route through `writeWikiPage` so the (old, new) pair
 // reaches the edit-history pipeline (#763). Everything else takes
-// the generic atomic write. `uniqueTmp: true` appends a randomUUID
-// to the tmp filename so two simultaneous PUTs to the same path
-// can't clobber each other's staging file and race through rename
-// (writeWikiPage applies it internally).
+// the verified atomic write: its staging file has a random name, so
+// two simultaneous PUTs to the same path can't clobber each other's
+// staging file, and it is proven to sit inside the workspace before a
+// byte is written, so a folder swapped for a link out since the check
+// is refused rather than written through.
 //
 // `workspaceReal` is the already-realpath'd workspace root —
 // resolveSafe returns a realpath'd absPath, so the classifier MUST
 // compare against the same realpath'd root. A symlinked workspace
 // (e.g. `~/mulmoclaude` → some real path elsewhere) would otherwise
 // silently bypass the wiki chokepoint.
-async function writeFileContent(absPath: string, content: string): Promise<void> {
+export async function writeFileContent(absPath: string, content: string): Promise<void> {
   const wikiClass = classifyAsWikiPage(absPath, { workspaceRoot: workspaceReal });
   if (wikiClass.wiki) {
     await writeWikiPage(wikiClass.slug, content, { editor: "user" }, { workspaceRoot: workspaceReal });
   } else {
-    await writeFileAtomic(absPath, content, { uniqueTmp: true });
+    const scope = { trustedReal: await getWorkspaceRealAsync(), scopeWithinTrusted: "" };
+    await writeFileVerifiedInScope(scope, path.dirname(absPath), path.basename(absPath), content);
   }
 }
 

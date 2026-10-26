@@ -65,6 +65,12 @@ then opened it again by name, so a file or folder swapped for a link to somewher
 read from there. Both now read the file they checked, in the workspace and in reference directories. A file replaced
 in that moment answers "not found".
 
+#### Saving a file in the file explorer writes only inside the workspace (#3573)
+
+Saving an edited file checked its path and then wrote it by name, so a folder on the path swapped for a link to
+somewhere else on the computer in between had the save land there. The save now writes only into the folder it
+checked, and fails if that folder was swapped. Wiki pages, new files and dropped files are not covered yet.
+
 Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@5.13.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.9.0] - 2026-10-22
