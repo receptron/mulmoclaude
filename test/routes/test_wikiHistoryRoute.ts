@@ -11,6 +11,7 @@ import { mkdtemp, readFile, rm, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type Handler = (req: Request, res: Response) => Promise<void> | void;
 
@@ -63,8 +64,7 @@ function makeReq(params: Record<string, string>): Request {
 
 let tmpRoot: string;
 let pagesDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let listHandler: Handler;
 let readHandler: Handler;
 let restoreHandler: Handler;
@@ -73,10 +73,7 @@ let listSnapshots: typeof import("../../server/workspace/wiki-pages/snapshot.js"
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-wiki-history-route-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
 
   const { workspacePath: workspacePth } = await import("../../server/workspace/workspace.js");
   const { WORKSPACE_DIRS } = await import("../../server/workspace/paths.js");
@@ -93,10 +90,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

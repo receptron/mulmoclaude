@@ -3,31 +3,25 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { isolateHome } from "../../helpers/isolatedHome.js";
 
 // html-io imports workspacePath at module load. Override HOME so
 // homedir() → temp root, then dynamic-import.
 let tmpRoot: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 
 type HtmlIo = typeof import("../../../server/utils/files/html-io.js");
 let mod: HtmlIo;
 
 before(async () => {
   tmpRoot = mkdtempSync(path.join(tmpdir(), "html-io-test-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   mkdirSync(path.join(tmpRoot, "mulmoclaude"), { recursive: true });
   mod = await import("../../../server/utils/files/html-io.js");
 });
 
 after(() => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 

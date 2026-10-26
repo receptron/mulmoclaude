@@ -23,6 +23,7 @@ import { mkdtemp, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type PluginsModule = typeof import("../../server/api/routes/plugins.js");
 type ImageModule = typeof import("../../server/api/routes/image.js");
@@ -93,8 +94,7 @@ const TEST_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 let tmpRoot: string;
 let workspaceDir: string;
 let imagesDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let canvasHandler: Handler;
 let putImageHandler: Handler;
 // Paths created by `executeOpenCanvas` during the tests. Recorded per
@@ -103,10 +103,7 @@ const createdImagePaths: string[] = [];
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-canvas-image-routes-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
 
   const { workspacePath: workspacePth } = await import("../../server/workspace/workspace.js");
   const { WORKSPACE_DIRS } = await import("../../server/workspace/paths.js");
@@ -129,10 +126,7 @@ after(async () => {
     await rm(path.join(workspaceDir, relPath), { force: true });
   }
 
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

@@ -3,33 +3,27 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { isolateHome } from "../../helpers/isolatedHome.js";
 
 // workspace-io imports workspacePath at module load. We override
 // HOME/USERPROFILE so homedir() → our temp root, then dynamic-
 // import so the module picks up the overridden HOME.
 let tmpRoot: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 
 type WsIo = typeof import("../../../server/utils/files/workspace-io.js");
 let mod: WsIo;
 
 before(async () => {
   tmpRoot = mkdtempSync(path.join(tmpdir(), "ws-io-test-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   // Pre-create the workspace root that paths.ts expects.
   mkdirSync(path.join(tmpRoot, "mulmoclaude"), { recursive: true });
   mod = await import("../../../server/utils/files/workspace-io.js");
 });
 
 after(() => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 

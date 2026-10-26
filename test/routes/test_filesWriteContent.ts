@@ -8,26 +8,19 @@ import { mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, symlink
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type RouteModule = typeof import("../../server/api/routes/files.js");
 
 let tmpRoot: string;
 let workspaceDir: string;
 let outsideDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
-let originalWorkspaceEnv: string | undefined;
+let restoreHome: () => void = () => {};
 let routeMod: RouteModule;
 
 before(async () => {
   tmpRoot = realpathSync(await mkdtemp(path.join(tmpdir(), "mulmo-files-write-content-")));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
-  // A configured workspace would win over HOME, and beforeEach empties the workspace.
-  originalWorkspaceEnv = process.env.MULMOCLAUDE_WORKSPACE_PATH;
-  delete process.env.MULMOCLAUDE_WORKSPACE_PATH;
+  restoreHome = isolateHome(tmpRoot);
   const { workspacePath } = await import("../../server/workspace/workspace.js");
   workspaceDir = workspacePath;
   assert.ok(workspaceDir.startsWith(tmpRoot + path.sep), `workspace ${workspaceDir} is not under the test's temp folder`);
@@ -38,12 +31,7 @@ before(async () => {
 });
 
 after(async () => {
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
-  if (originalWorkspaceEnv === undefined) delete process.env.MULMOCLAUDE_WORKSPACE_PATH;
-  else process.env.MULMOCLAUDE_WORKSPACE_PATH = originalWorkspaceEnv;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 

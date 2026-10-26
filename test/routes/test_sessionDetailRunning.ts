@@ -10,6 +10,7 @@ import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
+import { isolateHome } from "../helpers/isolatedHome.js";
 
 type RouteModule = typeof import("../../server/api/routes/sessions.js");
 type SessionStore = typeof import("../../server/events/session-store/index.js");
@@ -20,8 +21,7 @@ interface RouterInternals {
 
 let tmpRoot: string;
 let chatDir: string;
-let originalHome: string | undefined;
-let originalUserProfile: string | undefined;
+let restoreHome: () => void = () => {};
 let detailHandler: Handler;
 let store: SessionStore;
 
@@ -68,10 +68,7 @@ function startRun(sessionId: string): void {
 
 before(async () => {
   tmpRoot = await mkdtemp(path.join(tmpdir(), "mulmo-session-detail-running-"));
-  originalHome = process.env.HOME;
-  originalUserProfile = process.env.USERPROFILE;
-  process.env.HOME = tmpRoot;
-  process.env.USERPROFILE = tmpRoot;
+  restoreHome = isolateHome(tmpRoot);
   const { WORKSPACE_PATHS } = await import("../../server/workspace/paths.js");
   chatDir = WORKSPACE_PATHS.chat;
   mkdirSync(chatDir, { recursive: true });
@@ -88,10 +85,7 @@ beforeEach(() => {
 after(async () => {
   // initSessionStore starts an eviction interval that would keep the process alive.
   store.__resetForTests();
-  if (originalHome === undefined) delete process.env.HOME;
-  else process.env.HOME = originalHome;
-  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = originalUserProfile;
+  restoreHome();
   await rm(tmpRoot, { recursive: true, force: true });
 });
 
