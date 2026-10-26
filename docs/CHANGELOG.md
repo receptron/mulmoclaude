@@ -71,12 +71,13 @@ Saving an edited file checked its path and then wrote it by name, so a folder on
 somewhere else on the computer in between had the save land there. The save now writes only into the folder it
 checked, and fails if that folder was swapped. Wiki pages are not covered yet.
 
-#### New files and dropped files are created only inside the workspace (#3573)
+#### New files and dropped files get their content only inside the workspace (#3573)
 
 Making a new file in the file explorer, and dropping a file onto it, checked the path and then created the file by
 name, so a folder swapped for a link to somewhere else on the computer in between had the file created there. Both
-now create the file only in the folder they checked, and fail if that folder was swapped. This includes a new wiki
-page; saving over an existing wiki page is not covered yet. Ships in `@mulmoclaude/core@5.14.0`.
+now write the file's content only into the folder they checked, and fail if that folder was swapped; the swapped-in
+folder can be left holding an empty file. This includes a new wiki page; saving over an existing wiki page is not
+covered yet. Ships in `@mulmoclaude/core@5.14.0`.
 
 #### Runtime plugins' files are served only from the plugin's own folder (#3573)
 

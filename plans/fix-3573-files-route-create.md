@@ -1,7 +1,7 @@
-# fix: new files and dropped files are created only inside the workspace (#3573)
+# fix: new files and dropped files get their content only inside the workspace (#3573)
 
-Follow-up to `plans/fix-3573-files-route-put.md`. This PR moves the exclusive creates of `server/api/routes/files.ts`;
-the wiki writer is its own PR.
+Follow-up to `plans/fix-3573-files-route-put.md`. This PR moves the exclusive file creation of
+`server/api/routes/files.ts`, including a new wiki page; overwriting an existing wiki page is its own PR.
 
 ## Problem
 
