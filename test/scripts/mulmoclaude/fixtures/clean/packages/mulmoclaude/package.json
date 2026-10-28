@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "dependencies": {
     "express": "^5.0.0",
-    "zod": "^3.0.0",
+    "zod": "^4.6.7",
     "dotenv": "^17.0.0",
     "@mulmobridge/protocol": "^0.1.0"
   }
