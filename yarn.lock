@@ -1423,14 +1423,13 @@
     three-bvh-csg "^0.0.18"
     three-mesh-bvh "0.9.15"
 
-"@gui-chat-plugin/spreadsheet@^4.3.0":
-  version "4.3.0"
-  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/spreadsheet/-/spreadsheet-4.3.0.tgz#8354914632e56bd0bd4eb25d102534a03dc8119f"
-  integrity sha512-4F8nNlSyPISdemOXm9Me/yjQx2j7PgKESwcBZfrPeQRCtzGfcOM/1ZaUHKqtqE9G1B0tITlak7lXjU/1eLov9g==
+"@gui-chat-plugin/spreadsheet@^5.0.1":
+  version "5.0.1"
+  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/spreadsheet/-/spreadsheet-5.0.1.tgz#e7e99b36d6a6e5bd0208c821835805ff7848c7cb"
+  integrity sha512-OPnqVY5eCfrrmjsrG1SSRvkCYLDHHozOYqfeuNGKlkXQN5zwo9Rl4HTMURMR6sEfHJQTOV2SzVNIsx0MHBZm5g==
   dependencies:
     "@jitl/quickjs-singlefile-mjs-release-sync" "^0.32.0"
     quickjs-emscripten-core "^0.32.0"
-    xlsx "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
 
 "@hono/node-server@^1.19.9 || ^2.0.5":
   version "2.1.5"
