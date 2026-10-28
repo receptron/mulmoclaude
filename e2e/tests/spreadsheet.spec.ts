@@ -121,7 +121,7 @@ test.describe("spreadsheet — rendering", () => {
     const item = page.getByText("Q1 Revenue").first();
     await expect(item).toBeVisible({ timeout: 5 * ONE_SECOND_MS });
     await item.click();
-    await expect(page.locator("h1.title", { hasText: "Q1 Revenue" })).toBeVisible({
+    await expect(page.getByRole("heading", { level: 1, name: "Q1 Revenue" })).toBeVisible({
       timeout: 5 * ONE_SECOND_MS,
     });
   });
@@ -130,7 +130,7 @@ test.describe("spreadsheet — rendering", () => {
     const sheets = [{ name: "Sheet1", data: [[{ v: "x" }]] }];
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
-    const btn = page.locator("button.download-btn");
+    const btn = page.getByRole("button", { name: /Excel/ });
     await expect(btn).toBeVisible({ timeout: 5 * ONE_SECOND_MS });
     await expect(btn).toBeEnabled();
   });
@@ -141,8 +141,8 @@ test.describe("spreadsheet — multi-sheet", () => {
     const sheets = [{ name: "Single", data: [[{ v: "only" }]] }];
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
-    // No tab row when single sheet
-    await expect(page.locator(".sheet-tabs")).toHaveCount(0);
+    await expect(page.getByText("only").first()).toBeVisible({ timeout: 5 * ONE_SECOND_MS });
+    await expect(page.getByRole("button", { name: "Single", exact: true })).toHaveCount(0);
   });
 
   test("multiple sheets show tabs and switching changes the rendered data", async ({ page }) => {
@@ -154,17 +154,14 @@ test.describe("spreadsheet — multi-sheet", () => {
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
 
-    // All three tab buttons should exist
-    await expect(page.locator("button.sheet-tab")).toHaveCount(3);
-    await expect(page.locator("button.sheet-tab.active")).toHaveText("Q1");
+    const tab = (name: string) => page.getByRole("button", { name, exact: true });
+    await Promise.all(["Q1", "Q2", "Q3"].map((name) => expect(tab(name)).toBeVisible()));
     await expect(page.getByText("January-Q1").first()).toBeVisible();
-    // Q2 content should not be visible yet
     await expect(page.getByText("April-Q2")).toHaveCount(0);
 
-    // Click Q2 tab
-    await page.locator("button.sheet-tab", { hasText: "Q2" }).click();
-    await expect(page.locator("button.sheet-tab.active")).toHaveText("Q2");
+    await tab("Q2").click();
     await expect(page.getByText("April-Q2").first()).toBeVisible();
+    await expect(page.getByText("January-Q1")).toHaveCount(0);
   });
 });
 
@@ -233,24 +230,18 @@ test.describe("spreadsheet — mini editor", () => {
       {
         name: "Sheet1",
         data: [
-          [{ v: "A1" }, { v: "B1" }],
-          [{ v: "A2" }, { v: "B2" }],
+          [{ v: "a1" }, { v: "b1" }],
+          [{ v: "a2" }, { v: "b2" }],
         ],
       },
     ];
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
-    // Click a <td> to trigger openMiniEditor.
-    // The rendered HTML has a header row, so data starts from row 1.
-    // The cell ref for data row 0 col 1 is "B1" (but the rendered
-    // table includes a header row so we target row 2 in the DOM).
-    // We target by text to keep the test robust.
-    await page.locator("td", { hasText: "B2" }).first().click();
-    await expect(page.locator(".mini-editor-panel")).toBeVisible({
+    await page.locator("td", { hasText: "b2" }).first().click();
+    await expect(page.getByRole("textbox", { name: "Value", exact: true })).toHaveValue("b2", {
       timeout: 5 * ONE_SECOND_MS,
     });
-    // The cell-ref label should match the position we clicked.
-    await expect(page.locator(".cell-ref")).toBeVisible();
+    await expect(page.getByText("B2", { exact: true })).toBeVisible();
   });
 
   test("mini editor has String / Formula radio buttons", async ({ page }) => {
@@ -258,11 +249,10 @@ test.describe("spreadsheet — mini editor", () => {
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
     await page.locator("td", { hasText: "hi" }).first().click();
-    await expect(page.locator(".mini-editor-panel")).toBeVisible({
+    await expect(page.getByRole("radio", { name: "String" })).toBeVisible({
       timeout: 5 * ONE_SECOND_MS,
     });
-    await expect(page.locator(".radio-option", { hasText: "String" })).toBeVisible();
-    await expect(page.locator(".radio-option", { hasText: "Formula" })).toBeVisible();
+    await expect(page.getByRole("radio", { name: "Formula" })).toBeVisible();
   });
 
   test("mini editor close button (✕) closes the panel", async ({ page }) => {
@@ -270,11 +260,11 @@ test.describe("spreadsheet — mini editor", () => {
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
     await page.locator("td", { hasText: "hi" }).first().click();
-    await expect(page.locator(".mini-editor-panel")).toBeVisible({
+    await expect(page.getByRole("radio", { name: "String" })).toBeVisible({
       timeout: 5 * ONE_SECOND_MS,
     });
-    await page.locator("button.cancel-btn").click();
-    await expect(page.locator(".mini-editor-panel")).toHaveCount(0);
+    await page.getByRole("button", { name: "✕" }).click();
+    await expect(page.getByRole("radio", { name: "String" })).toHaveCount(0);
   });
 
   test("formula mode shows a second input for format code", async ({ page }) => {
@@ -282,11 +272,11 @@ test.describe("spreadsheet — mini editor", () => {
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
     await page.locator("td", { hasText: "hi" }).first().click();
-    await expect(page.locator(".mini-editor-panel")).toBeVisible({
+    await expect(page.getByRole("radio", { name: "String" })).toBeVisible({
       timeout: 5 * ONE_SECOND_MS,
     });
     // Switch to Formula mode
-    await page.locator(".radio-option", { hasText: "Formula" }).click();
+    await page.getByRole("radio", { name: "Formula" }).click();
     // Two inputs: value/formula + format
     await expect(page.locator('input[placeholder^="Value or Formula"]')).toBeVisible();
     await expect(page.locator('input[placeholder^="Format"]')).toBeVisible();
@@ -321,9 +311,8 @@ test.describe("spreadsheet — saving a file-backed sheet", () => {
     await expect(page.locator("td", { hasText: "200" }).first()).toBeVisible({ timeout: 5 * ONE_SECOND_MS });
 
     await page.locator("td", { hasText: "100" }).first().click();
-    const valueInput = page.locator(".mini-editor-panel input.form-input").first();
-    await valueInput.fill("150");
-    await page.locator(".mini-editor-panel .save-btn").click();
+    await page.getByRole("textbox", { name: /^Value or Formula/ }).fill("150");
+    await page.getByRole("button", { name: "Update" }).click();
 
     await expect(page.locator("td", { hasText: "300" }).first()).toBeVisible({ timeout: 5 * ONE_SECOND_MS });
     await expect.poll(() => saves.length).toBe(1);
@@ -357,8 +346,7 @@ test.describe("spreadsheet — source editor", () => {
     await openSpreadsheetView(page);
     // Open the details
     await page.locator("summary", { hasText: "Edit Spreadsheet Data" }).click();
-    const applyBtn = page.locator("button.apply-btn");
-    await expect(applyBtn).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Apply Changes" })).toBeDisabled();
   });
 
   test("editing the textarea enables Apply Changes", async ({ page }) => {
@@ -366,9 +354,9 @@ test.describe("spreadsheet — source editor", () => {
     await setupSpreadsheetSession(page, { sheets });
     await openSpreadsheetView(page);
     await page.locator("summary", { hasText: "Edit Spreadsheet Data" }).click();
-    const textarea = page.locator("textarea.spreadsheet-editor");
+    const textarea = page.locator("details", { hasText: "Edit Spreadsheet Data" }).locator("textarea");
     await textarea.fill('[{"name":"Sheet1","data":[[{"v":"y"}]]}]');
-    await expect(page.locator("button.apply-btn")).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Apply Changes" })).toBeEnabled();
   });
 });
 
