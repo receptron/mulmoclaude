@@ -141,6 +141,11 @@
   resolved "https://registry.yarnpkg.com/@azure/msal-common/-/msal-common-14.16.1.tgz#d23ecce40823a4d03ad74160dc819d62e0c0a787"
   integrity sha512-nyxsA6NA4SVKh5YyRpbSXiMr7oQbwark7JU9LMeg6tJYTSPyAGkdx61wPT4gyxZfxlSxMMEyAsWaubBlNyIa1w==
 
+"@azure/msal-common@16.13.0":
+  version "16.13.0"
+  resolved "https://registry.yarnpkg.com/@azure/msal-common/-/msal-common-16.13.0.tgz#62e424c6b21e143e8ef4374a64dbf8772dfe1a07"
+  integrity sha512-rOAy0KUcyBbdwVJ+f3uPpthXatFLLZN+/KWAsTLzk1aB23Xl9DRmmXYwSvBFOZyXj4jUQQ5FKxxRkhAFW1fOow==
+
 "@azure/msal-common@16.5.1":
   version "16.5.1"
   resolved "https://registry.yarnpkg.com/@azure/msal-common/-/msal-common-16.5.1.tgz#31bc94d094876384c02dbfe75f098831f2ad378a"
@@ -156,13 +161,12 @@
     uuid "^8.3.0"
 
 "@azure/msal-node@^5.1.0":
-  version "5.1.4"
-  resolved "https://registry.yarnpkg.com/@azure/msal-node/-/msal-node-5.1.4.tgz#53be0d6a3355112f2d6c9fa865260344b84ad5ef"
-  integrity sha512-G4LXGGggok1QC48uKu64/SV2DPRDlddmV8EieK8pflsNYMj9/Zz+Y9OHoEBhT15h+zpdwXXLYA/7PJCR/yZ8aw==
+  version "5.6.0"
+  resolved "https://registry.yarnpkg.com/@azure/msal-node/-/msal-node-5.6.0.tgz#8cbfeff021b6d2f3d064a3afb82262ad985e8434"
+  integrity sha512-uFY9NxrWHw8PwZx7gAX6PDn+9vdfS05+levc/kwkx77IkjfaldnQbbcQzzDIZ5Hq5Zdr6/z92oAIoRWKp6MnOA==
   dependencies:
-    "@azure/msal-common" "16.5.1"
+    "@azure/msal-common" "16.13.0"
     jsonwebtoken "^9.0.0"
-    uuid "^8.3.0"
 
 "@babel/helper-string-parser@^7.29.7":
   version "7.29.7"
@@ -9045,18 +9049,10 @@ qified@^0.10.1:
   dependencies:
     hookified "^2.1.1"
 
-qs@^6.16.0:
-  version "6.16.0"
-  resolved "https://registry.yarnpkg.com/qs/-/qs-6.16.0.tgz#c22c723a28a920f3aacdce8289fabd43eccb79fd"
-  integrity sha512-h6fhOIaRrID2CbEY2fqs+7t+UXZo+MLAnU5gRIq85uFtdiUPCdsApMlHhXogKVM4HM2DVbIjGNTTYH2OcmP1vA==
-  dependencies:
-    es-define-property "^1.0.1"
-    side-channel "^1.1.1"
-
-qs@^6.16.1:
-  version "6.16.1"
-  resolved "https://registry.yarnpkg.com/qs/-/qs-6.16.1.tgz#0643e17993e551759c85078e1f0bc4b9fe908020"
-  integrity sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==
+qs@^6.16.0, qs@^6.16.1:
+  version "6.17.0"
+  resolved "https://registry.yarnpkg.com/qs/-/qs-6.17.0.tgz#317fa93f17a6a735622718a6a5aa00356e7db673"
+  integrity sha512-5LK5BZ2XDHMvcUJaf0CQ5HL3aVgKbpklvByC7qLSxYkfE8COEEbJg5xCHWCTqzqi0Gs4Jn5Mv5v3R38W6edscA==
   dependencies:
     es-define-property "^1.0.1"
     side-channel "^1.1.1"
