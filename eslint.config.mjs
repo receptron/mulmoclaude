@@ -598,7 +598,9 @@ export default [
   {
     files: ["server/**/*.ts", "src/**/*.ts", "packages/**/src/**/*.ts"],
     languageOptions: {
-      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+      // Single-run mode (auto-on under CI and the eslint CLI) keeps one Program per tsconfig since
+      // typescript-eslint 8.72.1, which runs this repo's many tsconfigs out of heap.
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname, disallowAutomaticSingleRunInference: true },
     },
     rules: {
       // (1) `any` that survives no-explicit-any.
