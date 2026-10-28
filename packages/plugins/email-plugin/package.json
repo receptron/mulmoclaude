@@ -37,9 +37,9 @@
   },
   "license": "MIT",
   "dependencies": {
-    "imapflow": "^2.8.0",
-    "mailparser": "^3.12.2",
-    "nodemailer": "^10.2.0"
+    "imapflow": "^2.9.1",
+    "mailparser": "^3.12.4",
+    "nodemailer": "^10.2.1"
   },
   "homepage": "https://github.com/receptron/mulmoclaude/tree/main/packages/plugins/email-plugin#readme",
   "repository": {
