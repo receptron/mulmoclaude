@@ -36,7 +36,7 @@
     "@mulmoclaude/common": "^1.5.0",
     "dompurify": "^3.4.17",
     "js-yaml": "^5.5.0",
-    "marked": "^18.1.1"
+    "marked": "^18.1.2"
   },
   "peerDependencies": {
     "mathjax-full": "^3.2.2",
