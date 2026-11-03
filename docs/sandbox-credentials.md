@@ -2,9 +2,9 @@
 
 By default, the MulmoClaude Docker sandbox is **credential-free**. The container has `git` and `gh` installed, but no SSH keys, no GitHub token, no git identity — so `git pull` over SSH, `gh issue list`, or `git commit --signoff` all fail inside the container.
 
-This page describes the two opt-in mechanisms for giving the sandbox just enough credentials to authenticate, without leaking the underlying secrets.
+This page describes the opt-in mechanisms for giving the sandbox just enough credentials to authenticate, without leaking the underlying secrets: SSH agent forward, allowlisted config mounts, and extra environment variables.
 
-> **Before you turn anything on, read [What we do NOT do](#what-we-do-not-do) and [What we cannot do](#what-we-cannot-do) below.** Both mechanisms are safe by design, but the safety relies on understanding the scope.
+> **Before you turn anything on, read [What we do NOT do](#what-we-do-not-do) and [What we cannot do](#what-we-cannot-do) below.** Each mechanism is safe by design, but the safety relies on understanding the scope.
 
 ---
 
@@ -95,6 +95,33 @@ Extending the list is a code change, not a user config. This is deliberate — t
 1. Append a row to `ALLOWED` in [`server/agent/sandboxMounts.ts`](../server/agent/sandboxMounts.ts), specifying `name`, `hostPath`, `containerPath`, `kind`, and `description`.
 2. Add a row to the table above.
 3. Think about what the mount exposes and write a short "What it enables" sentence. If the expose is wider than `gh`-level (e.g. tokens for multiple hosts, or a key used for more than one service), consider whether it deserves its own env var instead of riding on `SANDBOX_MOUNT_CONFIGS`.
+
+---
+
+## Mechanism 3 — Extra environment variables
+
+For a token your own tools need inside the sandbox (an HTTP service the agent calls, for example), pass it as an environment variable instead of putting a key file in the workspace. Two settings, usable together:
+
+```env
+# Pass host variables by name. The value comes from the server's own environment.
+SANDBOX_ENV=MY_SERVICE_TOKEN,MY_SERVICE_URL
+
+# Pass every variable in a docker-style env file (KEY=VALUE per line).
+SANDBOX_ENV_FILE=/path/to/agent.env
+```
+
+- **Values never appear in the docker command line.** `SANDBOX_ENV` names become `-e NAME` and docker reads the value from its own environment; the env file is handed to docker as `--env-file <path>`, so it does not show up as a file inside the container either.
+- **The fixed variables cannot be overridden.** Names the sandbox already sets (`HOME`, `MULMOCLAUDE_HOST`, `MULMOCLAUDE_CHAT_SESSION_ID`, `MCP_CONNECT_TIMEOUT_MS`, `GH_TOKEN`, `SSH_AUTH_SOCK`, …) are refused from `SANDBOX_ENV` and logged as `sandbox env entries ignored`; in the env file the fixed value wins, and the name is logged the same way.
+- **The env file follows docker's `--env-file` format**: one `KEY=VALUE` per line, `#` comments and blank lines skipped, no quote stripping, and a bare `KEY` line takes the host's value. Names must be letters, digits and `_`, not starting with a digit. CRLF line endings are fine. A file with any other kind of name (docker would refuse to start the container), or one that cannot be read, is **not passed at all**, and the server logs `SANDBOX_ENV_FILE not passed to the container` with the offending line numbers.
+- **When both set the same name, `SANDBOX_ENV` wins.**
+- The file is re-read on every agent run, so an edit takes effect on the next message without a restart.
+- With `DISABLE_SANDBOX=1` the agent runs on the host and already sees the server's whole environment; these settings only matter for the sandbox.
+
+On a run that passes anything, the log shows the names (never the values):
+
+```text
+INFO  [sandbox] host env passed to container names=["MY_SERVICE_TOKEN","MY_SERVICE_URL"]
+```
 
 ---
 

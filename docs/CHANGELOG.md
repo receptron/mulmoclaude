@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Added
+
+#### Environment variables for the Docker sandbox (#3617)
+
+`SANDBOX_ENV=NAME1,NAME2` passes host environment variables into the sandbox by name, and `SANDBOX_ENV_FILE=<path>`
+passes a docker-style env file. Values never appear in the docker command line and the file never appears inside the
+container; the variables the sandbox sets itself cannot be overridden. See `docs/sandbox-credentials.md`.
+
 ## [2.10.0] - 2026-10-26
 
 **A file the workspace has been made to point outside of is no longer read or written: the file explorer, artifact
