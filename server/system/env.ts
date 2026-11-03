@@ -96,6 +96,10 @@ export const env = Object.freeze({
   sandboxSshAgentForward: asFlag(process.env.SANDBOX_SSH_AGENT_FORWARD),
   sandboxSshAllowedHosts: process.env.SANDBOX_SSH_ALLOWED_HOSTS || "github.com",
   sandboxMountConfigs: asCsv(process.env.SANDBOX_MOUNT_CONFIGS),
+  // Extra env for the Docker sandbox (#3617): host variables by name, and an
+  // env file handed to docker as `--env-file`. Both off by default.
+  sandboxEnvNames: asCsv(process.env.SANDBOX_ENV),
+  sandboxEnvFile: process.env.SANDBOX_ENV_FILE || undefined,
 
   // API credentials (undefined when not configured). `GEMINI_API_KEY` is
   // deliberately NOT here — Settings can write it while the server runs, so

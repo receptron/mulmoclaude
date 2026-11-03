@@ -12,9 +12,19 @@
 import { spawn, type ChildProcessByStdio } from "child_process";
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import type { Readable, Writable } from "stream";
-import { buildCliArgs, buildDockerSpawnArgs, buildUserMessageLine, resolveSystemPromptPaths, type CliArgsParams } from "../config.js";
+import {
+  buildCliArgs,
+  buildDockerSpawnArgs,
+  buildUserMessageLine,
+  resolveSystemPromptPaths,
+  SANDBOX_IMAGE,
+  type CliArgsParams,
+  type DockerSpawnArgsParams,
+} from "../config.js";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { resolveSandboxAuth } from "../sandboxMounts.js";
+import { resolveSandboxEnv } from "../sandboxEnv.js";
+import { dockerEnvNames, insertDockerOptions } from "../sandboxEnvPlan.js";
 import { pluginLedgerMountArgs, removePluginLedgerStaging, withPluginLedgerCleanup } from "../pluginLedgerMount.js";
 import { getCachedReferenceDirs, referenceDirMountArgs } from "../../workspace/reference-dirs.js";
 import { createStreamParser, type AgentEvent, type RawStreamEvent } from "../stream.js";
@@ -58,7 +68,7 @@ function spawnClaude(useDocker: boolean, workspacePath: string, cliArgs: string[
   const pluginLedger = pluginLedgerMountArgs({ platform: process.platform });
   const { stagingDir } = pluginLedger;
   return withPluginLedgerCleanup(stagingDir, () => {
-    const dockerArgs = buildDockerSpawnArgs({
+    const dockerArgs = withSandboxEnv({
       workspacePath,
       cliArgs,
       chatSessionId,
@@ -74,6 +84,19 @@ function spawnClaude(useDocker: boolean, workspacePath: string, cliArgs: string[
     if (stagingDir !== null) proc.once("close", () => removePluginLedgerStaging(stagingDir));
     return proc;
   });
+}
+
+// The reserved names are read off the argv the sandbox would get anyway, so a
+// fixed variable added later is protected without a list to keep in step.
+function withSandboxEnv(params: DockerSpawnArgsParams): string[] {
+  const dockerArgs = buildDockerSpawnArgs(params);
+  const sandboxEnv = resolveSandboxEnv({
+    names: env.sandboxEnvNames,
+    envFilePath: env.sandboxEnvFile,
+    hostEnv: process.env,
+    reservedNames: dockerEnvNames(dockerArgs, SANDBOX_IMAGE),
+  });
+  return insertDockerOptions(dockerArgs, SANDBOX_IMAGE, sandboxEnv.args);
 }
 
 // Counts the tools a turn ran FROM THE BUILT-IN BROKER. Scoped to
