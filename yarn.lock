@@ -1364,9 +1364,9 @@
   integrity sha512-TSIH2P8UgsvCGceWGh5a27SXoXUo0nUCPa6kAD604e28QckOVAPHeuEqRLHJseXPOLYzPbUDkldYPYQIWQxjKg==
 
 "@grpc/grpc-js@^1.12.6":
-  version "1.14.6"
-  resolved "https://registry.yarnpkg.com/@grpc/grpc-js/-/grpc-js-1.14.6.tgz#f3f3d65315bf9b45252f575e4cc142148c587cac"
-  integrity sha512-SgC/B3/VZ8lTyOZ4Cwk6f1skWhmkNAaVfiX90qd5u1rRXGKk1//8FTUEN9GvOUq7rfWIqAYkA3CoyumYVpOS6g==
+  version "1.14.7"
+  resolved "https://registry.yarnpkg.com/@grpc/grpc-js/-/grpc-js-1.14.7.tgz#e799e26396c8c8c32465f027b3e713f366143bc6"
+  integrity sha512-W4W/fcBMGRVtG6dW2c7cw2mnpS3hvbBd+oQXjh2iYFTZDk1JJmcNqkM5KSaPubQpamlUUurrlb7G1s9NJeERmQ==
   dependencies:
     "@grpc/proto-loader" "^0.8.0"
     "@js-sdsl/ordered-map" "^4.4.2"
@@ -6425,7 +6425,7 @@ google-auth-library@^10.3.0:
     google-logging-utils "1.1.3"
     jws "^4.0.0"
 
-google-auth-library@^11.0.0, google-auth-library@^11.3.1:
+google-auth-library@^11.3.1:
   version "11.3.1"
   resolved "https://registry.yarnpkg.com/google-auth-library/-/google-auth-library-11.3.1.tgz#89820f220d11df0b3a9de1c3b02be15ca63fd565"
   integrity sha512-mQS0R2Ev/DKkzuWSYtDeq15uhDeaWuT2qzLYqJ41LmooxVKHmn5ut3pc6dlHY6wfHW/D7FBmOYjAtkjaD1A7qA==
@@ -6438,21 +6438,21 @@ google-auth-library@^11.0.0, google-auth-library@^11.3.1:
     jws "^4.0.0"
 
 google-gax@^6.0.0:
-  version "6.13.0"
-  resolved "https://registry.yarnpkg.com/google-gax/-/google-gax-6.13.0.tgz#9f6f3408aeefd1f0eb0f46a9b952083d9ebd7881"
-  integrity sha512-7Q60oxwV2M2zWytwB5siHUlip1jTVWoSxfF25NI13wGKlJ9jUwyWvKWrDfXjAuBOI5NVrv0R/tPaYi80V/5ZFg==
+  version "6.14.0"
+  resolved "https://registry.yarnpkg.com/google-gax/-/google-gax-6.14.0.tgz#82be745b22e2e222ec3383617ff186f92b9d0c55"
+  integrity sha512-C6By4tAdiSoY+4S1Y8phpJkIqELIu0kPtUIcVacScAKhi4LwR6w9dbZI3JHnIfMBvWyvxgPZS2Y7hryBwTNJBQ==
   dependencies:
     "@grpc/grpc-js" "^1.12.6"
     "@grpc/proto-loader" "^0.8.0"
     "@opentelemetry/api" "^1.9.0"
     duplexify "^4.1.3"
-    google-auth-library "^11.0.0"
-    google-logging-utils "^2.0.0"
+    google-auth-library "^11.3.1"
+    google-logging-utils "^2.1.0"
     node-fetch "^3.3.2"
     object-hash "^3.0.0"
-    proto3-json-serializer "^4.0.0"
+    proto3-json-serializer "^4.1.0"
     protobufjs "^7.5.4"
-    retry-request "^9.0.0"
+    retry-request "^9.1.0"
 
 google-logging-utils@1.1.3, google-logging-utils@^1.0.0:
   version "1.1.3"
@@ -6463,6 +6463,11 @@ google-logging-utils@^2.0.0:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/google-logging-utils/-/google-logging-utils-2.1.0.tgz#d6b84feb2ca5a20c4cfcbc9c83ed8038971f1759"
   integrity sha512-1R6uiq6XhXW2ZrcGtZpGgVDsYGzSmveVOn8Pp37qe1fbThHZ34e3t3eXj5mVu6PFSVx9fvB1KNVnYgVtq/BRcA==
+
+google-logging-utils@^2.1.0:
+  version "2.1.1"
+  resolved "https://registry.yarnpkg.com/google-logging-utils/-/google-logging-utils-2.1.1.tgz#126b54160cf6199276eb72e6c25b016da62bb2b9"
+  integrity sha512-jYZOPMaRGS3Hldyudft6bdibW9ZWUKBkMdB2TeSETkV1c2T9TR4zxEWZETHv9xJ8KHr2hgkNLaSa8kcEcwlpeQ==
 
 gopd@^1.0.1, gopd@^1.2.0:
   version "1.2.0"
@@ -8864,7 +8869,7 @@ property-graph@^4.1.0:
   resolved "https://registry.yarnpkg.com/property-graph/-/property-graph-4.1.0.tgz#b81b859f5113b980c8acf29bf2f0ecf7392d9534"
   integrity sha512-AvPcP7XECNWy4LGmFQ77k7un4lSKM4eS29PTvW4ck95uYeLxXPWJM7hLuBqK91FaHqCcgJvIUCuNJjjxKE7VKQ==
 
-proto3-json-serializer@^4.0.0:
+proto3-json-serializer@^4.1.0:
   version "4.1.0"
   resolved "https://registry.yarnpkg.com/proto3-json-serializer/-/proto3-json-serializer-4.1.0.tgz#096c9876a8abdaee8823ee8e533e6efe9b233bf8"
   integrity sha512-Z0Blk2BTZTPp9ZXOWnRG/P3bkEs53FtMv59sl4xU44xcDdYhKlVO/AqAHTYXAlW9HdislqQxjSornP3457wkag==
@@ -9152,7 +9157,7 @@ restructure@^3.0.0:
   resolved "https://registry.yarnpkg.com/restructure/-/restructure-3.0.2.tgz#e6b2fad214f78edee21797fa8160fef50eb9b49a"
   integrity sha512-gSfoiOEA0VPE6Tukkrr7I0RBdE0s7H1eFCDBk05l1KIQT1UIKNc5JZy6jdyW6eYH3aR3g5b3PuL77rq0hvwtAw==
 
-retry-request@^9.0.0:
+retry-request@^9.1.0:
   version "9.1.0"
   resolved "https://registry.yarnpkg.com/retry-request/-/retry-request-9.1.0.tgz#b0c2c8e4432d9249e5f25150745ad63842ade8ac"
   integrity sha512-FILyVbis+DTo3KRbtKceqpj1595wIF+XQFW/+AVOBdCQmxwNDgcNXXr2FNM0Ej2qD7zVXbJGfH7lo4jB0wwhKA==
