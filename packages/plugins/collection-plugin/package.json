@@ -54,12 +54,12 @@
     "@vitejs/plugin-vue": "^6.0.10",
     "echarts": "^6.1.0",
     "gui-chat-protocol": "^2.3.0",
-    "tailwindcss": "^4.3.3",
+    "tailwindcss": "^4.3.4",
     "typescript": "^6.0.3",
     "vite": "^8.3.5",
     "vue": "^3.5.43",
-    "vue-i18n": "^11.4.16",
-    "vue-tsc": "^3.3.13"
+    "vue-i18n": "^11.4.17",
+    "vue-tsc": "^3.3.14"
   },
   "license": "MIT",
   "keywords": [

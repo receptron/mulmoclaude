@@ -65,9 +65,9 @@
     "jszip": "^3.10.2",
     "kenteiscript": "^0.2.0",
     "mammoth": "^1.13.0",
-    "marked": "^18.1.2",
+    "marked": "^18.1.3",
     "mulmocast": "^2.24.0",
-    "node-html-parser": "^9.0.5",
+    "node-html-parser": "^9.0.6",
     "puppeteer": "^25.16.0",
     "sharp": "^0.35.5",
     "socket.io": "^4.8.4",
@@ -75,7 +75,7 @@
     "tsx": "^4.23.15",
     "uuid": "^14.0.3",
     "which": "^7.0.0",
-    "ws": "^8.22.0",
+    "ws": "^8.22.1",
     "zod": "^4.6.7"
   },
   "optionalDependencies": {

@@ -29,7 +29,7 @@
     "@mulmobridge/client": "^1.5.0",
     "@mulmobridge/protocol": "^1.1.0",
     "@mulmoclaude/common": "^1.5.0",
-    "@slack/socket-mode": "^3.1.0",
+    "@slack/socket-mode": "^3.1.1",
     "@slack/web-api": "^8.2.0",
     "dotenv": "^18.0.9",
     "undici": "^8.12.3"
