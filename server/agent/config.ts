@@ -1051,6 +1051,8 @@ export function dockerBindMountArgs(opts: DockerBindMountOpts): string[] {
   ];
 }
 
+export const SANDBOX_IMAGE = "mulmoclaude-sandbox";
+
 export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
   const {
     workspacePath,
@@ -1112,7 +1114,7 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     ...dockerBindMountArgs({ projectRoot, packageRoot, workspacePath, homeDir, packagesMount, platform }),
     ...sandboxAuthArgs,
     ...extraHosts,
-    "mulmoclaude-sandbox",
+    SANDBOX_IMAGE,
     "claude",
     ...cliArgs,
   ];

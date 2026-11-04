@@ -201,10 +201,11 @@ MulmoClaude uses Claude Code as its AI backend, which has access to tools includ
 
 **Bearer token auth**: every `/api/*` endpoint requires an `Authorization: Bearer <token>` header. The token is auto-generated on server startup and injected into the browser via a `<meta>` tag — no manual setup. The only HTTP exception is `/api/files/*` (exempt because `<img>` tags in rendered documents can't attach headers), and the `/ws/pubsub` socket.io handshake presents the same token as `auth.token`. See [`docs/developer.md`](docs/developer.md#auth-bearer-token-on-api) for details.
 
-**Sandbox credential forwarding** (opt-in): by default the sandbox has no access to host credentials. Two environment variables let you selectively expose what `git` / `gh` need:
+**Sandbox credential forwarding** (opt-in): by default the sandbox has no access to host credentials. These environment variables let you selectively expose what `git` / `gh` and your own tools need:
 
 - `SANDBOX_SSH_AGENT_FORWARD=1` — forwards the host's SSH agent socket. Private keys stay on the host.
 - `SANDBOX_MOUNT_CONFIGS=gh,gitconfig` — mounts `~/.config/gh` and `~/.gitconfig` read-only.
+- `SANDBOX_ENV=NAME1,NAME2` / `SANDBOX_ENV_FILE=/path/to/agent.env` — passes host environment variables (by name, or from a docker-style env file) into the sandbox. Values never appear in the docker command line.
 
 Full contract and security notes: [`docs/sandbox-credentials.md`](docs/sandbox-credentials.md).
 
