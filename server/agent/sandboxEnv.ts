@@ -1,18 +1,24 @@
-// Reads `SANDBOX_ENV_FILE`, stages what `planSandboxEnv` accepted, and logs the
-// outcome (#3617). The decision itself lives in `sandboxEnvPlan.ts`.
+// Reads `SANDBOX_ENV_FILE` and logs the outcome of `planSandboxEnv` (#3617). The
+// decision itself lives in `sandboxEnvPlan.ts`.
+//
+// The accepted file lines reach docker through a pipe, never through a file:
+// the caller writes `envFileText` to the child's fd 3 and docker reads it as
+// `--env-file /dev/fd/3`. A copy on disk would need a place only this user can
+// read on every platform, and a cleanup that survives a killed server.
 
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readSync, realpathSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { log } from "../system/logger/index.js";
 import { errorMessage } from "../utils/errors.js";
-import { writeFileAtomicSync } from "../utils/files/atomic.js";
-import { isPrivateStagingRoot, planSandboxEnv, stagingDirPrefix, staleStagingDirs, type EnvFileInput, type SandboxEnvPlan } from "./sandboxEnvPlan.js";
+import type { Platform } from "./config.js";
+import { planSandboxEnv, type EnvFileInput, type SandboxEnvPlan } from "./sandboxEnvPlan.js";
 
 // An env file is a handful of lines; anything this large is not one.
 const ENV_FILE_MAX_BYTES = 64 * 1024;
-const STAGED_ENV_FILE = "sandbox.env";
-export const SANDBOX_ENV_STAGING_ROOT = "mulmoclaude-sandbox-env";
+
+/** The child's file descriptor that carries the env file. */
+export const ENV_FILE_FD = 3;
+const ENV_FILE_FD_PATH = `/dev/fd/${ENV_FILE_FD}`;
 
 // `O_NONBLOCK` so a FIFO opens at once and is then refused by the `isFile`
 // check, instead of blocking the spawn until a writer appears. Absent on
@@ -59,89 +65,6 @@ export function readEnvFileInput(filePath: string | undefined, mountedHostPaths:
   }
 }
 
-export function removeSandboxEnvStaging(stagingDir: string): void {
-  try {
-    rmSync(stagingDir, { recursive: true, force: true });
-  } catch (error) {
-    log.warn("sandbox", "could not remove sandbox env staging dir", { path: stagingDir, error: errorMessage(error) });
-  }
-}
-
-const isErrorCode = (error: unknown, code: string): boolean => error instanceof Error && "code" in error && error.code === code;
-
-// `kill(pid, 0)` delivers nothing; it only asks whether the process exists. EPERM
-// means it does, under another user.
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return isErrorCode(error, "EPERM");
-  }
-}
-
-/** Where staged copies live, or null when it is not ours alone — then nothing is
- *  staged, since a root someone else controls could read or swap the copy. */
-export function sandboxEnvStagingRoot(): string | null {
-  const root = path.join(tmpdir(), SANDBOX_ENV_STAGING_ROOT);
-  try {
-    mkdirSync(root, { mode: 0o700 });
-  } catch (error) {
-    if (!isErrorCode(error, "EEXIST")) return null;
-  }
-  const stat = lstatSync(root);
-  const owned = isPrivateStagingRoot(
-    { isDirectory: stat.isDirectory(), isSymbolicLink: stat.isSymbolicLink(), uid: stat.uid, mode: stat.mode },
-    process.getuid?.(),
-  );
-  return owned ? root : null;
-}
-
-// A server killed while its container ran never saw `close`, so its copy is
-// still on disk; the next run that stages one removes it. Only our private root
-// is swept, never the shared temp directory.
-function removeStaleStaging(root: string): void {
-  try {
-    staleStagingDirs(readdirSync(root), isProcessAlive).forEach((entry) => removeSandboxEnvStaging(path.join(root, entry)));
-  } catch (error) {
-    log.warn("sandbox", "could not sweep stale sandbox env staging", { error: errorMessage(error) });
-  }
-}
-
-function stagingRootOrWarn(): string | null {
-  try {
-    const root = sandboxEnvStagingRoot();
-    if (root === null)
-      log.warn("sandbox", "sandbox env staging root is not private to this user; SANDBOX_ENV_FILE not passed", {
-        root: path.join(tmpdir(), SANDBOX_ENV_STAGING_ROOT),
-      });
-    return root;
-  } catch (error) {
-    log.warn("sandbox", "could not prepare sandbox env staging root; SANDBOX_ENV_FILE not passed", { error: errorMessage(error) });
-    return null;
-  }
-}
-
-// `mkdtemp` creates the directory owner-only, so the staged values are no more
-// readable than the user's own file; it lives for one spawn. Never throws: a
-// sandbox that starts without the file beats one that does not start.
-function stageEnvFile(text: string): string | null {
-  const root = stagingRootOrWarn();
-  if (root === null) return null;
-  removeStaleStaging(root);
-  const created: string[] = [];
-  try {
-    const stagingDir = mkdtempSync(path.join(root, stagingDirPrefix(process.pid)));
-    created.push(stagingDir);
-    writeFileAtomicSync(path.join(stagingDir, STAGED_ENV_FILE), text);
-    return stagingDir;
-  } catch (error) {
-    log.warn("sandbox", "could not stage SANDBOX_ENV_FILE; not passed to the container", { error: errorMessage(error) });
-    created.forEach(removeSandboxEnvStaging);
-    return null;
-  }
-}
-
 function logSandboxEnvPlan(plan: SandboxEnvPlan, envFile: EnvFileInput | null): void {
   if (envFile !== null && "error" in envFile) {
     log.warn("sandbox", "SANDBOX_ENV_FILE not passed to the container", { path: envFile.path, error: envFile.error });
@@ -155,22 +78,31 @@ export interface ResolveSandboxEnvParams {
   hostEnv: Readonly<Record<string, string | undefined>>;
   reservedNames: ReadonlySet<string>;
   mountedHostPaths: readonly string[];
+  /** Test seam; production gets the host platform. */
+  platform?: Platform | undefined;
 }
 
 export interface ResolvedSandboxEnv {
-  /** `--env-file` (when staged) then `-e NAME` pairs, for just before the image. */
+  /** `--env-file /dev/fd/3` (when there is file text) then `-e NAME` pairs, for just before the image. */
   args: string[];
-  /** The caller MUST remove this with `removeSandboxEnvStaging` once docker exits. */
-  stagingDir: string | null;
+  /** What the caller MUST write to the child's `ENV_FILE_FD`, or null for no extra fd. */
+  envFileText: string | null;
+}
+
+// Windows has no `/dev/fd`; until it has a pipe of its own, the file is not
+// passed there rather than written to disk.
+function envFileForPlatform(envFilePath: string | undefined, platform: Platform): string | undefined {
+  if (envFilePath === undefined || envFilePath === "" || platform !== "win32") return envFilePath;
+  log.warn("sandbox", "SANDBOX_ENV_FILE is not supported on Windows hosts; use SANDBOX_ENV to pass variables by name");
+  return undefined;
 }
 
 export function resolveSandboxEnv(params: ResolveSandboxEnvParams): ResolvedSandboxEnv {
-  const envFile = readEnvFileInput(params.envFilePath, params.mountedHostPaths);
+  const envFile = readEnvFileInput(envFileForPlatform(params.envFilePath, params.platform ?? process.platform), params.mountedHostPaths);
   const plan = planSandboxEnv({ names: params.names, envFile, hostEnv: params.hostEnv, reservedNames: params.reservedNames });
   logSandboxEnvPlan(plan, envFile);
-  const stagingDir = plan.stagedEnvFileText === null ? null : stageEnvFile(plan.stagedEnvFileText);
-  const fileArgs = stagingDir === null ? [] : ["--env-file", path.join(stagingDir, STAGED_ENV_FILE)];
-  const passedNames = [...new Set([...(stagingDir === null ? [] : plan.fileNames), ...plan.namedNames])];
+  const passedNames = [...new Set([...plan.fileNames, ...plan.namedNames])];
   if (passedNames.length > 0) log.info("sandbox", "host env passed to container", { names: passedNames });
-  return { args: [...fileArgs, ...plan.nameArgs], stagingDir };
+  const fileArgs = plan.envFileText === null ? [] : ["--env-file", ENV_FILE_FD_PATH];
+  return { args: [...fileArgs, ...plan.nameArgs], envFileText: plan.envFileText };
 }

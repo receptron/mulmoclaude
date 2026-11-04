@@ -14,7 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 `SANDBOX_ENV=NAME1,NAME2` passes host environment variables into the sandbox by name, and `SANDBOX_ENV_FILE=<path>`
 passes a docker-style env file. Values never appear in the docker command line; the file's checked lines reach docker
-through a private per-run copy, and a file inside the workspace or any other directory the sandbox mounts is refused. The variables
+through a pipe, never a copy on disk (not supported on Windows hosts yet), and a file inside the workspace or any other directory the sandbox mounts is refused. The variables
 the sandbox and its entrypoint use cannot be overridden. See `docs/sandbox-credentials.md`.
 
 ## [2.10.0] - 2026-10-26

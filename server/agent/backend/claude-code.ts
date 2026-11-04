@@ -9,9 +9,9 @@
 // home so the existing test suite under test/agent/ keeps working
 // unchanged.
 
-import { spawn, type ChildProcessByStdio } from "child_process";
+import { spawn, type ChildProcess, type ChildProcessByStdio } from "child_process";
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
-import type { Readable, Writable } from "stream";
+import { Writable, type Readable } from "stream";
 import {
   buildCliArgs,
   buildDockerSpawnArgs,
@@ -23,7 +23,7 @@ import {
 } from "../config.js";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { resolveSandboxAuth } from "../sandboxMounts.js";
-import { removeSandboxEnvStaging, resolveSandboxEnv } from "../sandboxEnv.js";
+import { ENV_FILE_FD, resolveSandboxEnv } from "../sandboxEnv.js";
 import { dockerEnvNames, dockerMountSources, ENTRYPOINT_ENV_NAMES, IMAGE_ENV_NAMES, insertDockerOptions } from "../sandboxEnvPlan.js";
 import { pluginLedgerMountArgs, removePluginLedgerStaging, withPluginLedgerCleanup } from "../pluginLedgerMount.js";
 import { getCachedReferenceDirs, referenceDirMountArgs } from "../../workspace/reference-dirs.js";
@@ -78,34 +78,38 @@ function spawnClaude(useDocker: boolean, workspacePath: string, cliArgs: string[
       sandboxAuthArgs: [...sandboxAuth.args, ...refDirArgs, ...pluginLedger.args],
       sshAgentForward: env.sandboxSshAgentForward,
     });
-    const envStagingDir = sandbox.stagingDir;
-    return spawnDockerOwningStaging(sandbox.dockerArgs, [
-      ...(stagingDir === null ? [] : [() => removePluginLedgerStaging(stagingDir)]),
-      ...(envStagingDir === null ? [] : [() => removeSandboxEnvStaging(envStagingDir)]),
-    ]);
+    const proc = spawnDocker(sandbox.dockerArgs, sandbox.envFileText);
+    // The container bind-mounts the staged ledgers, so they have to outlive its
+    // start — `close` is the first moment they are certainly unused.
+    if (stagingDir !== null) proc.once("close", () => removePluginLedgerStaging(stagingDir));
+    return proc;
   });
 }
 
-// The container bind-mounts the staged ledgers and docker reads the staged env
-// file, so both have to outlive its start — `close` is the first moment they are
-// certainly unused. A synchronous `spawn` throw has no `close` to wait for.
-function spawnDockerOwningStaging(dockerArgs: string[], cleanups: (() => void)[]): ClaudeProc {
-  const runCleanups = () => cleanups.forEach((cleanup) => cleanup());
-  try {
-    const proc = spawn("docker", dockerArgs, { stdio: ["pipe", "pipe", "pipe"] });
-    proc.once("close", runCleanups);
-    return proc;
-  } catch (error) {
-    runCleanups();
-    throw error;
+const isClaudeProc = (proc: ChildProcess): proc is ClaudeProc => proc.stdin !== null && proc.stdout !== null && proc.stderr !== null;
+
+// With an env file, docker reads it from a pipe on fd 3 (`--env-file /dev/fd/3`),
+// so the checked values never touch the disk. A docker that exits before reading
+// closes the pipe; that EPIPE is the run's failure to report, not the server's.
+function spawnDocker(dockerArgs: string[], envFileText: string | null): ClaudeProc {
+  if (envFileText === null) return spawn("docker", dockerArgs, { stdio: ["pipe", "pipe", "pipe"] });
+  const proc = spawn("docker", dockerArgs, { stdio: ["pipe", "pipe", "pipe", "pipe"] });
+  const envFilePipe = proc.stdio[ENV_FILE_FD];
+  // Without a writable fd 3, docker would wait on `/dev/fd/3` forever.
+  if (!(envFilePipe instanceof Writable) || !isClaudeProc(proc)) {
+    proc.kill();
+    throw new Error("docker was spawned without its stdio pipes");
   }
+  envFilePipe.on("error", (error) => log.warn("sandbox", "docker did not read the SANDBOX_ENV_FILE pipe", { error: errorMessage(error) }));
+  envFilePipe.end(envFileText);
+  return proc;
 }
 
 // The reserved names and the mounted host paths are read off the argv the
 // sandbox would get anyway, so a variable or mount added later is covered
 // without a list to keep in step; the entrypoint's inputs and the image's own
 // variables are added because the argv does not carry them.
-function withSandboxEnv(params: DockerSpawnArgsParams): { dockerArgs: string[]; stagingDir: string | null } {
+function withSandboxEnv(params: DockerSpawnArgsParams): { dockerArgs: string[]; envFileText: string | null } {
   const dockerArgs = buildDockerSpawnArgs(params);
   const sandboxEnv = resolveSandboxEnv({
     names: env.sandboxEnvNames,
@@ -114,12 +118,7 @@ function withSandboxEnv(params: DockerSpawnArgsParams): { dockerArgs: string[]; 
     reservedNames: new Set([...dockerEnvNames(dockerArgs, SANDBOX_IMAGE), ...ENTRYPOINT_ENV_NAMES, ...IMAGE_ENV_NAMES]),
     mountedHostPaths: dockerMountSources(dockerArgs, SANDBOX_IMAGE),
   });
-  try {
-    return { dockerArgs: insertDockerOptions(dockerArgs, SANDBOX_IMAGE, sandboxEnv.args), stagingDir: sandboxEnv.stagingDir };
-  } catch (error) {
-    if (sandboxEnv.stagingDir !== null) removeSandboxEnvStaging(sandboxEnv.stagingDir);
-    throw error;
-  }
+  return { dockerArgs: insertDockerOptions(dockerArgs, SANDBOX_IMAGE, sandboxEnv.args), envFileText: sandboxEnv.envFileText };
 }
 
 // Counts the tools a turn ran FROM THE BUILT-IN BROKER. Scoped to

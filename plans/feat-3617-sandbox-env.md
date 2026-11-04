@@ -17,12 +17,12 @@ workspace. Off by default; no change for anyone who does not set the new variabl
   the server's spawn inherits unchanged.
 - **The file is never copied into the spawn environment** — that environment also configures the docker CLI, so a
   line like `DOCKER_HOST=…` or `HOME=…` would redirect the CLI instead of reaching the container. Nor is the user's
-  path handed to docker: the lines that pass are re-serialised into a per-run copy (`mkdtemp`) under a per-user
-  staging root `<tmpdir>/mulmoclaude-sandbox-env/` that must be a real, owner-only directory of this uid (else nothing
-  is staged), passed as `--env-file`, removed on `close`. Docker reads exactly what was checked, with no window to swap the file.
-  The staging dir name carries the server's pid, and the next staging removes dirs whose pid is gone — a killed
-  server never sees `close`. Only the private root is swept, never the shared temp directory. Removing it earlier (on first output) was rejected: watching stdout for that would
-  change how the stream parser reads it.
+  path handed to docker: the lines that pass are re-serialised and written into a pipe on the child's fd 3, which
+  docker reads as `--env-file /dev/fd/3`. Docker reads exactly what was checked, and nothing touches the disk.
+- **Why a pipe and not a staged file.** A staged copy needs a directory only this user can read on every platform,
+  an ownership check that Windows cannot express by uid, and a cleanup that survives a killed server (pid in the
+  name, a sweep, pid reuse). Each of those produced a further finding; the pipe removes the whole class. Windows has
+  no `/dev/fd`, so `SANDBOX_ENV_FILE` is not passed there (logged); `SANDBOX_ENV` works everywhere.
 - **A file inside a mounted directory is refused**, compared by realpath: the agent could read refused values and
   rewrite the file for the next run. The mount sources are read off the final docker argv (`dockerMountSources` over
   `-v` / `--mount`), not listed by hand, so app-code, plugin-tree and reference-dir mounts are all covered.
@@ -38,9 +38,9 @@ workspace. Off by default; no change for anyone who does not set the new variabl
 
 ## Files
 
-- `server/agent/sandboxEnvPlan.ts` — pure: parse, reserved names, plan, staged text, splice.
-- `server/agent/sandboxEnv.ts` — non-blocking bounded read, mounted-dir refusal, staging, logging.
-- `server/agent/backend/claude-code.ts` — wiring at the docker spawn.
+- `server/agent/sandboxEnvPlan.ts` — pure: parse, reserved names, mount sources, plan, env-file text, splice.
+- `server/agent/sandboxEnv.ts` — non-blocking bounded read, mounted-dir refusal, Windows gate, logging.
+- `server/agent/backend/claude-code.ts` — wiring at the docker spawn; fd 3 pipe only when there is file text.
 - `server/system/env.ts` — the two settings.
 - `test/agent/test_sandboxEnv.ts`.
 - Docs: `docs/sandbox-credentials.md`, `docs/developer.md`, `README.md`, `docs/CHANGELOG.md`.

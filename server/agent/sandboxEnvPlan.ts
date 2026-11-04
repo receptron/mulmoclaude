@@ -5,9 +5,9 @@
 // docker resolves from its own environment — the server's, inherited unchanged.
 // File entries are not copied into that environment either, because it also
 // configures the docker CLI itself (`DOCKER_HOST`, `HOME`, …). Instead the lines
-// that pass are re-serialised into `stagedEnvFileText`, which the caller writes
-// to a private file for `--env-file`: docker then reads exactly what was checked,
-// not the user's file again after it might have changed.
+// that pass are re-serialised into `envFileText`, which the caller hands docker as
+// its `--env-file`: docker then reads exactly what was checked, not the user's
+// file again after it might have changed.
 
 export type SandboxEnvSource = "SANDBOX_ENV" | "SANDBOX_ENV_FILE";
 
@@ -43,7 +43,7 @@ export interface SandboxEnvPlan {
   /** `-e NAME` pairs for `SANDBOX_ENV`, to follow any `--env-file` so they win. */
   nameArgs: string[];
   /** The accepted env-file lines, or null when no file line passes. */
-  stagedEnvFileText: string | null;
+  envFileText: string | null;
   /** Names each source passes, for logging. Never values. */
   fileNames: string[];
   namedNames: string[];
@@ -58,36 +58,6 @@ export const ENTRYPOINT_ENV_NAMES: readonly string[] = ["HOST_UID", "HOST_GID", 
 // entrypoint and the CLI are started by bare name, so a host `PATH` replacing the
 // image's stops the container from starting at all.
 export const IMAGE_ENV_NAMES: readonly string[] = ["PATH", "NODE_VERSION", "YARN_VERSION"];
-
-const STAGING_DIR_PID_RE = /^(\d+)-/;
-
-/** A staging directory's name prefix inside the private staging root; the pid is
- *  what lets a later run tell a crashed server's leftover from a live server's. */
-export const stagingDirPrefix = (pid: number): string => `${pid}-`;
-
-export interface StagingRootStat {
-  isDirectory: boolean;
-  isSymbolicLink: boolean;
-  /** Undefined where the platform has no uid (Windows). */
-  uid: number | undefined;
-  mode: number;
-}
-
-/** The staging root is ours alone: a real directory, owned by this user, closed
- *  to group and others. In a shared temp directory anyone can pre-create the name. */
-export function isPrivateStagingRoot(stat: StagingRootStat, uid: number | undefined): boolean {
-  if (!stat.isDirectory || stat.isSymbolicLink) return false;
-  if (uid === undefined) return true;
-  return stat.uid === uid && (stat.mode & 0o077) === 0;
-}
-
-/** Entries of the staging root that a server no longer running left behind. */
-export function staleStagingDirs(entries: readonly string[], isAlive: (pid: number) => boolean): string[] {
-  return entries.filter((entry) => {
-    const match = STAGING_DIR_PID_RE.exec(entry);
-    return match?.[1] !== undefined && !isAlive(Number(match[1]));
-  });
-}
 
 // Docker's own rule for an env-file name: not empty, no whitespace. `=` cannot
 // occur in a parsed name, and in a `SANDBOX_ENV` entry it would turn `-e NAME`
@@ -201,7 +171,7 @@ export function planSandboxEnv(input: SandboxEnvInput): SandboxEnvPlan {
   const fromFile = input.envFile !== null && "text" in input.envFile ? planFileEnv(input.envFile.text, input) : { accepted: [], skipped: [] };
   return {
     nameArgs: named.accepted.flatMap((name) => ["-e", name]),
-    stagedEnvFileText: fromFile.accepted.length === 0 ? null : `${fromFile.accepted.map((entry) => entry.line).join("\n")}\n`,
+    envFileText: fromFile.accepted.length === 0 ? null : `${fromFile.accepted.map((entry) => entry.line).join("\n")}\n`,
     fileNames: fromFile.accepted.map((entry) => entry.name),
     namedNames: named.accepted,
     skipped: [...fromFile.skipped, ...named.skipped],

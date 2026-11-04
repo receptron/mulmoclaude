@@ -1,19 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { Writable } from "node:stream";
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 
 import { makeTempDir } from "../helpers/tempDir.js";
 import { buildDockerSpawnArgs, SANDBOX_IMAGE } from "../../server/agent/config.js";
-import {
-  readEnvFileInput,
-  removeSandboxEnvStaging,
-  resolveSandboxEnv,
-  SANDBOX_ENV_STAGING_ROOT,
-  sandboxEnvStagingRoot,
-} from "../../server/agent/sandboxEnv.js";
+import { ENV_FILE_FD, readEnvFileInput, resolveSandboxEnv } from "../../server/agent/sandboxEnv.js";
 import { dockerMountArgs } from "../../server/agent/dockerMount.js";
 import {
   dockerEnvNames,
@@ -21,12 +15,9 @@ import {
   ENTRYPOINT_ENV_NAMES,
   IMAGE_ENV_NAMES,
   insertDockerOptions,
-  isPrivateStagingRoot,
   isEnvName,
   parseEnvFileText,
   planSandboxEnv,
-  stagingDirPrefix,
-  staleStagingDirs,
   type SandboxEnvInput,
 } from "../../server/agent/sandboxEnvPlan.js";
 
@@ -212,52 +203,14 @@ describe("IMAGE_ENV_NAMES", () => {
     }
   })();
 
-  it("includes PATH, which the entrypoint and the CLI are started by", () => {
-    assert.ok(IMAGE_ENV_NAMES.includes("PATH"));
+  it("includes PATH, which the entrypoint and the CLI are started by, and the image's other variables", () => {
+    ["PATH", "NODE_VERSION", "YARN_VERSION"].forEach((name) => assert.ok(IMAGE_ENV_NAMES.includes(name), name));
   });
 
   it("covers every variable the built sandbox image sets", { skip: imageEnv === null ? "no local mulmoclaude-sandbox image" : false }, () => {
     const names = (imageEnv ?? "").split("\n").flatMap((line) => (line === "" ? [] : [line.split("=", 1).join("")]));
     assert.ok(names.length > 0);
     names.forEach((name) => assert.ok(IMAGE_ENV_NAMES.includes(name), `${name} is set by the image but not reserved`));
-  });
-});
-
-describe("isPrivateStagingRoot", () => {
-  const owned = { isDirectory: true, isSymbolicLink: false, uid: 501, mode: 0o40700 };
-
-  it("accepts an owner-only directory of this user", () => {
-    assert.equal(isPrivateStagingRoot(owned, 501), true);
-  });
-
-  it("refuses another user's, a group/world-accessible one, a symlink and a non-directory", () => {
-    assert.equal(isPrivateStagingRoot({ ...owned, uid: 0 }, 501), false);
-    assert.equal(isPrivateStagingRoot({ ...owned, mode: 0o40750 }, 501), false);
-    assert.equal(isPrivateStagingRoot({ ...owned, mode: 0o40707 }, 501), false);
-    assert.equal(isPrivateStagingRoot({ ...owned, isSymbolicLink: true }, 501), false);
-    assert.equal(isPrivateStagingRoot({ ...owned, isDirectory: false }, 501), false);
-  });
-
-  it("checks only the shape where the platform has no uid", () => {
-    assert.equal(isPrivateStagingRoot({ ...owned, uid: 0, mode: 0o40777 }, undefined), true);
-    assert.equal(isPrivateStagingRoot({ ...owned, isSymbolicLink: true }, undefined), false);
-  });
-});
-
-describe("staleStagingDirs", () => {
-  it("picks only staging dirs whose server process is gone", () => {
-    const entries = [`${stagingDirPrefix(111)}aaa`, `${stagingDirPrefix(222)}bbb`, "legacyXYZ", "x111-aaa", "other"];
-    assert.deepEqual(
-      staleStagingDirs(entries, (pid) => pid === 222),
-      [`${stagingDirPrefix(111)}aaa`],
-    );
-  });
-
-  it("never picks this process's own staging", () => {
-    assert.deepEqual(
-      staleStagingDirs([`${stagingDirPrefix(process.pid)}x`], (pid) => pid === process.pid),
-      [],
-    );
   });
 });
 
@@ -286,7 +239,7 @@ describe("insertDockerOptions", () => {
 
 describe("planSandboxEnv — SANDBOX_ENV names", () => {
   it("adds nothing when neither setting is used", () => {
-    assert.deepEqual(planSandboxEnv(input({})), { nameArgs: [], stagedEnvFileText: null, fileNames: [], namedNames: [], skipped: [] });
+    assert.deepEqual(planSandboxEnv(input({})), { nameArgs: [], envFileText: null, fileNames: [], namedNames: [], skipped: [] });
   });
 
   it("passes a host variable by name only, never its value", () => {
@@ -316,47 +269,47 @@ describe("planSandboxEnv — SANDBOX_ENV names", () => {
 });
 
 describe("planSandboxEnv — SANDBOX_ENV_FILE", () => {
-  it("stages the accepted lines verbatim and leaves the values out of everything else", () => {
+  it("keeps the accepted lines verbatim and leaves the values out of everything else", () => {
     const plan = planSandboxEnv(input({ envFile: fileOf("# c\n  API_TOKEN=s3cret \nDOTTED.NAME=1\n") }));
-    assert.equal(plan.stagedEnvFileText, "API_TOKEN=s3cret \nDOTTED.NAME=1\n");
+    assert.equal(plan.envFileText, "API_TOKEN=s3cret \nDOTTED.NAME=1\n");
     assert.deepEqual(plan.fileNames, ["API_TOKEN", "DOTTED.NAME"]);
     assert.deepEqual(plan.nameArgs, []);
-    assert.ok(!JSON.stringify({ ...plan, stagedEnvFileText: null }).includes("s3cret"));
+    assert.ok(!JSON.stringify({ ...plan, envFileText: null }).includes("s3cret"));
   });
 
-  it("drops reserved lines from the staged file instead of relying on docker's precedence", () => {
+  it("drops reserved lines from the file text instead of relying on docker's precedence", () => {
     const plan = planSandboxEnv(input({ envFile: fileOf("HOME=/tmp\nOK=1\n") }));
-    assert.equal(plan.stagedEnvFileText, "OK=1\n");
+    assert.equal(plan.envFileText, "OK=1\n");
     assert.deepEqual(plan.skipped, [{ source: "SANDBOX_ENV_FILE", entry: "HOME", reason: "reserved" }]);
   });
 
   it("drops an invalid line alone, reporting its line number and not its text", () => {
     const plan = planSandboxEnv(input({ envFile: fileOf("OK=1\nmy token s3cret=x\n") }));
-    assert.equal(plan.stagedEnvFileText, "OK=1\n");
+    assert.equal(plan.envFileText, "OK=1\n");
     assert.deepEqual(plan.skipped, [{ source: "SANDBOX_ENV_FILE", entry: "line 2", reason: "invalid-name" }]);
     assert.ok(!JSON.stringify(plan.skipped).includes("s3cret"));
   });
 
   it("keeps a bare name the host has, and drops one it lacks", () => {
     const plan = planSandboxEnv(input({ envFile: fileOf("FROM_HOST\nNOT_ON_HOST\n"), hostEnv: { FROM_HOST: "1" } }));
-    assert.equal(plan.stagedEnvFileText, "FROM_HOST\n");
+    assert.equal(plan.envFileText, "FROM_HOST\n");
     assert.deepEqual(plan.skipped, [{ source: "SANDBOX_ENV_FILE", entry: "NOT_ON_HOST", reason: "unset-on-host" }]);
   });
 
   it("lets the last repeated line decide, as docker does", () => {
     const plan = planSandboxEnv(input({ envFile: fileOf("TWICE=first\nTWICE=second\n") }));
-    assert.equal(plan.stagedEnvFileText, "TWICE=second\n");
+    assert.equal(plan.envFileText, "TWICE=second\n");
   });
 
-  it("stages nothing when no line passes, and for an unreadable file", () => {
-    assert.equal(planSandboxEnv(input({ envFile: fileOf("# only a comment\nHOME=/x\n") })).stagedEnvFileText, null);
-    assert.equal(planSandboxEnv(input({ envFile: { path: "/nope.env", error: "ENOENT" } })).stagedEnvFileText, null);
+  it("hands over nothing when no line passes, and for an unreadable file", () => {
+    assert.equal(planSandboxEnv(input({ envFile: fileOf("# only a comment\nHOME=/x\n") })).envFileText, null);
+    assert.equal(planSandboxEnv(input({ envFile: { path: "/nope.env", error: "ENOENT" } })).envFileText, null);
   });
 
   it("keeps SANDBOX_ENV names alongside the file, so they follow --env-file and win", () => {
     const plan = planSandboxEnv(input({ names: ["SHARED"], envFile: fileOf("SHARED=from-file\n"), hostEnv: { SHARED: "from-host" } }));
     assert.deepEqual(plan.nameArgs, ["-e", "SHARED"]);
-    assert.equal(plan.stagedEnvFileText, "SHARED=from-file\n");
+    assert.equal(plan.envFileText, "SHARED=from-file\n");
   });
 });
 
@@ -424,60 +377,61 @@ describe("readEnvFileInput", () => {
 
 describe("resolveSandboxEnv", () => {
   const dir = makeTempDir("sandbox-env-resolve-");
-  const base = { names: [], hostEnv: {}, reservedNames: RESERVED, mountedHostPaths: [] };
+  const base = { names: [], hostEnv: {}, reservedNames: RESERVED, mountedHostPaths: [], platform: "linux" as const };
 
-  it("adds nothing and stages nothing with neither setting", () => {
-    assert.deepEqual(resolveSandboxEnv({ ...base, envFilePath: undefined }), { args: [], stagingDir: null });
+  it("adds nothing and opens no extra pipe with neither setting", () => {
+    assert.deepEqual(resolveSandboxEnv({ ...base, envFilePath: undefined }), { args: [], envFileText: null });
   });
 
-  it("hands docker a private copy of the checked lines, not the user's file", () => {
+  it("points docker at the fd 3 pipe and hands over only the checked lines", () => {
     const userFile = path.join(dir, "agent.env");
     writeFileSync(userFile, "OK=1\nHOME=/evil\n");
     const resolved = resolveSandboxEnv({ ...base, envFilePath: userFile });
-    const { stagingDir } = resolved;
-    assert.ok(stagingDir !== null);
-    try {
-      const [flag, stagedPath] = resolved.args;
-      assert.equal(flag, "--env-file");
-      assert.ok(stagedPath !== undefined && stagedPath !== userFile);
-      assert.equal(readFileSync(stagedPath, "utf-8"), "OK=1\n");
-      if (process.platform !== "win32") assert.equal(statSync(stagingDir).mode & 0o077, 0);
-    } finally {
-      removeSandboxEnvStaging(stagingDir);
-    }
-    assert.equal(existsSync(stagingDir), false);
+    assert.deepEqual(resolved.args, ["--env-file", `/dev/fd/${ENV_FILE_FD}`]);
+    assert.equal(resolved.envFileText, "OK=1\n");
   });
 
-  it("stages inside a private root of its own, not directly in the shared temp directory", () => {
-    const userFile = path.join(dir, "root.env");
-    writeFileSync(userFile, "OK=1\n");
-    const { stagingDir } = resolveSandboxEnv({ ...base, envFilePath: userFile });
-    assert.ok(stagingDir !== null);
-    try {
-      assert.equal(path.dirname(stagingDir), path.join(tmpdir(), SANDBOX_ENV_STAGING_ROOT));
-      if (process.platform !== "win32") assert.equal(statSync(path.dirname(stagingDir)).mode & 0o077, 0);
-    } finally {
-      removeSandboxEnvStaging(stagingDir);
-    }
+  it("puts -e names after the pipe, so they win over the same name in the file", () => {
+    const userFile = path.join(dir, "shared.env");
+    writeFileSync(userFile, "SHARED=from-file\n");
+    const resolved = resolveSandboxEnv({ ...base, names: ["SHARED"], hostEnv: { SHARED: "from-host" }, envFilePath: userFile });
+    assert.deepEqual(resolved.args, ["--env-file", `/dev/fd/${ENV_FILE_FD}`, "-e", "SHARED"]);
   });
 
-  it("removes a copy a killed server left behind, keeps a live one's, and never touches the shared temp directory", () => {
-    const deadPid = Number(execFileSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf-8" }));
-    const root = sandboxEnvStagingRoot();
-    assert.ok(root !== null);
-    const leftover = path.join(root, `${stagingDirPrefix(deadPid)}leftover`);
-    const live = path.join(root, `${stagingDirPrefix(process.pid)}live`);
-    const unrelated = path.join(tmpdir(), `mulmoclaude-sandbox-env-${deadPid}-not-ours`);
-    [leftover, live, unrelated].forEach((created) => mkdirSync(created));
-    const userFile = path.join(dir, "sweep.env");
+  it("does not pass the file on Windows, which has no /dev/fd, but still passes SANDBOX_ENV names", () => {
+    const userFile = path.join(dir, "win.env");
     writeFileSync(userFile, "OK=1\n");
-    const resolved = resolveSandboxEnv({ ...base, envFilePath: userFile });
+    const resolved = resolveSandboxEnv({ ...base, platform: "win32", names: ["NAMED"], hostEnv: { NAMED: "1" }, envFilePath: userFile });
+    assert.deepEqual(resolved, { args: ["-e", "NAMED"], envFileText: null });
+  });
+});
+
+// The whole env-file path rests on docker opening `/dev/fd/3` as a file. Checked
+// against the real CLI wherever the sandbox image is present.
+describe("docker --env-file /dev/fd/3", () => {
+  const hasImage = (() => {
     try {
-      assert.equal(existsSync(leftover), false);
-      assert.equal(existsSync(live), true);
-      assert.equal(existsSync(unrelated), true);
-    } finally {
-      [live, unrelated, leftover, resolved.stagingDir].forEach((created) => created !== null && removeSandboxEnvStaging(created));
+      execFileSync("docker", ["image", "inspect", SANDBOX_IMAGE], { stdio: "ignore" });
+      return process.platform !== "win32";
+    } catch {
+      return false;
     }
+  })();
+
+  it("reads the env file from the pipe, valued and bare lines alike", { skip: hasImage ? false : "no local mulmoclaude-sandbox image" }, async () => {
+    const proc = spawn("docker", ["run", "--rm", "--entrypoint", "env", "--env-file", `/dev/fd/${ENV_FILE_FD}`, SANDBOX_IMAGE], {
+      stdio: ["ignore", "pipe", "ignore", "pipe"],
+      env: { ...process.env, MC3617_BARE: "from-host" },
+    });
+    const pipe = proc.stdio[ENV_FILE_FD];
+    assert.ok(pipe instanceof Writable);
+    pipe.end("MC3617_PIPED=piped-value\nMC3617_BARE\n");
+    const chunks: string[] = [];
+    proc.stdout?.on("data", (chunk: Buffer) => chunks.push(chunk.toString("utf-8")));
+    const code = await new Promise<number | null>((resolve) => proc.on("close", resolve));
+    assert.equal(code, 0);
+    const lines = chunks.join("").split("\n");
+    assert.ok(lines.includes("MC3617_PIPED=piped-value"));
+    assert.ok(lines.includes("MC3617_BARE=from-host"));
   });
 });
