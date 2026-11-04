@@ -76,10 +76,39 @@ export function parseEnvFileText(text: string): EnvFileEntry[] {
 
 /** Every variable name a `-e` / `--env` flag sets before `image` in a docker argv. */
 export function dockerEnvNames(dockerArgs: readonly string[], image: string): Set<string> {
-  const imageIndex = dockerArgs.indexOf(image);
-  const options = imageIndex === -1 ? dockerArgs : dockerArgs.slice(0, imageIndex);
+  const options = optionsBeforeImage(dockerArgs, image);
   const values = options.filter((_, index) => index > 0 && (options[index - 1] === "-e" || options[index - 1] === "--env"));
   return new Set(values.map((value) => value.split("=", 1).join("")));
+}
+
+function optionsBeforeImage(dockerArgs: readonly string[], image: string): readonly string[] {
+  const imageIndex = dockerArgs.indexOf(image);
+  return imageIndex === -1 ? dockerArgs : dockerArgs.slice(0, imageIndex);
+}
+
+// `-v SOURCE:TARGET[:ro]`. A source never holds `:` (`dockerMountArgs` moves such
+// a path to `--mount`), except a Windows drive letter, which is kept.
+function volumeSource(value: string): string {
+  const drive = /^[A-Za-z]:/.test(value) ? value.slice(0, 2) : "";
+  const rest = value.slice(drive.length);
+  const end = rest.indexOf(":");
+  return drive + (end === -1 ? rest : rest.slice(0, end));
+}
+
+function mountSource(value: string): string | null {
+  const field = value.split(",").find((part) => part.startsWith("source=") || part.startsWith("src="));
+  return field === undefined ? null : field.slice(field.indexOf("=") + 1);
+}
+
+/** The host side of every `-v` / `--mount` before `image`: what the container can read. */
+export function dockerMountSources(dockerArgs: readonly string[], image: string): string[] {
+  const options = optionsBeforeImage(dockerArgs, image);
+  return options.flatMap((value, index): string[] => {
+    const flag = options[index - 1];
+    if (flag === "-v" || flag === "--volume") return [volumeSource(value)];
+    const source = flag === "--mount" ? mountSource(value) : null;
+    return source === null ? [] : [source];
+  });
 }
 
 /** `extra` spliced in just before `image`, i.e. after every option already set. */

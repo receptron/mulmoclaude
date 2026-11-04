@@ -24,8 +24,7 @@ import {
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { resolveSandboxAuth } from "../sandboxMounts.js";
 import { removeSandboxEnvStaging, resolveSandboxEnv } from "../sandboxEnv.js";
-import { dockerEnvNames, ENTRYPOINT_ENV_NAMES, insertDockerOptions } from "../sandboxEnvPlan.js";
-import { claudeConfigDir, claudeConfigJson } from "../../utils/claudeConfigPath.js";
+import { dockerEnvNames, dockerMountSources, ENTRYPOINT_ENV_NAMES, insertDockerOptions } from "../sandboxEnvPlan.js";
 import { pluginLedgerMountArgs, removePluginLedgerStaging, withPluginLedgerCleanup } from "../pluginLedgerMount.js";
 import { getCachedReferenceDirs, referenceDirMountArgs } from "../../workspace/reference-dirs.js";
 import { createStreamParser, type AgentEvent, type RawStreamEvent } from "../stream.js";
@@ -102,9 +101,10 @@ function spawnDockerOwningStaging(dockerArgs: string[], cleanups: (() => void)[]
   }
 }
 
-// The reserved names are read off the argv the sandbox would get anyway, so a
-// fixed variable added later is protected without a list to keep in step; the
-// entrypoint's own inputs are added because a run need not set them.
+// The reserved names and the mounted host paths are read off the argv the
+// sandbox would get anyway, so a variable or mount added later is covered
+// without a list to keep in step; the entrypoint's own inputs are added because
+// a run need not set them.
 function withSandboxEnv(params: DockerSpawnArgsParams): { dockerArgs: string[]; stagingDir: string | null } {
   const dockerArgs = buildDockerSpawnArgs(params);
   const sandboxEnv = resolveSandboxEnv({
@@ -112,9 +112,14 @@ function withSandboxEnv(params: DockerSpawnArgsParams): { dockerArgs: string[]; 
     envFilePath: env.sandboxEnvFile,
     hostEnv: process.env,
     reservedNames: new Set([...dockerEnvNames(dockerArgs, SANDBOX_IMAGE), ...ENTRYPOINT_ENV_NAMES]),
-    mountedHostPaths: [params.workspacePath, claudeConfigDir(), claudeConfigJson(), ...getCachedReferenceDirs().map((dir) => dir.hostPath)],
+    mountedHostPaths: dockerMountSources(dockerArgs, SANDBOX_IMAGE),
   });
-  return { dockerArgs: insertDockerOptions(dockerArgs, SANDBOX_IMAGE, sandboxEnv.args), stagingDir: sandboxEnv.stagingDir };
+  try {
+    return { dockerArgs: insertDockerOptions(dockerArgs, SANDBOX_IMAGE, sandboxEnv.args), stagingDir: sandboxEnv.stagingDir };
+  } catch (error) {
+    if (sandboxEnv.stagingDir !== null) removeSandboxEnvStaging(sandboxEnv.stagingDir);
+    throw error;
+  }
 }
 
 // Counts the tools a turn ran FROM THE BUILT-IN BROKER. Scoped to

@@ -7,8 +7,10 @@ import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSy
 import { makeTempDir } from "../helpers/tempDir.js";
 import { buildDockerSpawnArgs, SANDBOX_IMAGE } from "../../server/agent/config.js";
 import { readEnvFileInput, removeSandboxEnvStaging, resolveSandboxEnv } from "../../server/agent/sandboxEnv.js";
+import { dockerMountArgs } from "../../server/agent/dockerMount.js";
 import {
   dockerEnvNames,
+  dockerMountSources,
   ENTRYPOINT_ENV_NAMES,
   insertDockerOptions,
   isEnvName,
@@ -83,6 +85,84 @@ describe("dockerEnvNames", () => {
   it("reads every fixed variable off the real sandbox argv", () => {
     const names = dockerEnvNames(sandboxArgv(false), SANDBOX_IMAGE);
     ["HOME", "MULMOCLAUDE_HOST", "MULMOCLAUDE_CHAT_SESSION_ID", "MCP_CONNECT_TIMEOUT_MS", "GH_TOKEN"].forEach((name) => assert.ok(names.has(name), name));
+  });
+});
+
+describe("dockerMountSources", () => {
+  it("reads the host side of -v (with or without :ro, with a Windows drive) and --mount", () => {
+    const args = [
+      "run",
+      "-v",
+      "/ws:/home/node/workspace",
+      "-v",
+      "/proj/server:/app/server:ro",
+      "-v",
+      "C:/Users/me/ws:/home/node/workspace",
+      "--mount",
+      "type=bind,source=/odd:path,target=/x,readonly",
+      "--mount",
+      "type=bind,src=/short,target=/y",
+      "-e",
+      "A=/not/a/mount",
+      SANDBOX_IMAGE,
+      "-v",
+      "/after/image:/z",
+    ];
+    assert.deepEqual(dockerMountSources(args, SANDBOX_IMAGE), ["/ws", "/proj/server", "C:/Users/me/ws", "/odd:path", "/short"]);
+  });
+
+  it("finds a source for every mount flag the real sandbox argv carries", () => {
+    const args = sandboxArgv(false);
+    const flags = args.slice(0, args.indexOf(SANDBOX_IMAGE)).filter((arg) => arg === "-v" || arg === "--mount");
+    const sources = dockerMountSources(args, SANDBOX_IMAGE);
+    assert.equal(sources.length, flags.length);
+    ["/ws", "/proj/server", "/proj/src", "/proj/node_modules"].forEach((source) =>
+      assert.ok(
+        sources.some((found) => path.resolve(found) === path.resolve(source)),
+        source,
+      ),
+    );
+  });
+
+  it("refuses an env file under any mount of the real argv: app code, workspace, and an added plugin tree", () => {
+    const root = makeTempDir("sandbox-env-mounts-");
+    const dirs = ["proj/server", "proj/src", "proj/node_modules", "ws", "plugin-tree"].map((dir) => path.join(root, dir));
+    dirs.forEach((dir) => mkdirSync(dir, { recursive: true }));
+    const [, , , workspace, pluginTree] = dirs;
+    assert.ok(workspace !== undefined && pluginTree !== undefined);
+    const pluginMount = dockerMountArgs({ hostPath: pluginTree, containerPath: "/home/node/.claude/plugins/x", readOnly: true }, process.platform);
+    assert.ok(pluginMount.kind === "args");
+    const args = buildDockerSpawnArgs({
+      workspacePath: workspace,
+      cliArgs: [],
+      uid: 1000,
+      gid: 1000,
+      platform: process.platform,
+      projectRoot: path.join(root, "proj"),
+      packageRoot: path.join(root, "proj"),
+      homeDir: path.join(root, "home"),
+      chatSessionId: "s",
+      sandboxAuthArgs: pluginMount.args,
+    });
+    const mounted = dockerMountSources(args, SANDBOX_IMAGE);
+    dirs.forEach((dir) => {
+      const envFile = path.join(dir, "agent.env");
+      writeFileSync(envFile, "A=1\n");
+      const result = readEnvFileInput(envFile, mounted);
+      assert.ok(result !== null && "error" in result && /mounted/.test(result.error), dir);
+    });
+    const outside = path.join(root, "agent.env");
+    writeFileSync(outside, "A=1\n");
+    const allowed = readEnvFileInput(outside, mounted);
+    assert.ok(allowed !== null && "text" in allowed);
+  });
+
+  it("reads back the exact host path from both shapes dockerMountArgs emits", () => {
+    ["/plain/dir", "/has:colon/dir"].forEach((hostPath) => {
+      const mount = dockerMountArgs({ hostPath, containerPath: "/c", readOnly: true }, "linux");
+      assert.ok(mount.kind === "args");
+      assert.deepEqual(dockerMountSources([...mount.args, SANDBOX_IMAGE], SANDBOX_IMAGE), [hostPath]);
+    });
   });
 });
 

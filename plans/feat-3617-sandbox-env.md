@@ -19,8 +19,9 @@ workspace. Off by default; no change for anyone who does not set the new variabl
   line like `DOCKER_HOST=…` or `HOME=…` would redirect the CLI instead of reaching the container. Nor is the user's
   path handed to docker: the lines that pass are re-serialised into a private per-run copy (`mkdtemp`, owner-only)
   passed as `--env-file`, removed on `close`. Docker reads exactly what was checked, with no window to swap the file.
-- **A file inside a mounted directory is refused** (workspace, claude config dir / json, reference dirs, compared by
-  realpath): the agent could read refused values and rewrite the file for the next run.
+- **A file inside a mounted directory is refused**, compared by realpath: the agent could read refused values and
+  rewrite the file for the next run. The mount sources are read off the final docker argv (`dockerMountSources` over
+  `-v` / `--mount`), not listed by hand, so app-code, plugin-tree and reference-dir mounts are all covered.
 - **Reserved names** = the `-e` names in the sandbox argv (`dockerEnvNames`, no hand-kept list) ∪ the variables
   `sandbox-entrypoint.sh` reads (`ENTRYPOINT_ENV_NAMES`, pinned by a test that scans the script) — `HOST_UID` is only
   in the argv with SSH forwarding on, yet setting it alone switches the entrypoint's branch. Dropped from both settings.
