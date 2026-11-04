@@ -19,12 +19,17 @@ workspace. Off by default; no change for anyone who does not set the new variabl
   line like `DOCKER_HOST=…` or `HOME=…` would redirect the CLI instead of reaching the container. Nor is the user's
   path handed to docker: the lines that pass are re-serialised into a private per-run copy (`mkdtemp`, owner-only)
   passed as `--env-file`, removed on `close`. Docker reads exactly what was checked, with no window to swap the file.
+  The staging dir name carries the server's pid, and the next staging removes dirs whose pid is gone — a killed
+  server never sees `close`. Removing it earlier (on first output) was rejected: watching stdout for that would
+  change how the stream parser reads it.
 - **A file inside a mounted directory is refused**, compared by realpath: the agent could read refused values and
   rewrite the file for the next run. The mount sources are read off the final docker argv (`dockerMountSources` over
   `-v` / `--mount`), not listed by hand, so app-code, plugin-tree and reference-dir mounts are all covered.
 - **Reserved names** = the `-e` names in the sandbox argv (`dockerEnvNames`, no hand-kept list) ∪ the variables
   `sandbox-entrypoint.sh` reads (`ENTRYPOINT_ENV_NAMES`, pinned by a test that scans the script) — `HOST_UID` is only
-  in the argv with SSH forwarding on, yet setting it alone switches the entrypoint's branch. Dropped from both settings.
+  in the argv with SSH forwarding on, yet setting it alone switches the entrypoint's branch ∪ the image's own variables
+  (`IMAGE_ENV_NAMES`: `PATH` above all — the entrypoint and the CLI start by bare name; pinned by a test against
+  `docker image inspect` when the image is present). Dropped from both settings.
 - **Names follow docker's rule** (non-empty, no whitespace; `=` also refused for `SANDBOX_ENV`). A bad line is dropped
   on its own; skips are logged by name, or by position / line number for an invalid entry, never by its text.
 - **The read cannot block**: `O_NONBLOCK` open, then `isFile` and a size cap.

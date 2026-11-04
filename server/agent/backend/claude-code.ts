@@ -24,7 +24,7 @@ import {
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { resolveSandboxAuth } from "../sandboxMounts.js";
 import { removeSandboxEnvStaging, resolveSandboxEnv } from "../sandboxEnv.js";
-import { dockerEnvNames, dockerMountSources, ENTRYPOINT_ENV_NAMES, insertDockerOptions } from "../sandboxEnvPlan.js";
+import { dockerEnvNames, dockerMountSources, ENTRYPOINT_ENV_NAMES, IMAGE_ENV_NAMES, insertDockerOptions } from "../sandboxEnvPlan.js";
 import { pluginLedgerMountArgs, removePluginLedgerStaging, withPluginLedgerCleanup } from "../pluginLedgerMount.js";
 import { getCachedReferenceDirs, referenceDirMountArgs } from "../../workspace/reference-dirs.js";
 import { createStreamParser, type AgentEvent, type RawStreamEvent } from "../stream.js";
@@ -103,15 +103,15 @@ function spawnDockerOwningStaging(dockerArgs: string[], cleanups: (() => void)[]
 
 // The reserved names and the mounted host paths are read off the argv the
 // sandbox would get anyway, so a variable or mount added later is covered
-// without a list to keep in step; the entrypoint's own inputs are added because
-// a run need not set them.
+// without a list to keep in step; the entrypoint's inputs and the image's own
+// variables are added because the argv does not carry them.
 function withSandboxEnv(params: DockerSpawnArgsParams): { dockerArgs: string[]; stagingDir: string | null } {
   const dockerArgs = buildDockerSpawnArgs(params);
   const sandboxEnv = resolveSandboxEnv({
     names: env.sandboxEnvNames,
     envFilePath: env.sandboxEnvFile,
     hostEnv: process.env,
-    reservedNames: new Set([...dockerEnvNames(dockerArgs, SANDBOX_IMAGE), ...ENTRYPOINT_ENV_NAMES]),
+    reservedNames: new Set([...dockerEnvNames(dockerArgs, SANDBOX_IMAGE), ...ENTRYPOINT_ENV_NAMES, ...IMAGE_ENV_NAMES]),
     mountedHostPaths: dockerMountSources(dockerArgs, SANDBOX_IMAGE),
   });
   try {

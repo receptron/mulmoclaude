@@ -54,6 +54,26 @@ export interface SandboxEnvPlan {
 // them — `HOST_UID` alone switches the entrypoint into its root-only branch.
 export const ENTRYPOINT_ENV_NAMES: readonly string[] = ["HOST_UID", "HOST_GID", "SANDBOX_SSH_ALLOWED_HOSTS", "SSH_AUTH_SOCK"];
 
+// Variables the sandbox image sets (`docker image inspect … .Config.Env`). The
+// entrypoint and the CLI are started by bare name, so a host `PATH` replacing the
+// image's stops the container from starting at all.
+export const IMAGE_ENV_NAMES: readonly string[] = ["PATH", "NODE_VERSION", "YARN_VERSION"];
+
+const STAGING_DIR_PREFIX = "mulmoclaude-sandbox-env-";
+const STAGING_DIR_PID_RE = /^mulmoclaude-sandbox-env-(\d+)-/;
+
+/** The staging directory prefix for one server process; the pid is what lets a
+ *  later run tell a leftover from a crashed server from a live server's. */
+export const stagingDirPrefix = (pid: number): string => `${STAGING_DIR_PREFIX}${pid}-`;
+
+/** Entries of the temp directory that a server no longer running left behind. */
+export function staleStagingDirs(entries: readonly string[], isAlive: (pid: number) => boolean): string[] {
+  return entries.filter((entry) => {
+    const match = STAGING_DIR_PID_RE.exec(entry);
+    return match?.[1] !== undefined && !isAlive(Number(match[1]));
+  });
+}
+
 // Docker's own rule for an env-file name: not empty, no whitespace. `=` cannot
 // occur in a parsed name, and in a `SANDBOX_ENV` entry it would turn `-e NAME`
 // into an assignment whose value sits in the argv.

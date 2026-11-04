@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 
@@ -12,10 +13,13 @@ import {
   dockerEnvNames,
   dockerMountSources,
   ENTRYPOINT_ENV_NAMES,
+  IMAGE_ENV_NAMES,
   insertDockerOptions,
   isEnvName,
   parseEnvFileText,
   planSandboxEnv,
+  stagingDirPrefix,
+  staleStagingDirs,
   type SandboxEnvInput,
 } from "../../server/agent/sandboxEnvPlan.js";
 
@@ -182,6 +186,46 @@ describe("ENTRYPOINT_ENV_NAMES", () => {
   });
 });
 
+describe("IMAGE_ENV_NAMES", () => {
+  const imageEnv = (() => {
+    try {
+      return execFileSync("docker", ["image", "inspect", SANDBOX_IMAGE, "--format", "{{range .Config.Env}}{{println .}}{{end}}"], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    } catch {
+      return null;
+    }
+  })();
+
+  it("includes PATH, which the entrypoint and the CLI are started by", () => {
+    assert.ok(IMAGE_ENV_NAMES.includes("PATH"));
+  });
+
+  it("covers every variable the built sandbox image sets", { skip: imageEnv === null ? "no local mulmoclaude-sandbox image" : false }, () => {
+    const names = (imageEnv ?? "").split("\n").flatMap((line) => (line === "" ? [] : [line.split("=", 1).join("")]));
+    assert.ok(names.length > 0);
+    names.forEach((name) => assert.ok(IMAGE_ENV_NAMES.includes(name), `${name} is set by the image but not reserved`));
+  });
+});
+
+describe("staleStagingDirs", () => {
+  it("picks only staging dirs whose server process is gone", () => {
+    const entries = [`${stagingDirPrefix(111)}aaa`, `${stagingDirPrefix(222)}bbb`, "mulmoclaude-sandbox-env-legacyXYZ", "mulmoclaude-plugin-ledger", "other"];
+    assert.deepEqual(
+      staleStagingDirs(entries, (pid) => pid === 222),
+      [`${stagingDirPrefix(111)}aaa`],
+    );
+  });
+
+  it("never picks this process's own staging", () => {
+    assert.deepEqual(
+      staleStagingDirs([`${stagingDirPrefix(process.pid)}x`], (pid) => pid === process.pid),
+      [],
+    );
+  });
+});
+
 describe("insertDockerOptions", () => {
   it("splices the options in immediately before the image", () => {
     assert.deepEqual(insertDockerOptions(["run", "-e", "A=1", SANDBOX_IMAGE, "claude"], SANDBOX_IMAGE, ["-e", "B"]), [
@@ -327,6 +371,20 @@ describe("readEnvFileInput", () => {
     const outside = readEnvFileInput(path.join(dir, "agent.env"), [workspace]);
     assert.ok(outside !== null && "text" in outside);
   });
+
+  it("treats a name that merely starts with .. as inside, and a sibling directory as outside", posixOnly, () => {
+    const workspace = path.join(dir, "ws-dots");
+    mkdirSync(workspace);
+    const dotted = path.join(workspace, "..secrets.env");
+    writeFileSync(dotted, "A=1\n");
+    const dottedResult = readEnvFileInput(dotted, [workspace]);
+    assert.ok(dottedResult !== null && "error" in dottedResult && /mounted/.test(dottedResult.error));
+    const sibling = path.join(dir, "ws-dots-sibling");
+    mkdirSync(sibling);
+    writeFileSync(path.join(sibling, "agent.env"), "A=1\n");
+    const siblingResult = readEnvFileInput(path.join(sibling, "agent.env"), [workspace]);
+    assert.ok(siblingResult !== null && "text" in siblingResult);
+  });
 });
 
 describe("resolveSandboxEnv", () => {
@@ -353,5 +411,22 @@ describe("resolveSandboxEnv", () => {
       removeSandboxEnvStaging(stagingDir);
     }
     assert.equal(existsSync(stagingDir), false);
+  });
+
+  it("removes a copy a killed server left behind, and keeps a live one's", () => {
+    const deadPid = Number(execFileSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf-8" }));
+    const leftover = path.join(tmpdir(), `${stagingDirPrefix(deadPid)}leftover`);
+    const live = path.join(tmpdir(), `${stagingDirPrefix(process.pid)}live`);
+    [leftover, live].forEach((stagingDir) => mkdirSync(stagingDir));
+    const userFile = path.join(dir, "sweep.env");
+    writeFileSync(userFile, "OK=1\n");
+    const resolved = resolveSandboxEnv({ ...base, envFilePath: userFile });
+    try {
+      assert.equal(existsSync(leftover), false);
+      assert.equal(existsSync(live), true);
+    } finally {
+      [live, resolved.stagingDir].forEach((stale) => stale !== null && removeSandboxEnvStaging(stale));
+      removeSandboxEnvStaging(leftover);
+    }
   });
 });

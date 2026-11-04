@@ -1,13 +1,13 @@
 // Reads `SANDBOX_ENV_FILE`, stages what `planSandboxEnv` accepted, and logs the
 // outcome (#3617). The decision itself lives in `sandboxEnvPlan.ts`.
 
-import { closeSync, constants, fstatSync, mkdtempSync, openSync, readSync, realpathSync, rmSync } from "node:fs";
+import { closeSync, constants, fstatSync, mkdtempSync, openSync, readdirSync, readSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { log } from "../system/logger/index.js";
 import { errorMessage } from "../utils/errors.js";
 import { writeFileAtomicSync } from "../utils/files/atomic.js";
-import { planSandboxEnv, type EnvFileInput, type SandboxEnvPlan } from "./sandboxEnvPlan.js";
+import { planSandboxEnv, stagingDirPrefix, staleStagingDirs, type EnvFileInput, type SandboxEnvPlan } from "./sandboxEnvPlan.js";
 
 // An env file is a handful of lines; anything this large is not one.
 const ENV_FILE_MAX_BYTES = 64 * 1024;
@@ -38,9 +38,10 @@ const realpathOr = (target: string): string => {
   }
 };
 
+// `..` as a whole segment, not as a prefix: `..secrets.env` is a file INSIDE.
 const isInside = (child: string, parent: string): boolean => {
   const relative = path.relative(parent, child);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
 
 /** The file, unless it sits where the container can read it: the agent could
@@ -65,13 +66,35 @@ export function removeSandboxEnvStaging(stagingDir: string): void {
   }
 }
 
+// `kill(pid, 0)` delivers nothing; it only asks whether the process exists. EPERM
+// means it does, under another user.
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error instanceof Error && "code" in error && error.code === "EPERM";
+  }
+}
+
+// A server killed while its container ran never saw `close`, so its copy is
+// still on disk; the next run that stages one removes it.
+function removeStaleStaging(): void {
+  try {
+    staleStagingDirs(readdirSync(tmpdir()), isProcessAlive).forEach((entry) => removeSandboxEnvStaging(path.join(tmpdir(), entry)));
+  } catch (error) {
+    log.warn("sandbox", "could not sweep stale sandbox env staging", { error: errorMessage(error) });
+  }
+}
+
 // `mkdtemp` creates the directory owner-only, so the staged values are no more
 // readable than the user's own file; it lives for one spawn. Never throws: a
 // sandbox that starts without the file beats one that does not start.
 function stageEnvFile(text: string): string | null {
+  removeStaleStaging();
   const created: string[] = [];
   try {
-    const stagingDir = mkdtempSync(path.join(tmpdir(), "mulmoclaude-sandbox-env-"));
+    const stagingDir = mkdtempSync(path.join(tmpdir(), stagingDirPrefix(process.pid)));
     created.push(stagingDir);
     writeFileAtomicSync(path.join(stagingDir, STAGED_ENV_FILE), text);
     return stagingDir;
