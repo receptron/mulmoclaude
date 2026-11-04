@@ -1,17 +1,23 @@
-// Reads `SANDBOX_ENV_FILE` and logs the outcome of `planSandboxEnv` (#3617).
-// The decision itself lives in `sandboxEnvPlan.ts`.
+// Reads `SANDBOX_ENV_FILE`, stages what `planSandboxEnv` accepted, and logs the
+// outcome (#3617). The decision itself lives in `sandboxEnvPlan.ts`.
 
-import { closeSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, mkdtempSync, openSync, readSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { log } from "../system/logger/index.js";
 import { errorMessage } from "../utils/errors.js";
+import { writeFileAtomicSync } from "../utils/files/atomic.js";
 import { planSandboxEnv, type EnvFileInput, type SandboxEnvPlan } from "./sandboxEnvPlan.js";
 
 // An env file is a handful of lines; anything this large is not one.
 const ENV_FILE_MAX_BYTES = 64 * 1024;
+const STAGED_ENV_FILE = "sandbox.env";
 
+// `O_NONBLOCK` so a FIFO opens at once and is then refused by the `isFile`
+// check, instead of blocking the spawn until a writer appears. Absent on
+// Windows, where it falls out of the mask.
 function readBoundedText(filePath: string): string {
-  const handle = openSync(filePath, "r");
+  const handle = openSync(filePath, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
   try {
     const stat = fstatSync(handle);
     if (!stat.isFile()) throw new Error("not a regular file");
@@ -24,26 +30,63 @@ function readBoundedText(filePath: string): string {
   }
 }
 
-export function readEnvFileInput(filePath: string | undefined): EnvFileInput | null {
+const realpathOr = (target: string): string => {
+  try {
+    return realpathSync(target);
+  } catch {
+    return path.resolve(target);
+  }
+};
+
+const isInside = (child: string, parent: string): boolean => {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+};
+
+/** The file, unless it sits where the container can read it: the agent could
+ *  then see every value — refused ones included — and rewrite the next turn's. */
+export function readEnvFileInput(filePath: string | undefined, mountedHostPaths: readonly string[]): EnvFileInput | null {
   if (filePath === undefined || filePath === "") return null;
-  // docker resolves a relative `--env-file` against its own cwd; resolving here
-  // makes the file we validated the file docker reads.
   const absolutePath = path.resolve(filePath);
   try {
-    return { path: absolutePath, text: readBoundedText(absolutePath) };
+    const realPath = realpathSync(absolutePath);
+    if (mountedHostPaths.some((mounted) => isInside(realPath, realpathOr(mounted)))) throw new Error("inside a directory mounted into the sandbox");
+    return { path: absolutePath, text: readBoundedText(realPath) };
   } catch (err) {
     return { path: absolutePath, error: errorMessage(err) };
   }
 }
 
+export function removeSandboxEnvStaging(stagingDir: string): void {
+  try {
+    rmSync(stagingDir, { recursive: true, force: true });
+  } catch (error) {
+    log.warn("sandbox", "could not remove sandbox env staging dir", { path: stagingDir, error: errorMessage(error) });
+  }
+}
+
+// `mkdtemp` creates the directory owner-only, so the staged values are no more
+// readable than the user's own file; it lives for one spawn. Never throws: a
+// sandbox that starts without the file beats one that does not start.
+function stageEnvFile(text: string): string | null {
+  const created: string[] = [];
+  try {
+    const stagingDir = mkdtempSync(path.join(tmpdir(), "mulmoclaude-sandbox-env-"));
+    created.push(stagingDir);
+    writeFileAtomicSync(path.join(stagingDir, STAGED_ENV_FILE), text);
+    return stagingDir;
+  } catch (error) {
+    log.warn("sandbox", "could not stage SANDBOX_ENV_FILE; not passed to the container", { error: errorMessage(error) });
+    created.forEach(removeSandboxEnvStaging);
+    return null;
+  }
+}
+
 function logSandboxEnvPlan(plan: SandboxEnvPlan, envFile: EnvFileInput | null): void {
   if (envFile !== null && "error" in envFile) {
-    log.warn("sandbox", "SANDBOX_ENV_FILE could not be read; not passed to the container", { path: envFile.path, error: envFile.error });
-  } else if (plan.envFileProblem !== null) {
-    log.warn("sandbox", "SANDBOX_ENV_FILE not passed to the container", plan.envFileProblem);
+    log.warn("sandbox", "SANDBOX_ENV_FILE not passed to the container", { path: envFile.path, error: envFile.error });
   }
   if (plan.skipped.length > 0) log.warn("sandbox", "sandbox env entries ignored", { skipped: plan.skipped });
-  if (plan.passedNames.length > 0) log.info("sandbox", "host env passed to container", { names: plan.passedNames });
 }
 
 export interface ResolveSandboxEnvParams {
@@ -51,11 +94,23 @@ export interface ResolveSandboxEnvParams {
   envFilePath: string | undefined;
   hostEnv: Readonly<Record<string, string | undefined>>;
   reservedNames: ReadonlySet<string>;
+  mountedHostPaths: readonly string[];
 }
 
-export function resolveSandboxEnv(params: ResolveSandboxEnvParams): SandboxEnvPlan {
-  const envFile = readEnvFileInput(params.envFilePath);
+export interface ResolvedSandboxEnv {
+  /** `--env-file` (when staged) then `-e NAME` pairs, for just before the image. */
+  args: string[];
+  /** The caller MUST remove this with `removeSandboxEnvStaging` once docker exits. */
+  stagingDir: string | null;
+}
+
+export function resolveSandboxEnv(params: ResolveSandboxEnvParams): ResolvedSandboxEnv {
+  const envFile = readEnvFileInput(params.envFilePath, params.mountedHostPaths);
   const plan = planSandboxEnv({ names: params.names, envFile, hostEnv: params.hostEnv, reservedNames: params.reservedNames });
   logSandboxEnvPlan(plan, envFile);
-  return plan;
+  const stagingDir = plan.stagedEnvFileText === null ? null : stageEnvFile(plan.stagedEnvFileText);
+  const fileArgs = stagingDir === null ? [] : ["--env-file", path.join(stagingDir, STAGED_ENV_FILE)];
+  const passedNames = [...new Set([...(stagingDir === null ? [] : plan.fileNames), ...plan.namedNames])];
+  if (passedNames.length > 0) log.info("sandbox", "host env passed to container", { names: passedNames });
+  return { args: [...fileArgs, ...plan.nameArgs], stagingDir };
 }

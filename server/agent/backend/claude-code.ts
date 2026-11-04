@@ -23,8 +23,9 @@ import {
 } from "../config.js";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { resolveSandboxAuth } from "../sandboxMounts.js";
-import { resolveSandboxEnv } from "../sandboxEnv.js";
-import { dockerEnvNames, insertDockerOptions } from "../sandboxEnvPlan.js";
+import { removeSandboxEnvStaging, resolveSandboxEnv } from "../sandboxEnv.js";
+import { dockerEnvNames, ENTRYPOINT_ENV_NAMES, insertDockerOptions } from "../sandboxEnvPlan.js";
+import { claudeConfigDir, claudeConfigJson } from "../../utils/claudeConfigPath.js";
 import { pluginLedgerMountArgs, removePluginLedgerStaging, withPluginLedgerCleanup } from "../pluginLedgerMount.js";
 import { getCachedReferenceDirs, referenceDirMountArgs } from "../../workspace/reference-dirs.js";
 import { createStreamParser, type AgentEvent, type RawStreamEvent } from "../stream.js";
@@ -68,7 +69,7 @@ function spawnClaude(useDocker: boolean, workspacePath: string, cliArgs: string[
   const pluginLedger = pluginLedgerMountArgs({ platform: process.platform });
   const { stagingDir } = pluginLedger;
   return withPluginLedgerCleanup(stagingDir, () => {
-    const dockerArgs = withSandboxEnv({
+    const sandbox = withSandboxEnv({
       workspacePath,
       cliArgs,
       chatSessionId,
@@ -78,25 +79,42 @@ function spawnClaude(useDocker: boolean, workspacePath: string, cliArgs: string[
       sandboxAuthArgs: [...sandboxAuth.args, ...refDirArgs, ...pluginLedger.args],
       sshAgentForward: env.sandboxSshAgentForward,
     });
-    const proc = spawn("docker", dockerArgs, { stdio: ["pipe", "pipe", "pipe"] });
-    // The container bind-mounts the staged ledgers, so they have to outlive its
-    // start — `close` is the first moment they are certainly unused.
-    if (stagingDir !== null) proc.once("close", () => removePluginLedgerStaging(stagingDir));
-    return proc;
+    const envStagingDir = sandbox.stagingDir;
+    return spawnDockerOwningStaging(sandbox.dockerArgs, [
+      ...(stagingDir === null ? [] : [() => removePluginLedgerStaging(stagingDir)]),
+      ...(envStagingDir === null ? [] : [() => removeSandboxEnvStaging(envStagingDir)]),
+    ]);
   });
 }
 
+// The container bind-mounts the staged ledgers and docker reads the staged env
+// file, so both have to outlive its start — `close` is the first moment they are
+// certainly unused. A synchronous `spawn` throw has no `close` to wait for.
+function spawnDockerOwningStaging(dockerArgs: string[], cleanups: (() => void)[]): ClaudeProc {
+  const runCleanups = () => cleanups.forEach((cleanup) => cleanup());
+  try {
+    const proc = spawn("docker", dockerArgs, { stdio: ["pipe", "pipe", "pipe"] });
+    proc.once("close", runCleanups);
+    return proc;
+  } catch (error) {
+    runCleanups();
+    throw error;
+  }
+}
+
 // The reserved names are read off the argv the sandbox would get anyway, so a
-// fixed variable added later is protected without a list to keep in step.
-function withSandboxEnv(params: DockerSpawnArgsParams): string[] {
+// fixed variable added later is protected without a list to keep in step; the
+// entrypoint's own inputs are added because a run need not set them.
+function withSandboxEnv(params: DockerSpawnArgsParams): { dockerArgs: string[]; stagingDir: string | null } {
   const dockerArgs = buildDockerSpawnArgs(params);
   const sandboxEnv = resolveSandboxEnv({
     names: env.sandboxEnvNames,
     envFilePath: env.sandboxEnvFile,
     hostEnv: process.env,
-    reservedNames: dockerEnvNames(dockerArgs, SANDBOX_IMAGE),
+    reservedNames: new Set([...dockerEnvNames(dockerArgs, SANDBOX_IMAGE), ...ENTRYPOINT_ENV_NAMES]),
+    mountedHostPaths: [params.workspacePath, claudeConfigDir(), claudeConfigJson(), ...getCachedReferenceDirs().map((dir) => dir.hostPath)],
   });
-  return insertDockerOptions(dockerArgs, SANDBOX_IMAGE, sandboxEnv.args);
+  return { dockerArgs: insertDockerOptions(dockerArgs, SANDBOX_IMAGE, sandboxEnv.args), stagingDir: sandboxEnv.stagingDir };
 }
 
 // Counts the tools a turn ran FROM THE BUILT-IN BROKER. Scoped to

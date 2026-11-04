@@ -15,21 +15,24 @@ workspace. Off by default; no change for anyone who does not set the new variabl
 
 - **No value in the docker argv.** Names become `-e NAME`; docker reads the value from its own environment, which
   the server's spawn inherits unchanged.
-- **The file goes to docker as `--env-file <path>`**, not copied into the spawn environment. That environment also
-  configures the docker CLI, so a line like `DOCKER_HOST=…` or `HOME=…` would redirect the CLI instead of reaching the
-  container.
-- **Reserved names are read off the sandbox argv itself** (`dockerEnvNames`), not a hand-kept list, so a fixed
-  variable added later is protected automatically. Reserved names are refused from `SANDBOX_ENV`; in the file the
-  fixed `-e` wins because docker applies `-e` after `--env-file`.
-- **A file docker would refuse is not passed at all**: a name outside `[A-Za-z_][A-Za-z0-9_]*` (docker fails the whole
-  `run` on a name with whitespace), or an unreadable / oversized file. CRLF files are accepted: docker strips the `\r`
-  (checked against docker 27.4, for valued and bare lines).
+- **The file is never copied into the spawn environment** — that environment also configures the docker CLI, so a
+  line like `DOCKER_HOST=…` or `HOME=…` would redirect the CLI instead of reaching the container. Nor is the user's
+  path handed to docker: the lines that pass are re-serialised into a private per-run copy (`mkdtemp`, owner-only)
+  passed as `--env-file`, removed on `close`. Docker reads exactly what was checked, with no window to swap the file.
+- **A file inside a mounted directory is refused** (workspace, claude config dir / json, reference dirs, compared by
+  realpath): the agent could read refused values and rewrite the file for the next run.
+- **Reserved names** = the `-e` names in the sandbox argv (`dockerEnvNames`, no hand-kept list) ∪ the variables
+  `sandbox-entrypoint.sh` reads (`ENTRYPOINT_ENV_NAMES`, pinned by a test that scans the script) — `HOST_UID` is only
+  in the argv with SSH forwarding on, yet setting it alone switches the entrypoint's branch. Dropped from both settings.
+- **Names follow docker's rule** (non-empty, no whitespace; `=` also refused for `SANDBOX_ENV`). A bad line is dropped
+  on its own; skips are logged by name, or by position / line number for an invalid entry, never by its text.
+- **The read cannot block**: `O_NONBLOCK` open, then `isFile` and a size cap.
 - New options are spliced in just before the image, after every existing option.
 
 ## Files
 
-- `server/agent/sandboxEnvPlan.ts` — pure: parse, reserved names, plan, splice.
-- `server/agent/sandboxEnv.ts` — bounded file read + logging.
+- `server/agent/sandboxEnvPlan.ts` — pure: parse, reserved names, plan, staged text, splice.
+- `server/agent/sandboxEnv.ts` — non-blocking bounded read, mounted-dir refusal, staging, logging.
 - `server/agent/backend/claude-code.ts` — wiring at the docker spawn.
 - `server/system/env.ts` — the two settings.
 - `test/agent/test_sandboxEnv.ts`.
