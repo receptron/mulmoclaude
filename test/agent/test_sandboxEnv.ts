@@ -290,6 +290,13 @@ describe("planSandboxEnv — SANDBOX_ENV_FILE", () => {
     assert.ok(!JSON.stringify(plan.skipped).includes("s3cret"));
   });
 
+  it("drops a line whose value holds a NUL, which the container runtime refuses, by line number", () => {
+    const plan = planSandboxEnv(input({ envFile: fileOf("OK=1\nBAD=s3c\0ret\n") }));
+    assert.equal(plan.envFileText, "OK=1\n");
+    assert.deepEqual(plan.skipped, [{ source: "SANDBOX_ENV_FILE", entry: "line 2", reason: "invalid-value" }]);
+    assert.ok(!JSON.stringify(plan.skipped).includes("s3c"));
+  });
+
   it("keeps a bare name the host has, and drops one it lacks", () => {
     const plan = planSandboxEnv(input({ envFile: fileOf("FROM_HOST\nNOT_ON_HOST\n"), hostEnv: { FROM_HOST: "1" } }));
     assert.equal(plan.envFileText, "FROM_HOST\n");
@@ -336,6 +343,24 @@ describe("readEnvFileInput", () => {
       const result = readEnvFileInput(filePath, []);
       assert.ok(result !== null && "error" in result, filePath);
     });
+  });
+
+  it("refuses a file that is not valid UTF-8, which docker would refuse whole", () => {
+    const filePath = path.join(dir, "latin1.env");
+    writeFileSync(filePath, Buffer.from([0x4f, 0x4b, 0x3d, 0x31, 0x0a, 0x42, 0x3d, 0xff, 0xfe, 0x0a]));
+    const result = readEnvFileInput(filePath, []);
+    assert.ok(result !== null && "error" in result);
+  });
+
+  it("drops a UTF-8 byte-order mark the way docker does, so the first name is intact", () => {
+    const filePath = path.join(dir, "bom.env");
+    writeFileSync(filePath, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("FIRST=1\n")]));
+    const result = readEnvFileInput(filePath, []);
+    assert.ok(result !== null && "text" in result);
+    assert.deepEqual(
+      parseEnvFileText(result.text).map((entry) => entry.name),
+      ["FIRST"],
+    );
   });
 
   it("refuses a FIFO at once instead of blocking until a writer appears", posixOnly, () => {

@@ -20,6 +20,10 @@ const ENV_FILE_MAX_BYTES = 64 * 1024;
 export const ENV_FILE_FD = 3;
 const ENV_FILE_FD_PATH = `/dev/fd/${ENV_FILE_FD}`;
 
+// Docker refuses the whole env file on invalid UTF-8, where `toString` would
+// quietly substitute U+FFFD and hand docker a file that fails the run.
+const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
+
 // `O_NONBLOCK` so a FIFO opens at once and is then refused by the `isFile`
 // check, instead of blocking the spawn until a writer appears. Absent on
 // Windows, where it falls out of the mask.
@@ -31,7 +35,7 @@ function readBoundedText(filePath: string): string {
     if (stat.size > ENV_FILE_MAX_BYTES) throw new Error(`larger than ${ENV_FILE_MAX_BYTES} bytes`);
     const buffer = Buffer.alloc(stat.size);
     const bytes = readSync(handle, buffer, 0, stat.size, 0);
-    return buffer.subarray(0, bytes).toString("utf-8");
+    return STRICT_UTF8.decode(buffer.subarray(0, bytes));
   } finally {
     closeSync(handle);
   }

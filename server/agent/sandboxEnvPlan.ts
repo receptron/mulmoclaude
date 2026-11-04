@@ -11,7 +11,7 @@
 
 export type SandboxEnvSource = "SANDBOX_ENV" | "SANDBOX_ENV_FILE";
 
-export type SandboxEnvSkipReason = "invalid-name" | "reserved" | "unset-on-host";
+export type SandboxEnvSkipReason = "invalid-name" | "invalid-value" | "reserved" | "unset-on-host";
 
 export interface SandboxEnvSkip {
   source: SandboxEnvSource;
@@ -150,6 +150,8 @@ function fileVerdict(entry: EnvFileEntry, input: SandboxEnvInput): Verdict<EnvFi
     skip: { source: "SANDBOX_ENV_FILE", entry: label, reason },
   });
   if (!isEnvName(entry.name)) return skip(`line ${entry.lineNumber}`, "invalid-name");
+  // The container runtime refuses a NUL anywhere in a value, failing the run.
+  if (entry.line.includes("\0")) return skip(`line ${entry.lineNumber}`, "invalid-value");
   if (input.reservedNames.has(entry.name)) return skip(entry.name, "reserved");
   if (entry.bare && input.hostEnv[entry.name] === undefined) return skip(entry.name, "unset-on-host");
   return { item: entry, skip: null };
