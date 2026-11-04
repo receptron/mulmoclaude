@@ -7,7 +7,13 @@ import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSy
 
 import { makeTempDir } from "../helpers/tempDir.js";
 import { buildDockerSpawnArgs, SANDBOX_IMAGE } from "../../server/agent/config.js";
-import { readEnvFileInput, removeSandboxEnvStaging, resolveSandboxEnv } from "../../server/agent/sandboxEnv.js";
+import {
+  readEnvFileInput,
+  removeSandboxEnvStaging,
+  resolveSandboxEnv,
+  SANDBOX_ENV_STAGING_ROOT,
+  sandboxEnvStagingRoot,
+} from "../../server/agent/sandboxEnv.js";
 import { dockerMountArgs } from "../../server/agent/dockerMount.js";
 import {
   dockerEnvNames,
@@ -15,6 +21,7 @@ import {
   ENTRYPOINT_ENV_NAMES,
   IMAGE_ENV_NAMES,
   insertDockerOptions,
+  isPrivateStagingRoot,
   isEnvName,
   parseEnvFileText,
   planSandboxEnv,
@@ -70,6 +77,13 @@ describe("parseEnvFileText", () => {
 
   it("drops a trailing CR as docker does", () => {
     assert.deepEqual(parseEnvFileText("A=1\r\nBARE\r\n"), [
+      { name: "A", bare: false, line: "A=1", lineNumber: 1 },
+      { name: "BARE", bare: true, line: "BARE", lineNumber: 2 },
+    ]);
+  });
+
+  it("drops the CR of a last line that has no newline after it", () => {
+    assert.deepEqual(parseEnvFileText("A=1\nBARE\r"), [
       { name: "A", bare: false, line: "A=1", lineNumber: 1 },
       { name: "BARE", bare: true, line: "BARE", lineNumber: 2 },
     ]);
@@ -209,9 +223,30 @@ describe("IMAGE_ENV_NAMES", () => {
   });
 });
 
+describe("isPrivateStagingRoot", () => {
+  const owned = { isDirectory: true, isSymbolicLink: false, uid: 501, mode: 0o40700 };
+
+  it("accepts an owner-only directory of this user", () => {
+    assert.equal(isPrivateStagingRoot(owned, 501), true);
+  });
+
+  it("refuses another user's, a group/world-accessible one, a symlink and a non-directory", () => {
+    assert.equal(isPrivateStagingRoot({ ...owned, uid: 0 }, 501), false);
+    assert.equal(isPrivateStagingRoot({ ...owned, mode: 0o40750 }, 501), false);
+    assert.equal(isPrivateStagingRoot({ ...owned, mode: 0o40707 }, 501), false);
+    assert.equal(isPrivateStagingRoot({ ...owned, isSymbolicLink: true }, 501), false);
+    assert.equal(isPrivateStagingRoot({ ...owned, isDirectory: false }, 501), false);
+  });
+
+  it("checks only the shape where the platform has no uid", () => {
+    assert.equal(isPrivateStagingRoot({ ...owned, uid: 0, mode: 0o40777 }, undefined), true);
+    assert.equal(isPrivateStagingRoot({ ...owned, isSymbolicLink: true }, undefined), false);
+  });
+});
+
 describe("staleStagingDirs", () => {
   it("picks only staging dirs whose server process is gone", () => {
-    const entries = [`${stagingDirPrefix(111)}aaa`, `${stagingDirPrefix(222)}bbb`, "mulmoclaude-sandbox-env-legacyXYZ", "mulmoclaude-plugin-ledger", "other"];
+    const entries = [`${stagingDirPrefix(111)}aaa`, `${stagingDirPrefix(222)}bbb`, "legacyXYZ", "x111-aaa", "other"];
     assert.deepEqual(
       staleStagingDirs(entries, (pid) => pid === 222),
       [`${stagingDirPrefix(111)}aaa`],
@@ -413,20 +448,36 @@ describe("resolveSandboxEnv", () => {
     assert.equal(existsSync(stagingDir), false);
   });
 
-  it("removes a copy a killed server left behind, and keeps a live one's", () => {
+  it("stages inside a private root of its own, not directly in the shared temp directory", () => {
+    const userFile = path.join(dir, "root.env");
+    writeFileSync(userFile, "OK=1\n");
+    const { stagingDir } = resolveSandboxEnv({ ...base, envFilePath: userFile });
+    assert.ok(stagingDir !== null);
+    try {
+      assert.equal(path.dirname(stagingDir), path.join(tmpdir(), SANDBOX_ENV_STAGING_ROOT));
+      if (process.platform !== "win32") assert.equal(statSync(path.dirname(stagingDir)).mode & 0o077, 0);
+    } finally {
+      removeSandboxEnvStaging(stagingDir);
+    }
+  });
+
+  it("removes a copy a killed server left behind, keeps a live one's, and never touches the shared temp directory", () => {
     const deadPid = Number(execFileSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf-8" }));
-    const leftover = path.join(tmpdir(), `${stagingDirPrefix(deadPid)}leftover`);
-    const live = path.join(tmpdir(), `${stagingDirPrefix(process.pid)}live`);
-    [leftover, live].forEach((stagingDir) => mkdirSync(stagingDir));
+    const root = sandboxEnvStagingRoot();
+    assert.ok(root !== null);
+    const leftover = path.join(root, `${stagingDirPrefix(deadPid)}leftover`);
+    const live = path.join(root, `${stagingDirPrefix(process.pid)}live`);
+    const unrelated = path.join(tmpdir(), `mulmoclaude-sandbox-env-${deadPid}-not-ours`);
+    [leftover, live, unrelated].forEach((created) => mkdirSync(created));
     const userFile = path.join(dir, "sweep.env");
     writeFileSync(userFile, "OK=1\n");
     const resolved = resolveSandboxEnv({ ...base, envFilePath: userFile });
     try {
       assert.equal(existsSync(leftover), false);
       assert.equal(existsSync(live), true);
+      assert.equal(existsSync(unrelated), true);
     } finally {
-      [live, resolved.stagingDir].forEach((stale) => stale !== null && removeSandboxEnvStaging(stale));
-      removeSandboxEnvStaging(leftover);
+      [live, unrelated, leftover, resolved.stagingDir].forEach((created) => created !== null && removeSandboxEnvStaging(created));
     }
   });
 });

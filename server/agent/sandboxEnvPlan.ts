@@ -59,14 +59,29 @@ export const ENTRYPOINT_ENV_NAMES: readonly string[] = ["HOST_UID", "HOST_GID", 
 // image's stops the container from starting at all.
 export const IMAGE_ENV_NAMES: readonly string[] = ["PATH", "NODE_VERSION", "YARN_VERSION"];
 
-const STAGING_DIR_PREFIX = "mulmoclaude-sandbox-env-";
-const STAGING_DIR_PID_RE = /^mulmoclaude-sandbox-env-(\d+)-/;
+const STAGING_DIR_PID_RE = /^(\d+)-/;
 
-/** The staging directory prefix for one server process; the pid is what lets a
- *  later run tell a leftover from a crashed server from a live server's. */
-export const stagingDirPrefix = (pid: number): string => `${STAGING_DIR_PREFIX}${pid}-`;
+/** A staging directory's name prefix inside the private staging root; the pid is
+ *  what lets a later run tell a crashed server's leftover from a live server's. */
+export const stagingDirPrefix = (pid: number): string => `${pid}-`;
 
-/** Entries of the temp directory that a server no longer running left behind. */
+export interface StagingRootStat {
+  isDirectory: boolean;
+  isSymbolicLink: boolean;
+  /** Undefined where the platform has no uid (Windows). */
+  uid: number | undefined;
+  mode: number;
+}
+
+/** The staging root is ours alone: a real directory, owned by this user, closed
+ *  to group and others. In a shared temp directory anyone can pre-create the name. */
+export function isPrivateStagingRoot(stat: StagingRootStat, uid: number | undefined): boolean {
+  if (!stat.isDirectory || stat.isSymbolicLink) return false;
+  if (uid === undefined) return true;
+  return stat.uid === uid && (stat.mode & 0o077) === 0;
+}
+
+/** Entries of the staging root that a server no longer running left behind. */
 export function staleStagingDirs(entries: readonly string[], isAlive: (pid: number) => boolean): string[] {
   return entries.filter((entry) => {
     const match = STAGING_DIR_PID_RE.exec(entry);
@@ -79,11 +94,12 @@ export function staleStagingDirs(entries: readonly string[], isAlive: (pid: numb
 // into an assignment whose value sits in the argv.
 export const isEnvName = (name: string): boolean => name !== "" && !/[\s=]/.test(name);
 
-// Mirrors docker's `--env-file` reader: lines split on LF with a trailing CR
-// dropped, leading whitespace dropped, blank and `#` lines skipped, the name
-// ending at the first `=`, and a bare `NAME` taking the host's value.
+// Mirrors docker's `--env-file` reader: lines split on LF with one trailing CR
+// dropped (the last line's too, newline or not), leading whitespace dropped,
+// blank and `#` lines skipped, the name ending at the first `=`, and a bare
+// `NAME` taking the host's value.
 function envFileEntry(rawLine: string, lineNumber: number): EnvFileEntry | null {
-  const line = rawLine.trimStart();
+  const line = (rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine).trimStart();
   if (line === "" || line.startsWith("#")) return null;
   const separator = line.indexOf("=");
   const name = separator === -1 ? line : line.slice(0, separator);
@@ -91,7 +107,7 @@ function envFileEntry(rawLine: string, lineNumber: number): EnvFileEntry | null 
 }
 
 export function parseEnvFileText(text: string): EnvFileEntry[] {
-  return text.split(/\r?\n/).flatMap((rawLine, index) => envFileEntry(rawLine, index + 1) ?? []);
+  return text.split("\n").flatMap((rawLine, index) => envFileEntry(rawLine, index + 1) ?? []);
 }
 
 /** Every variable name a `-e` / `--env` flag sets before `image` in a docker argv. */
