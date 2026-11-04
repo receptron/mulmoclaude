@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { Writable } from "node:stream";
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 
 import { makeTempDir } from "../helpers/tempDir.js";
 import { buildDockerSpawnArgs, SANDBOX_IMAGE } from "../../server/agent/config.js";
@@ -372,6 +372,18 @@ describe("readEnvFileInput", () => {
     writeFileSync(path.join(sibling, "agent.env"), "A=1\n");
     const siblingResult = readEnvFileInput(path.join(sibling, "agent.env"), [workspace]);
     assert.ok(siblingResult !== null && "text" in siblingResult);
+  });
+
+  const caseDir = path.join(dir, "ws-case");
+  mkdirSync(caseDir);
+  const caseInsensitive = existsSync(caseDir.toUpperCase());
+
+  it("refuses a file under a mount spelled in a different letter case", { skip: caseInsensitive ? false : "case-sensitive filesystem" }, () => {
+    writeFileSync(path.join(caseDir, "agent.env"), "A=1\n");
+    const upperFile = path.join(caseDir.toUpperCase(), "AGENT.ENV");
+    [readEnvFileInput(upperFile, [caseDir]), readEnvFileInput(path.join(caseDir, "agent.env"), [caseDir.toUpperCase()])].forEach((result) =>
+      assert.ok(result !== null && "error" in result && /mounted/.test(result.error)),
+    );
   });
 });
 

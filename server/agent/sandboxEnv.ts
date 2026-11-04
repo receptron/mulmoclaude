@@ -37,9 +37,15 @@ function readBoundedText(filePath: string): string {
   }
 }
 
+// `.native`: the JS `realpathSync` keeps the caller's letter case, so on a
+// case-insensitive volume `/Users/ME/ws` and `/Users/me/ws` would compare as two
+// places. The native call returns the on-disk spelling; folding case ourselves
+// would be wrong on a case-sensitive volume.
+const canonicalPath = (target: string): string => realpathSync.native(target);
+
 const realpathOr = (target: string): string => {
   try {
-    return realpathSync(target);
+    return canonicalPath(target);
   } catch {
     return path.resolve(target);
   }
@@ -57,7 +63,7 @@ export function readEnvFileInput(filePath: string | undefined, mountedHostPaths:
   if (filePath === undefined || filePath === "") return null;
   const absolutePath = path.resolve(filePath);
   try {
-    const realPath = realpathSync(absolutePath);
+    const realPath = canonicalPath(absolutePath);
     if (mountedHostPaths.some((mounted) => isInside(realPath, realpathOr(mounted)))) throw new Error("inside a directory mounted into the sandbox");
     return { path: absolutePath, text: readBoundedText(realPath) };
   } catch (err) {
