@@ -6,12 +6,12 @@
 // `--env-file /dev/fd/3`. A copy on disk would need a place only this user can
 // read on every platform, and a cleanup that survives a killed server.
 
-import { closeSync, constants, fstatSync, openSync, readSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync, realpathSync, statSync, type Stats } from "node:fs";
 import path from "node:path";
 import { log } from "../system/logger/index.js";
 import { errorMessage } from "../utils/errors.js";
 import type { Platform } from "./config.js";
-import { planSandboxEnv, type EnvFileInput, type SandboxEnvPlan } from "./sandboxEnvPlan.js";
+import { pathAncestors, planSandboxEnv, type EnvFileInput, type SandboxEnvPlan } from "./sandboxEnvPlan.js";
 
 // An env file is a handful of lines; anything this large is not one.
 const ENV_FILE_MAX_BYTES = 64 * 1024;
@@ -24,21 +24,10 @@ const ENV_FILE_FD_PATH = `/dev/fd/${ENV_FILE_FD}`;
 // quietly substitute U+FFFD and hand docker a file that fails the run.
 const STRICT_UTF8 = new TextDecoder("utf-8", { fatal: true });
 
-// `O_NONBLOCK` so a FIFO opens at once and is then refused by the `isFile`
-// check, instead of blocking the spawn until a writer appears. Absent on
-// Windows, where it falls out of the mask.
-function readBoundedText(filePath: string): string {
-  const handle = openSync(filePath, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
-  try {
-    const stat = fstatSync(handle);
-    if (!stat.isFile()) throw new Error("not a regular file");
-    if (stat.size > ENV_FILE_MAX_BYTES) throw new Error(`larger than ${ENV_FILE_MAX_BYTES} bytes`);
-    const buffer = Buffer.alloc(stat.size);
-    const bytes = readSync(handle, buffer, 0, stat.size, 0);
-    return STRICT_UTF8.decode(buffer.subarray(0, bytes));
-  } finally {
-    closeSync(handle);
-  }
+function readBoundedText(handle: number, size: number): string {
+  const buffer = Buffer.alloc(size);
+  const bytes = readSync(handle, buffer, 0, size, 0);
+  return STRICT_UTF8.decode(buffer.subarray(0, bytes));
 }
 
 // `.native`: the JS `realpathSync` keeps the caller's letter case, so on a
@@ -61,15 +50,56 @@ const isInside = (child: string, parent: string): boolean => {
   return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
 
-/** The file, unless it sits where the container can read it: the agent could
- *  then see every value — refused ones included — and rewrite the next turn's. */
-export function readEnvFileInput(filePath: string | undefined, mountedHostPaths: readonly string[]): EnvFileInput | null {
+// Every step of the path, as written and as resolved, must lie outside every
+// mount: a symlink inside one is the agent's to retarget — at the user's own
+// file, or at any host file whose lines would then reach the container.
+function reachableFromSandbox(paths: readonly string[], mountedHostPaths: readonly string[]): boolean {
+  const roots = mountedHostPaths.flatMap((mounted) => [path.resolve(mounted), realpathOr(mounted)]);
+  const steps = paths.flatMap((target) => pathAncestors(target, path.sep)).flatMap((step) => [step, realpathOr(step)]);
+  return steps.some((step) => roots.some((root) => isInside(step, root)));
+}
+
+type StatAtPath = (target: string) => Stats;
+
+// The opened object must be the one now at the resolved path, so a swap between
+// the checks and the read cannot change what is passed. A second hard link may
+// sit inside a mount, where no path check can see it, so the file must have one.
+function checkOpenedFile(opened: Stats, absolutePath: string, mountedHostPaths: readonly string[], statAtPath: StatAtPath): void {
+  if (!opened.isFile()) throw new Error("not a regular file");
+  if (opened.size > ENV_FILE_MAX_BYTES) throw new Error(`larger than ${ENV_FILE_MAX_BYTES} bytes`);
+  if (opened.nlink > 1) throw new Error("has more than one hard link");
+  const realPath = canonicalPath(absolutePath);
+  const atRealPath = statAtPath(realPath);
+  if (atRealPath.dev !== opened.dev || atRealPath.ino !== opened.ino) throw new Error("changed while being read");
+  if (reachableFromSandbox([absolutePath, realPath], mountedHostPaths)) throw new Error("inside a directory mounted into the sandbox");
+}
+
+// The descriptor opened first is the only one read. `O_NONBLOCK` so a FIFO opens
+// at once and is then refused by `isFile` instead of blocking the spawn; absent
+// on Windows, it falls out of the mask.
+function readCheckedFile(absolutePath: string, mountedHostPaths: readonly string[], statAtPath: StatAtPath): string {
+  const handle = openSync(absolutePath, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+  try {
+    const opened = fstatSync(handle);
+    checkOpenedFile(opened, absolutePath, mountedHostPaths, statAtPath);
+    return readBoundedText(handle, opened.size);
+  } finally {
+    closeSync(handle);
+  }
+}
+
+/** The file, unless the container can reach it: the agent could then see every
+ *  value — refused ones included — and rewrite the next turn's. `statAtPath` is a
+ *  test seam for a file swapped between the open and the check. */
+export function readEnvFileInput(
+  filePath: string | undefined,
+  mountedHostPaths: readonly string[],
+  statAtPath: StatAtPath = (target) => statSync(target),
+): EnvFileInput | null {
   if (filePath === undefined || filePath === "") return null;
   const absolutePath = path.resolve(filePath);
   try {
-    const realPath = canonicalPath(absolutePath);
-    if (mountedHostPaths.some((mounted) => isInside(realPath, realpathOr(mounted)))) throw new Error("inside a directory mounted into the sandbox");
-    return { path: absolutePath, text: readBoundedText(realPath) };
+    return { path: absolutePath, text: readCheckedFile(absolutePath, mountedHostPaths, statAtPath) };
   } catch (err) {
     return { path: absolutePath, error: errorMessage(err) };
   }

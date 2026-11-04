@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { Writable } from "node:stream";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 
 import { makeTempDir } from "../helpers/tempDir.js";
 import { buildDockerSpawnArgs, SANDBOX_IMAGE } from "../../server/agent/config.js";
@@ -17,6 +17,7 @@ import {
   insertDockerOptions,
   isEnvName,
   parseEnvFileText,
+  pathAncestors,
   planSandboxEnv,
   type SandboxEnvInput,
 } from "../../server/agent/sandboxEnvPlan.js";
@@ -214,6 +215,14 @@ describe("IMAGE_ENV_NAMES", () => {
   });
 });
 
+describe("pathAncestors", () => {
+  it("lists every step from the root down to the path itself", () => {
+    assert.deepEqual(pathAncestors("/a/b/f.env", "/"), ["/", "/a", "/a/b", "/a/b/f.env"]);
+    assert.deepEqual(pathAncestors("/", "/"), ["/"]);
+    assert.deepEqual(pathAncestors("C:\\Users\\me\\f.env", "\\"), ["C:\\", "C:\\Users", "C:\\Users\\me", "C:\\Users\\me\\f.env"]);
+  });
+});
+
 describe("insertDockerOptions", () => {
   it("splices the options in immediately before the image", () => {
     assert.deepEqual(insertDockerOptions(["run", "-e", "A=1", SANDBOX_IMAGE, "claude"], SANDBOX_IMAGE, ["-e", "B"]), [
@@ -363,6 +372,25 @@ describe("readEnvFileInput", () => {
     );
   });
 
+  it("refuses a file with a second hard link, which may sit inside a mount where no path check sees it", posixOnly, () => {
+    const workspace = path.join(dir, "ws-hardlink");
+    mkdirSync(workspace);
+    const outsideFile = path.join(dir, "hardlinked.env");
+    writeFileSync(outsideFile, "A=1\n");
+    linkSync(outsideFile, path.join(workspace, "alias.env"));
+    const result = readEnvFileInput(outsideFile, [workspace]);
+    assert.ok(result !== null && "error" in result && /hard link/.test(result.error));
+  });
+
+  it("refuses a file that is no longer the object at its resolved path once opened", () => {
+    const filePath = path.join(dir, "swapped.env");
+    writeFileSync(filePath, "A=1\n");
+    const other = path.join(dir, "other.env");
+    writeFileSync(other, "B=2\n");
+    const result = readEnvFileInput(filePath, [], () => statSync(other));
+    assert.ok(result !== null && "error" in result && /changed while being read/.test(result.error));
+  });
+
   it("refuses a FIFO at once instead of blocking until a writer appears", posixOnly, () => {
     const fifo = path.join(dir, "agent.fifo");
     execFileSync("mkfifo", [fifo]);
@@ -397,6 +425,24 @@ describe("readEnvFileInput", () => {
     writeFileSync(path.join(sibling, "agent.env"), "A=1\n");
     const siblingResult = readEnvFileInput(path.join(sibling, "agent.env"), [workspace]);
     assert.ok(siblingResult !== null && "text" in siblingResult);
+  });
+
+  it("refuses a path that passes through a mount on the way, even when the file itself lies outside", posixOnly, () => {
+    const workspace = path.join(dir, "ws-hop");
+    const outsideDir = path.join(dir, "outside-hop");
+    [workspace, outsideDir].forEach((created) => mkdirSync(created));
+    writeFileSync(path.join(outsideDir, "agent.env"), "A=1\n");
+    // A link inside the workspace, which the agent can retarget at any host file.
+    symlinkSync(outsideDir, path.join(workspace, "hop"));
+    // A link outside the workspace into it, so a later step is inside a mount.
+    const intoWorkspace = path.join(dir, "into-ws");
+    symlinkSync(workspace, intoWorkspace);
+    [path.join(workspace, "hop", "agent.env"), path.join(intoWorkspace, "hop", "agent.env")].forEach((filePath) => {
+      const result = readEnvFileInput(filePath, [workspace]);
+      assert.ok(result !== null && "error" in result && /mounted/.test(result.error), filePath);
+    });
+    const direct = readEnvFileInput(path.join(outsideDir, "agent.env"), [workspace]);
+    assert.ok(direct !== null && "text" in direct);
   });
 
   const caseDir = path.join(dir, "ws-case");

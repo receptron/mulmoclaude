@@ -117,6 +117,13 @@ export function dockerMountSources(dockerArgs: readonly string[], image: string)
   });
 }
 
+/** Every path from the root down to `absolutePath` itself: `/a/b/f` → `/`, `/a`, `/a/b`, `/a/b/f`. */
+export function pathAncestors(absolutePath: string, sep: string): string[] {
+  const root = absolutePath.startsWith(sep) ? sep : (absolutePath.split(sep)[0] ?? "") + sep;
+  const segments = absolutePath.slice(root.length).split(sep).filter(Boolean);
+  return [root, ...segments.map((_, index) => root + segments.slice(0, index + 1).join(sep))];
+}
+
 /** `extra` spliced in just before `image`, i.e. after every option already set. */
 export function insertDockerOptions(dockerArgs: readonly string[], image: string, extra: readonly string[]): string[] {
   const imageIndex = dockerArgs.indexOf(image);

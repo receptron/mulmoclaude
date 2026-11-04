@@ -23,7 +23,7 @@ workspace. Off by default; no change for anyone who does not set the new variabl
   an ownership check that Windows cannot express by uid, and a cleanup that survives a killed server (pid in the
   name, a sweep, pid reuse). Each of those produced a further finding; the pipe removes the whole class. Windows has
   no `/dev/fd`, so `SANDBOX_ENV_FILE` is not passed there (logged); `SANDBOX_ENV` works everywhere.
-- **A file inside a mounted directory is refused**, compared by realpath: the agent could read refused values and
+- **A file the container can reach is refused**: every ancestor of the path, as written and resolved, and the file's realpath (`realpathSync.native`, so letter case matches the disk) must be outside every mount; the file is opened once, must have a single hard link (another may be inside a mount), must be the object at the realpath (dev/ino), and only that descriptor is read. Before that rule it was compared by realpath alone, which a link inside a mount could retarget; the agent could read refused values and
   rewrite the file for the next run. The mount sources are read off the final docker argv (`dockerMountSources` over
   `-v` / `--mount`), not listed by hand, so app-code, plugin-tree and reference-dir mounts are all covered.
 - **Reserved names** = the `-e` names in the sandbox argv (`dockerEnvNames`, no hand-kept list) ∪ the variables
