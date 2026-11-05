@@ -450,6 +450,7 @@ describe("isOwnerOnlyApiPath", () => {
     "/plugins/runtime/list",
     "/shutdown",
     "/internal/tool-result",
+    "/wiki/internal/snapshot",
     "/mcp-tools/x",
   ];
   ownerOnly.forEach((apiPath) => {
@@ -461,7 +462,19 @@ describe("isOwnerOnlyApiPath", () => {
     it(`closes the spelling ${apiPath}`, () => assert.equal(isOwnerOnlyApiPath(apiPath), true));
   });
 
-  const open = ["/collections/todo/records", "/transports/n8n/chats/1", "/wiki", "/sessions", "/configs", "/agents", "/secretsx", "/", ""];
+  const open = [
+    "/collections/todo/records",
+    "/transports/n8n/chats/1",
+    "/wiki",
+    "/wiki/pages/x/history",
+    "/wiki/internals",
+    "/sessions",
+    "/configs",
+    "/agents",
+    "/secretsx",
+    "/",
+    "",
+  ];
   open.forEach((apiPath) => {
     it(`leaves ${JSON.stringify(apiPath)} open`, () => assert.equal(isOwnerOnlyApiPath(apiPath), false));
   });
@@ -513,6 +526,21 @@ describe("isOwnerOnlyApiPath", () => {
   it("no segment is listed both open and owner-only", () => {
     assert.deepEqual(
       [...CLIENT_OPEN_SEGMENTS].filter((segment) => isOwnerOnlyApiPath(`/${segment}`)),
+      [],
+    );
+  });
+
+  // Hook endpoints live under data segments too (`/api/wiki/internal/…`), so a
+  // segment-level check alone cannot see them.
+  it("closes every routed path with an /internal/ segment", () => {
+    const routedPaths = (value: unknown): string[] => {
+      if (typeof value === "string") return value.startsWith("/api/") ? [value] : [];
+      return value !== null && typeof value === "object" ? Object.values(value).flatMap(routedPaths) : [];
+    };
+    const internalPaths = routedPaths(API_ROUTES).filter((apiPath) => apiPath.split("/").includes("internal"));
+    assert.equal(internalPaths.length > 0, true);
+    assert.deepEqual(
+      internalPaths.filter((apiPath) => !isOwnerOnlyApiPath(apiPath.slice("/api".length))),
       [],
     );
   });

@@ -13,6 +13,7 @@
 const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/agent",
   "/internal",
+  "/wiki/internal",
   "/config",
   "/secrets",
   "/roles",
