@@ -15,6 +15,7 @@
 //      helper that asks the host to open a new chat seeded with `prompt`, and
 //      the host search box's live text (see below).
 
+import type { CustomViewFields } from "@mulmoclaude/core/collection";
 import { buildCustomViewCsp, type CspExtraHosts } from "./previewCsp";
 
 /** Debounce (ms) for the in-iframe live-refresh helper — collapses a burst of
@@ -119,6 +120,9 @@ export interface CustomViewBootstrap {
    *  iframe sees ONLY this locale's strings (never the full multi-locale
    *  JSON). Optional / may be `{}` — the `t()` helper falls back to the key. */
   dict?: Record<string, string>;
+  /** Schema-derived enum metadata, keyed by field name (#2169). Optional — the
+   *  bootstrap always exposes `__MC_VIEW.fields`, `{}` when omitted. */
+  fields?: CustomViewFields;
 }
 
 function absoluteDataUrl(dataUrl: string, origin: string): string {
@@ -143,6 +147,7 @@ export function buildCustomViewSrcdoc(html: string, boot: CustomViewBootstrap, c
     cspNonce, // echoed in mc-csp-violation so the host can trust the sender (#1989)
     locale: boot.locale ?? "",
     dict: boot.dict ?? {},
+    fields: boot.fields ?? {},
   }).replace(/</g, "\\u003c");
   const injection = `${cspMeta}<script>window.__MC_VIEW=${json};${viewBridgeBootstrap()}</script>`;
   if (/<head\b[^>]*>/i.test(html)) {

@@ -23,6 +23,7 @@ import type {
   FeedsListResponse,
   CollectionShortcutInfo,
   CollectionItem,
+  CustomViewFields,
 } from "@mulmoclaude/core/collection";
 
 /** Result of a host data fetch — structurally a subset of the host's own
@@ -96,6 +97,9 @@ export interface CollectionViewToken {
   exp: number;
   dataUrl: string;
   capabilities: string[];
+  /** Schema-derived field metadata (#2169). Untyped on purpose: an older host
+   *  omits it, so the consumer narrows it with `customViewFieldsFrom`. */
+  fields?: unknown;
 }
 
 /** Result of fetching a custom view's HTML — status-only failure (the host
@@ -119,6 +123,9 @@ export interface CollectionViewSrcdocBoot {
    *  interpolation). Optional — when omitted, the helper falls back to the
    *  key. */
   dict?: Record<string, string>;
+  /** Enum metadata from the collection schema, surfaced as `__MC_VIEW.fields`
+   *  so a view's dropdowns follow `schema.json`. Optional — omitted means `{}`. */
+  fields?: CustomViewFields;
 }
 
 /** Server response for `fetchRemoteView` — a mobile (`target: "mobile"`)

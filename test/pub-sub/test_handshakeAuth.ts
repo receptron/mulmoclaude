@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { isAuthorizedToken } from "@mulmoclaude/common/token-guard";
 import { isAuthorizedPubSubHandshake } from "../../server/events/pub-sub/handshakeAuth.js";
 
 // The pure rule behind the `/ws/pubsub` socket.io middleware (#3433). `auth`
@@ -7,18 +8,22 @@ import { isAuthorizedPubSubHandshake } from "../../server/events/pub-sub/handsha
 // send is exercised, in both directions.
 
 const TOKEN = "f".repeat(64);
+const ownerOnly =
+  (expected: string | null) =>
+  (provided: unknown): boolean =>
+    isAuthorizedToken(provided, expected);
 
 describe("isAuthorizedPubSubHandshake — accepts", () => {
   it("a record whose token equals the server token", () => {
-    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN }, TOKEN), true);
+    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN }, ownerOnly(TOKEN)), true);
   });
 
   it("extra fields alongside the token", () => {
-    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN, transportId: "spa", options: {} }, TOKEN), true);
+    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN, transportId: "spa", options: {} }, ownerOnly(TOKEN)), true);
   });
 
   it("a short pinned token (the env override is used verbatim)", () => {
-    assert.equal(isAuthorizedPubSubHandshake({ token: "e2e-test-token" }, "e2e-test-token"), true);
+    assert.equal(isAuthorizedPubSubHandshake({ token: "e2e-test-token" }, ownerOnly("e2e-test-token")), true);
   });
 });
 
@@ -45,21 +50,21 @@ describe("isAuthorizedPubSubHandshake — refuses", () => {
   ];
   shapes.forEach(([label, auth]) => {
     it(label, () => {
-      assert.equal(isAuthorizedPubSubHandshake(auth, TOKEN), false);
+      assert.equal(isAuthorizedPubSubHandshake(auth, ownerOnly(TOKEN)), false);
     });
   });
 
   it("every handshake while the server has no token yet", () => {
-    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN }, null), false);
-    assert.equal(isAuthorizedPubSubHandshake({ token: "" }, null), false);
+    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN }, ownerOnly(null)), false);
+    assert.equal(isAuthorizedPubSubHandshake({ token: "" }, ownerOnly(null)), false);
   });
 
   it("every handshake while the server token is empty, including an empty candidate", () => {
-    assert.equal(isAuthorizedPubSubHandshake({ token: "" }, ""), false);
-    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN }, ""), false);
+    assert.equal(isAuthorizedPubSubHandshake({ token: "" }, ownerOnly("")), false);
+    assert.equal(isAuthorizedPubSubHandshake({ token: TOKEN }, ownerOnly("")), false);
   });
 
   it("a candidate with the same character count but more bytes, without throwing", () => {
-    assert.equal(isAuthorizedPubSubHandshake({ token: "é".repeat(64) }, TOKEN), false);
+    assert.equal(isAuthorizedPubSubHandshake({ token: "é".repeat(64) }, ownerOnly(TOKEN)), false);
   });
 });

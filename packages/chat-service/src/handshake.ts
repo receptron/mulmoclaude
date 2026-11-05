@@ -52,7 +52,12 @@ export function sanitiseOptions(raw: unknown): BridgeOptions {
 }
 
 export function validateHandshake(auth: unknown, expectedToken: string | null): HandshakeResult {
-  if (!isRecord(auth) || !isAuthorizedToken(auth.token, expectedToken)) {
+  return validateHandshakeWith(auth, (token) => isAuthorizedToken(token, expectedToken));
+}
+
+/** As {@link validateHandshake}, with the host deciding which tokens pass. */
+export function validateHandshakeWith(auth: unknown, authorizeToken: (token: unknown) => boolean): HandshakeResult {
+  if (!isRecord(auth) || !authorizeToken(auth.token)) {
     return { ok: false, error: UNAUTHORIZED_MESSAGE };
   }
   const transportId = typeof auth.transportId === "string" ? auth.transportId.trim() : "";
