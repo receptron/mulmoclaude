@@ -48,6 +48,15 @@ test.describe("session-history row keyboard contract", () => {
     await expect(bookmark).toHaveAttribute("aria-pressed", "false");
   });
 
+  test("Tab walks a row's controls in reading order: bookmark, open, menu", async ({ page }) => {
+    await openSidePanel(page);
+    await page.getByTestId(`session-row-icon-bookmark-${SESSION_A.id}`).focus();
+    await page.keyboard.press("Tab");
+    await expect(page.getByTestId(`session-row-open-${SESSION_A.id}`)).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByTestId(`session-row-menu-${SESSION_A.id}`)).toBeFocused();
+  });
+
   test("Enter on the focused bookmark toggle bookmarks without opening the session", async ({ page }) => {
     const bookmarkBodies: unknown[] = [];
     await page.route(urlEndsWith(`/api/sessions/${SESSION_A.id}/bookmark`), (route: Route) => {
