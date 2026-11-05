@@ -304,4 +304,25 @@ test.describe("session-history filter pills", () => {
     await page.getByTestId("session-history-toggle-off").click();
     await expect(page.getByTestId("session-filter-all")).toHaveClass(/bg-blue-600/);
   });
+
+  test("clicking the role icon toggles the bookmark without opening the session", async ({ page }) => {
+    const bookmarkBodies: unknown[] = [];
+    await page.route(urlEndsWith(`/api/sessions/${SESSION_A.id}/bookmark`), (route: Route) => {
+      bookmarkBodies.push(route.request().postDataJSON());
+      return route.fulfill({ json: { ok: true } });
+    });
+
+    await page.goto("/chat");
+    await page.getByTestId("session-history-toggle-off").click();
+    const icon = page.getByTestId(`session-row-icon-bookmark-${SESSION_A.id}`);
+    await expect(icon).toHaveAttribute("title", "Bookmark");
+
+    await icon.click();
+    await expect.poll(() => bookmarkBodies).toEqual([{ bookmarked: true }]);
+    await expect(icon).toHaveAttribute("title", "Remove bookmark");
+    await expect(page).not.toHaveURL(new RegExp(`/chat/${SESSION_A.id}`));
+
+    await icon.click();
+    await expect.poll(() => bookmarkBodies).toEqual([{ bookmarked: true }, { bookmarked: false }]);
+  });
 });
