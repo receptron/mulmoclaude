@@ -14,7 +14,9 @@ bootstrap (`{}` when none / older host).
   `buildCustomViewFields(schema)` (server side), `isCustomViewEnumField` +
   `customViewFieldsFrom(unknown)` (client-side narrowing of the mint response;
   drops malformed / unknown-type entries one by one).
-- `server/api/routes/collections.ts` — view-token mint response gains `fields`.
+- `server/api/routes/collections.ts` — view-token mint response gains `fields`;
+  the handler moves behind a deps seam (`createViewTokenHandler`) so the
+  response is unit-testable.
 - `collection-plugin` — `CollectionViewToken.fields?: unknown`,
   `CollectionViewSrcdocBoot.fields?`, `CollectionCustomView.vue` threads the
   narrowed value into the boot.
@@ -27,13 +29,16 @@ bootstrap (`{}` when none / older host).
 
 - `packages/core/test/collection/test_viewFields.ts` — builder + guard, normal
   and abnormal inputs.
+- `test/api/routes/test_collectionsViewToken.ts` — the mint response carries
+  the schema's enum `fields` (and `{}` without any), caps stay clamped.
 - `test/utils/html/test_customViewSrcdoc.ts` — injection, `{}` default, escape.
 - `e2e/tests/collection-custom-view-iframe.spec.ts` — the iframe actually sees
   `__MC_VIEW.fields` (malformed entry dropped), and `{}` without it.
+
+Core is bumped to 5.15.0 (the drift gate requires it for a new export) with
+every consumer range swept.
 
 ## Not done
 
 - `ref` options (remaining half of #2169).
 - Mobile / remote-view srcdoc path.
-- `@mulmoclaude/core` version bump (deferred to the publish commit, as prior
-  helps changes did).

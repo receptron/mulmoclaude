@@ -43,7 +43,7 @@ test("buildCustomViewFields: copies values so the schema cannot be mutated throu
   assert.deepEqual(values, ["a", "b"]);
 });
 
-test("buildCustomViewFields: a proto-named key stays an own data property", () => {
+test("buildCustomViewFields: a proto-named key (CollectionSchemaZ rejects it upstream) still stays an own data property", () => {
   const fields: Fields = JSON.parse('{"__proto__":{"type":"enum","label":"P","values":["x"]}}');
   const result = buildCustomViewFields({ fields });
   assert.ok(Object.hasOwn(result, "__proto__"));
