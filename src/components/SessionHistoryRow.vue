@@ -22,20 +22,20 @@
         type="button"
         class="flex-shrink-0 mt-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
         :title="bookmarkLabel"
-        :aria-label="bookmarkLabel"
+        :aria-label="t('sessionHistoryPanel.bookmark')"
         :aria-pressed="session.isBookmarked === true"
         :data-testid="`session-row-icon-bookmark-${session.id}`"
         @click.stop="emit('toggleBookmark', session)"
       >
         <SessionRoleIcon :session="session" :roles="roles" size="sm" />
       </button>
+      <!-- No handler: the click bubbles to the card, which selects, and on to the panel's document listener, which closes an open menu. -->
       <button
         type="button"
         class="flex flex-1 min-w-0 items-start gap-1.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
         :aria-label="rowAria"
         :aria-current="selected ? 'true' : undefined"
         :data-testid="`session-row-open-${session.id}`"
-        @click.stop="emit('select', session.id)"
       >
         <p class="flex-1 min-w-0" :class="[previewClasses, hasVisibleSummary ? 'line-clamp-2' : 'truncate']">
           {{ primaryText }}

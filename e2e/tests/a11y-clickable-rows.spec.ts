@@ -6,7 +6,7 @@
 
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
-import { SESSION_A } from "../fixtures/sessions";
+import { SESSION_A, SESSION_B } from "../fixtures/sessions";
 import { urlEndsWith } from "../fixtures/pubsub";
 
 async function openSidePanel(page: Page): Promise<void> {
@@ -70,6 +70,8 @@ test.describe("session-history row keyboard contract", () => {
 
     await expect.poll(() => bookmarkBodies).toEqual([{ bookmarked: true }]);
     await expect(bookmark).toHaveAttribute("aria-pressed", "true");
+    // A toggle's name stays put; aria-pressed alone carries the state.
+    await expect(bookmark).toHaveAttribute("aria-label", "Bookmark");
     await expect(page).not.toHaveURL(new RegExp(`/chat/${SESSION_A.id}`));
   });
 
@@ -80,5 +82,18 @@ test.describe("session-history row keyboard contract", () => {
 
     await expect(page.getByTestId(`session-row-menu-popover-${SESSION_A.id}`)).toBeVisible();
     await expect(page).not.toHaveURL(new RegExp(`/chat/${SESSION_A.id}`));
+  });
+
+  test("opening a session from the keyboard closes another row's open menu", async ({ page }) => {
+    await openSidePanel(page);
+    await page.getByTestId(`session-row-menu-${SESSION_B.id}`).click();
+    const popover = page.getByTestId(`session-row-menu-popover-${SESSION_B.id}`);
+    await expect(popover).toBeVisible();
+
+    await page.getByTestId(`session-row-open-${SESSION_A.id}`).focus();
+    await page.keyboard.press("Enter");
+
+    await expect(page).toHaveURL(new RegExp(`/chat/${SESSION_A.id}`));
+    await expect(popover).toBeHidden();
   });
 });
