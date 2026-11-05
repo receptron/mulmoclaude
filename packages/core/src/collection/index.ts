@@ -21,6 +21,7 @@ export * from "./core/enumColors";
 export * from "./core/draft";
 export * from "./core/actionVisible";
 export * from "./core/viewChatPolicy";
+export * from "./core/viewFields";
 export * from "./core/backlinks";
 // The server-time codec. Exported from the PUBLIC subpath because both hosts
 // need the decode half: a page's payload is assembled by each host from its own

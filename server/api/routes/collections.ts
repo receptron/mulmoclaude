@@ -10,7 +10,7 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
-import { actionVisible } from "@mulmoclaude/core/collection";
+import { actionVisible, buildCustomViewFields } from "@mulmoclaude/core/collection";
 import {
   collectionWritable,
   computeCollectionIcon,
@@ -85,8 +85,10 @@ const router = Router();
 // Load a collection by slug or send a 404 and return null. Callers do
 // `const collection = await loadCollectionOr404(slug, res); if (!collection) return;`.
 // The load-or-404 preamble was repeated across ~16 route handlers.
-async function loadCollectionOr404(slug: string, res: Response): Promise<LoadedCollection | null> {
-  const collection = await loadCollection(slug);
+type CollectionLoader = (slug: string) => Promise<LoadedCollection | null>;
+
+async function loadCollectionOr404(slug: string, res: Response, load: CollectionLoader = loadCollection): Promise<LoadedCollection | null> {
+  const collection = await load(slug);
   if (!collection) {
     notFound(res, `collection '${slug}' not found`);
     return null;
@@ -115,8 +117,13 @@ export function findViewOr404(collection: LoadedCollection, viewId: string, res:
 // Resolve a collection + one of its custom views by id, or send a 404
 // (missing collection or missing view) and return null. Shared by the
 // view-file / view-i18n / view-token routes.
-async function resolveCustomViewOr404(slug: string, viewId: string, res: Response): Promise<ResolvedCustomView | null> {
-  const collection = await loadCollectionOr404(slug, res);
+async function resolveCustomViewOr404(
+  slug: string,
+  viewId: string,
+  res: Response,
+  load: CollectionLoader = loadCollection,
+): Promise<ResolvedCustomView | null> {
+  const collection = await loadCollectionOr404(slug, res, load);
   if (!collection) return null;
   const view = findViewOr404(collection, viewId, res);
   if (!view) return null;
@@ -945,37 +952,55 @@ router.get(API_ROUTES.collections.viewI18n, async (req: Request<{ slug: string }
   }
 });
 
+export interface ViewTokenDeps {
+  loadCollection: CollectionLoader;
+  mint: typeof mintViewToken;
+}
+
+/** The view-token mint behind a deps seam, so the response contract (clamped
+ *  capabilities, schema-derived `fields`) is unit-testable without mounting
+ *  the express app. */
+export const createViewTokenHandler =
+  (deps: ViewTokenDeps) =>
+  async (req: Request<{ slug: string }>, res: Response): Promise<void> => {
+    if (isClientTokenRequest(req)) {
+      forbidden(res, "forbidden");
+      return;
+    }
+    try {
+      const { slug } = req.params;
+      const body = requestBodyRecord(req.body);
+      const viewId = typeof body.viewId === "string" ? body.viewId.trim() : "";
+      if (!viewId) {
+        badRequest(res, "`viewId` is required");
+        return;
+      }
+      const resolved = await resolveCustomViewOr404(slug, viewId, res, deps.loadCollection);
+      if (!resolved) return;
+      const { collection, view } = resolved;
+      const granted = clampCapabilities(view.capabilities, parseCapabilities(body.capabilities));
+      const minted = deps.mint(slug, granted);
+      if (!minted) {
+        serverError(res, "view token unavailable (server not ready)");
+        return;
+      }
+      res.json({
+        token: minted.token,
+        exp: minted.exp,
+        dataUrl: API_ROUTES.collections.viewData.replace(":slug", slug),
+        capabilities: granted,
+        fields: buildCustomViewFields(collection.schema),
+      });
+    } catch (err) {
+      log.warn("collections", "view-token mint failed", { slug: singleLineForLog(req.params.slug), error: errorMessage(err) });
+      serverError(res, errorMessage(err));
+    }
+  };
+
 // Mint a scoped token for a custom view. Behind the global bearer (only the
 // real frontend can mint); clamps requested caps to what the view declared
 // so a `read`-only view can never obtain a `write` token.
-router.post(API_ROUTES.collections.viewToken, async (req: Request<{ slug: string }>, res: Response) => {
-  if (isClientTokenRequest(req)) {
-    forbidden(res, "forbidden");
-    return;
-  }
-  try {
-    const { slug } = req.params;
-    const body = requestBodyRecord(req.body);
-    const viewId = typeof body.viewId === "string" ? body.viewId.trim() : "";
-    if (!viewId) {
-      badRequest(res, "`viewId` is required");
-      return;
-    }
-    const resolved = await resolveCustomViewOr404(slug, viewId, res);
-    if (!resolved) return;
-    const { view } = resolved;
-    const granted = clampCapabilities(view.capabilities, parseCapabilities(body.capabilities));
-    const minted = mintViewToken(slug, granted);
-    if (!minted) {
-      serverError(res, "view token unavailable (server not ready)");
-      return;
-    }
-    res.json({ token: minted.token, exp: minted.exp, dataUrl: API_ROUTES.collections.viewData.replace(":slug", slug), capabilities: granted });
-  } catch (err) {
-    log.warn("collections", "view-token mint failed", { slug: singleLineForLog(req.params.slug), error: errorMessage(err) });
-    serverError(res, errorMessage(err));
-  }
-});
+router.post(API_ROUTES.collections.viewToken, createViewTokenHandler({ loadCollection, mint: mintViewToken }));
 
 // Scoped read: enriched records (getItems). Guarded by the view token only
 // (exempt from global bearer + CSRF — see server/index.ts).
