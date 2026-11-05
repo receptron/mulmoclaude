@@ -27,7 +27,7 @@ rather than imported, which is what lets the same code run under either.
 `./remote-view`, `./remote-host` and `./plugin-vue`.
 
 `firebase` is an **optional** peer, and only the entries named for it need it:
-`./collection/firestore`, `./remote-host` and `./remote-host/server`. Every
+`./collection/firestore` and `./remote-host/server`. Every
 other entry must LOAD with the package absent — a host that uses no Firestore
 installs nothing — under `import` and `require` alike.
 `test/workspace/collections/test_optionalFirebasePeer.ts` in the MulmoClaude

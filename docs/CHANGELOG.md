@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
-Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@5.15.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@6.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ### Added
 
@@ -22,6 +22,14 @@ Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`,
 passes a docker-style env file. Values never appear in the docker command line; the file's checked lines reach docker
 through a pipe, never a copy on disk (not supported on Windows hosts yet), and a file inside the workspace or any other directory the sandbox mounts is refused. The variables
 the sandbox and its entrypoint use cannot be overridden. See `docs/sandbox-credentials.md`.
+
+### Changed
+
+#### `@mulmoclaude/core/remote-host` loads without `firebase` — breaking, core 6.0.0 (#3266)
+
+`commandsCollection` and `hostDoc` are no longer exported from `@mulmoclaude/core/remote-host`; import them from
+`@mulmoclaude/core/remote-host/server`. The `./remote-host` entry now loads with the optional `firebase` peer absent, as
+a browser-safe entry should. Nothing in MulmoClaude or MulmoTerminal imported the two helpers from the old path.
 
 ## [2.10.0] - 2026-10-26
 

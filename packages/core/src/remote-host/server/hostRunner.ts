@@ -24,19 +24,8 @@ import {
 import { isRecord } from "@mulmoclaude/common";
 
 import { errorMessage } from "../../collection/core/errorMessage.js";
-import {
-  Channel,
-  Command,
-  CommandHandler,
-  CommandHandlers,
-  HostMachine,
-  buildHostPresence,
-  byCreatedAt,
-  coerceJsonObject,
-  commandsCollection,
-  hostDoc,
-  isExpired,
-} from "../index.js";
+import { Channel, Command, CommandHandler, CommandHandlers, HostMachine, buildHostPresence, byCreatedAt, coerceJsonObject, isExpired } from "../index.js";
+import { commandsCollection, hostDoc } from "./paths.js";
 import { stripUndefined, undefinedPaths, unexpectedPaths } from "./firestoreSafeResult.js";
 import { PRESENCE_STALE_BEATS, createPresenceBeat, type PresenceBeat } from "./presenceBeat.js";
 import { monotonicNowMs } from "./monotonicClock.js";
