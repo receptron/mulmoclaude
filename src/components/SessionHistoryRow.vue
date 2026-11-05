@@ -1,21 +1,60 @@
 <template>
+  <!-- Not a control itself: the open button, the bookmark toggle and the
+       menu are siblings inside it, so none nests in another. The card's
+       own click is a mouse-only convenience; keyboard users have the open
+       button. -->
   <div
-    tabindex="0"
-    role="button"
-    :aria-label="rowAria"
+    class="relative cursor-pointer rounded p-2 text-sm transition-colors"
     :title="primaryText"
-    class="relative cursor-pointer rounded p-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
     :class="rowClasses"
     :data-testid="`session-item-${session.id}`"
     @click="emit('select', session.id)"
-    @keydown.enter.prevent.self="onActivateKey"
-    @keydown.space.prevent.self="onActivateKey"
   >
+    <!-- Primary line prefers the AI-generated summary (chat indexer,
+         #123) when present — it's typically more informative than
+         the first user message. Fall back to the first user message,
+         then to a "no messages" placeholder. `line-clamp-2` lets a
+         summary wrap so more of it is readable at a glance; the raw
+         first-message fallback stays on a single line via `truncate`
+         so short prompts don't disturb row heights. -->
+    <div class="flex items-start gap-1.5">
+      <button
+        type="button"
+        class="flex-shrink-0 mt-0.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        :title="bookmarkLabel"
+        :aria-label="t('sessionHistoryPanel.bookmark')"
+        :aria-pressed="session.isBookmarked === true"
+        :data-testid="`session-row-icon-bookmark-${session.id}`"
+        @click.stop="emit('toggleBookmark', session)"
+      >
+        <SessionRoleIcon :session="session" :roles="roles" size="sm" />
+      </button>
+      <!-- No handler: the click bubbles to the card, which selects, and on to the panel's document listener, which closes an open menu. -->
+      <button
+        type="button"
+        class="flex flex-1 min-w-0 items-start gap-1.5 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        :aria-label="rowAria"
+        :aria-current="selected ? 'true' : undefined"
+        :data-testid="`session-row-open-${session.id}`"
+      >
+        <span
+          class="flex-1 min-w-0"
+          :class="[previewClasses, hasVisibleSummary ? 'line-clamp-2' : 'block truncate']"
+          :data-testid="`session-row-preview-${session.id}`"
+        >
+          {{ primaryText }}
+        </span>
+        <span v-if="session.isRunning" class="flex-shrink-0 flex items-center mt-0.5" :aria-label="t('sessionHistoryPanel.running')">
+          <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+        </span>
+      </button>
+    </div>
     <!-- Timestamp pill straddling the top border, mirroring the
          SessionSidebar card design. The kebab "..." button sits
          next to it on the same border line — clicking opens a
-         popover with delete + bookmark actions. The running
-         indicator still renders inline in the meta line below
+         popover with delete + bookmark actions. It comes last in the
+         markup so the tab order runs bookmark, open, menu. The running
+         indicator still renders inline in the meta line
          (it's a status, not a time); unread is signalled through
          previewClasses (bold text); bookmark state is signalled
          via the green role icon. -->
@@ -27,8 +66,6 @@
         :aria-label="t('sessionHistoryPanel.rowMenuAria')"
         :data-testid="`session-row-menu-${session.id}`"
         @click.stop="emit('toggleMenu', session.id)"
-        @keydown.enter.stop
-        @keydown.space.stop
       >
         <span class="material-icons !text-[14px] leading-none" aria-hidden="true">more_horiz</span>
       </button>
@@ -58,30 +95,6 @@
       >
         {{ t("sessionHistoryPanel.delete") }}
       </button>
-    </div>
-    <!-- Primary line prefers the AI-generated summary (chat indexer,
-         #123) when present — it's typically more informative than
-         the first user message. Fall back to the first user message,
-         then to a "no messages" placeholder. `line-clamp-2` lets a
-         summary wrap so more of it is readable at a glance; the raw
-         first-message fallback stays on a single line via `truncate`
-         so short prompts don't disturb row heights. -->
-    <div class="flex items-start gap-1.5">
-      <!-- Mouse-only on purpose: a <button> would nest inside the role="button" row; keyboard users have the menu item. -->
-      <span
-        class="flex-shrink-0 mt-0.5 cursor-pointer"
-        :title="bookmarkLabel"
-        :data-testid="`session-row-icon-bookmark-${session.id}`"
-        @click.stop="emit('toggleBookmark', session)"
-      >
-        <SessionRoleIcon :session="session" :roles="roles" size="sm" />
-      </span>
-      <p class="flex-1 min-w-0" :class="[previewClasses, hasVisibleSummary ? 'line-clamp-2' : 'truncate']">
-        {{ primaryText }}
-      </p>
-      <span v-if="session.isRunning" class="flex-shrink-0 flex items-center mt-0.5" :aria-label="t('sessionHistoryPanel.running')">
-        <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
-      </span>
     </div>
   </div>
 </template>
@@ -140,11 +153,4 @@ const hasVisibleSummary = computed(() => sessionHasVisibleSummary(props.session)
 const rowClasses = computed(() => (props.selected ? "border-2 border-blue-500 hover:bg-gray-50" : "border border-gray-200 hover:bg-gray-50"));
 
 const previewClasses = computed(() => (props.session.hasUnread ? "text-gray-900 font-bold" : "text-gray-700"));
-
-// Held Enter / Space on a native <button> activates once per physical
-// press, not per OS auto-repeat tick (#684).
-function onActivateKey(event: KeyboardEvent): void {
-  if (event.repeat) return;
-  emit("select", props.session.id);
-}
 </script>
