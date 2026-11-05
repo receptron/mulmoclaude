@@ -2,7 +2,7 @@
 // beside `secrets/` and outside the workspace — the workspace is the agent's
 // data space and may be synced, and this file decides who may call the API.
 
-import { closeSync, fstatSync, mkdirSync, openSync, readSync, rmSync, statSync } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { writeFileAtomicSync } from "../../utils/files/atomic.js";
@@ -55,26 +55,74 @@ export function writeClientTokenFile(filePath: string, records: readonly ClientT
   writeFileAtomicSync(filePath, text, { mode: STORE_FILE_MODE });
 }
 
-// A lock left by a killed command is taken over after this long.
+// A lock with no readable owner pid (written by a command killed before it
+// recorded one) is taken over after this long.
 const LOCK_STALE_MS = 30 * ONE_SECOND_MS;
 
-function isStaleLock(lockPath: string, nowMs: number): boolean {
+interface LockState {
+  ownerPid: number | null;
+  ageMs: number;
+}
+
+/** A lock is abandoned when its recorded owner is gone; age decides only when
+ *  no owner was recorded, so a paused but live command keeps its lock. */
+export function isAbandonedLock(lock: LockState, isOwnerAlive: (pid: number) => boolean): boolean {
+  return lock.ownerPid === null ? lock.ageMs > LOCK_STALE_MS : !isOwnerAlive(lock.ownerPid);
+}
+
+function isProcessAlive(pid: number): boolean {
   try {
-    return nowMs - statSync(lockPath).mtimeMs > LOCK_STALE_MS;
-  } catch {
+    process.kill(pid, 0);
     return true;
+  } catch (err) {
+    return isErrorWithCode(err) && err.code === "EPERM";
   }
+}
+
+function readLockState(lockPath: string, nowMs: number): LockState | null {
+  try {
+    const ageMs = nowMs - statSync(lockPath).mtimeMs;
+    const pid = Number.parseInt(readFileSync(lockPath, "utf8").trim(), 10);
+    return { ownerPid: Number.isSafeInteger(pid) && pid > 0 ? pid : null, ageMs };
+  } catch {
+    return null;
+  }
+}
+
+const busyError = (lockPath: string): Error => new Error(`${lockPath}: another token command is running; retry once it finishes`);
+
+function openLock(lockPath: string): number {
+  const handle = openSync(lockPath, "wx", STORE_FILE_MODE);
+  writeSync(handle, `${process.pid}\n`);
+  return handle;
 }
 
 function acquireLock(lockPath: string, nowMs: number): number {
   try {
-    return openSync(lockPath, "wx", STORE_FILE_MODE);
+    return openLock(lockPath);
   } catch (err) {
-    if (!isErrorWithCode(err) || err.code !== "EEXIST" || !isStaleLock(lockPath, nowMs)) {
-      throw new Error(`${lockPath}: another token command is running; retry once it finishes`);
-    }
+    if (!isErrorWithCode(err) || err.code !== "EEXIST") throw busyError(lockPath);
+    const state = readLockState(lockPath, nowMs);
+    if (state !== null && !isAbandonedLock(state, isProcessAlive)) throw busyError(lockPath);
     rmSync(lockPath, { force: true });
-    return openSync(lockPath, "wx", STORE_FILE_MODE);
+    try {
+      return openLock(lockPath);
+    } catch {
+      throw busyError(lockPath);
+    }
+  }
+}
+
+// Only the lock this command created: if it was taken over, the new owner's
+// lock must survive this command's cleanup.
+function releaseLock(lockPath: string, handle: number): void {
+  const { dev, ino } = fstatSync(handle);
+  closeSync(handle);
+  try {
+    const current = statSync(lockPath);
+    if (current.dev === dev && current.ino === ino) rmSync(lockPath, { force: true });
+  } catch {
+    // Already gone.
   }
 }
 
@@ -87,8 +135,7 @@ export function withClientTokenLock<T>(filePath: string, run: () => T, nowMs: nu
   try {
     return run();
   } finally {
-    closeSync(handle);
-    rmSync(lockPath, { force: true });
+    releaseLock(lockPath, handle);
   }
 }
 

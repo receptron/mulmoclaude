@@ -4,7 +4,8 @@
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { chmodSync, readFileSync, statSync, utimesSync, writeFileSync, mkdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import {
   addClientToken,
@@ -20,6 +21,7 @@ import {
 import {
   clientTokensPath,
   createClientTokenSource,
+  isAbandonedLock,
   readClientTokenFile,
   withClientTokenLock,
   writeClientTokenFile,
@@ -275,6 +277,32 @@ describe("the store on disk", () => {
       "took over",
     );
     assert.throws(() => statSync(`${paths.storePath}.lock`));
+  });
+
+  it("keeps a live owner's lock however old it is, and takes over a dead owner's", () => {
+    const nowMs = Date.now();
+    const lockPath = `${paths.storePath}.lock`;
+    mkdirSync(path.dirname(lockPath), { recursive: true });
+    writeFileSync(lockPath, `${process.pid}\n`);
+    const longAgo = new Date(nowMs - ONE_MINUTE_MS);
+    utimesSync(lockPath, longAgo, longAgo);
+    assert.throws(() => withClientTokenLock(paths.storePath, () => "stolen", nowMs), /another token command is running/);
+    const exited = spawnSync(process.execPath, ["-e", ""]);
+    writeFileSync(lockPath, `${exited.pid}\n`);
+    assert.equal(
+      withClientTokenLock(paths.storePath, () => "took over", nowMs),
+      "took over",
+    );
+  });
+
+  it("records its own pid in the lock, and its cleanup leaves a replacement lock alone", () => {
+    const lockPath = `${paths.storePath}.lock`;
+    withClientTokenLock(paths.storePath, () => {
+      assert.equal(readFileSync(lockPath, "utf8").trim(), String(process.pid));
+      rmSync(lockPath);
+      writeFileSync(lockPath, "replacement");
+    });
+    assert.equal(readFileSync(lockPath, "utf8"), "replacement");
   });
 
   it("the server's source follows every change to the file, and fails closed on a broken one", () => {
@@ -563,5 +591,20 @@ describe("bearerAuth — client tokens", () => {
 
   it("refuses an unknown token with 401 everywhere", () => {
     assert.deepEqual(callMiddleware("mct_nope", "/collections"), { nextCalled: false, statusCode: 401 });
+  });
+});
+
+describe("isAbandonedLock", () => {
+  const alive = (): boolean => true;
+  const dead = (): boolean => false;
+  const cases: { name: string; lock: { ownerPid: number | null; ageMs: number }; isAlive: () => boolean; abandoned: boolean }[] = [
+    { name: "live owner, old lock", lock: { ownerPid: 42, ageMs: ONE_MINUTE_MS * 60 }, isAlive: alive, abandoned: false },
+    { name: "live owner, fresh lock", lock: { ownerPid: 42, ageMs: 0 }, isAlive: alive, abandoned: false },
+    { name: "dead owner, fresh lock", lock: { ownerPid: 42, ageMs: 0 }, isAlive: dead, abandoned: true },
+    { name: "no owner, fresh lock", lock: { ownerPid: null, ageMs: 0 }, isAlive: dead, abandoned: false },
+    { name: "no owner, old lock", lock: { ownerPid: null, ageMs: ONE_MINUTE_MS }, isAlive: alive, abandoned: true },
+  ];
+  cases.forEach(({ name, lock, isAlive, abandoned }) => {
+    it(name, () => assert.equal(isAbandonedLock(lock, isAlive), abandoned));
   });
 });
