@@ -504,6 +504,7 @@ const getWorkspaceDirReal = makeCachedRealpath(workspacePath);
 // runaway loop hammering the filesystem, not to police normal use. Same limiter
 // the collection view routes use.
 const HTML_FILE_RATE_LIMIT_PER_MINUTE = 600;
+const INDEX_HTML_RATE_LIMIT_PER_MINUTE = 600;
 const htmlFileRateLimit = makeViewActionRateLimiter(HTML_FILE_RATE_LIMIT_PER_MINUTE, ONE_MINUTE_MS);
 app.use(HTML_FILE_MOUNT, htmlFileRateLimit, async (req, res, next) => {
   if (!HTML_PREVIEW_EXT_RE.test(req.path)) {
@@ -799,7 +800,10 @@ if (env.isProduction) {
   const clientDir = resolveClientDir(process.env.MULMOCLAUDE_CLIENT_DIR, path.join(__dirname, "../client"));
   app.use(express.static(clientDir, { index: false }));
   const indexHtmlPath = path.join(clientDir, "index.html");
-  app.get("/{*splat}", (req: Request, res: Response) => {
+  // Every client-side route lands here, so the bucket is roomy: it bounds a
+  // runaway reload loop re-reading index.html, not normal navigation.
+  const indexHtmlRateLimit = makeViewActionRateLimiter(INDEX_HTML_RATE_LIMIT_PER_MINUTE, ONE_MINUTE_MS);
+  app.get("/{*splat}", indexHtmlRateLimit, (req: Request, res: Response) => {
     let html: string;
     try {
       html = readFileSync(indexHtmlPath, "utf-8");
