@@ -22,10 +22,15 @@ export function shouldAnnounceSlowStart({ elapsedMs, announced }) {
   return !announced && elapsedMs >= SLOW_START_NOTICE_AFTER_MS;
 }
 
-/** @param {string} url */
-export function slowStartMessage(url) {
+/**
+ * @param {string} url
+ * @param {{ willOpenBrowser: boolean }} options
+ */
+export function slowStartMessage(url, { willOpenBrowser }) {
   const seconds = Math.round(SLOW_START_NOTICE_AFTER_MS / MS_PER_SECOND);
-  return `Still starting after ${seconds}s — the browser opens once the server answers. To open it yourself: ${url}`;
+  const prefix = `Still starting after ${seconds}s`;
+  if (!willOpenBrowser) return `${prefix} — open ${url} once the server answers.`;
+  return `${prefix} — the browser opens once the server answers. To open it yourself: ${url}`;
 }
 
 /** @param {number} port */
@@ -47,7 +52,8 @@ export async function waitUntilReady({ port, isServerAlive, onSlowStart, probe =
   const startedAt = now();
   const state = { announced: false };
   while (isServerAlive()) {
-    if (await probe(port)) return true;
+    // A server that died mid-probe is not ready, whatever the probe saw.
+    if (await probe(port)) return isServerAlive();
     if (shouldAnnounceSlowStart({ elapsedMs: now() - startedAt, announced: state.announced })) {
       state.announced = true;
       onSlowStart();

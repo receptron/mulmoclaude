@@ -6,7 +6,7 @@ export const SLOW_START_NOTICE_AFTER_MS: number;
 
 export function shouldAnnounceSlowStart(state: { elapsedMs: number; announced: boolean }): boolean;
 
-export function slowStartMessage(url: string): string;
+export function slowStartMessage(url: string, options: { willOpenBrowser: boolean }): string;
 
 export interface WaitUntilReadyOptions {
   port: number;

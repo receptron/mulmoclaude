@@ -308,7 +308,7 @@ function openBrowserWhenReady() {
 // Not awaited: the shutdown handlers below must be live while the server boots.
 async function openBrowserOnceServerAnswers() {
   const isServerAlive = () => server.exitCode === null && server.signalCode === null;
-  const ready = await waitUntilReady({ port, isServerAlive, onSlowStart: () => log(slowStartMessage(url)) });
+  const ready = await waitUntilReady({ port, isServerAlive, onSlowStart: () => log(slowStartMessage(url, { willOpenBrowser: !noOpen })) });
   if (ready) openBrowserWhenReady();
 }
 openBrowserOnceServerAnswers();

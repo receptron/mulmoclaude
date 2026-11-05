@@ -39,8 +39,18 @@ describe("shouldAnnounceSlowStart", () => {
 });
 
 describe("slowStartMessage", () => {
-  it("names the URL to open by hand", () => {
-    assert.match(slowStartMessage("http://localhost:3001"), /http:\/\/localhost:3001$/);
+  const url = "http://localhost:3001";
+
+  it("names the URL to open by hand and says the browser is coming", () => {
+    const message = slowStartMessage(url, { willOpenBrowser: true });
+    assert.ok(message.includes(url));
+    assert.match(message, /browser opens/);
+  });
+
+  it("does not promise a browser under --no-open", () => {
+    const message = slowStartMessage(url, { willOpenBrowser: false });
+    assert.ok(message.includes(url));
+    assert.doesNotMatch(message, /browser opens/);
   });
 });
 
@@ -93,6 +103,11 @@ describe("waitUntilReady", () => {
   it("stops when the server dies before answering", async () => {
     const run = await runWait({ answerAfterProbes: Number.POSITIVE_INFINITY, dieAfterProbes: 5 });
     assert.deepEqual([run.ready, run.probes], [false, 5]);
+  });
+
+  it("is not ready when the server dies while a successful probe is in flight", async () => {
+    const run = await runWait({ answerAfterProbes: 0, dieAfterProbes: 1 });
+    assert.deepEqual([run.ready, run.probes], [false, 1]);
   });
 
   it("does not probe a server that is already gone", async () => {
