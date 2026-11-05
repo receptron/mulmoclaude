@@ -19,15 +19,17 @@
 // - **No token in logs**. Reject messages are generic ("unauthorized")
 //   so a leaked log line doesn't reveal whether "no header" vs
 //   "wrong token" — matches common auth-hardening guidance.
-// - **The token rule lives in `@mulmoclaude/common/token-guard`**
-//   (`isAuthorizedToken`): constant-time, byte-length-checked, and shared
-//   with the view-token check, the `/ws/pubsub` and `/ws/chat` handshake
-//   guards and the webhook bridge, so every surface refuses the same way.
+// - **The token rule lives in `./principal.ts`**: the owner token or a named
+//   client token (#3618), shared with the `/ws/pubsub` and `/ws/chat`
+//   handshake guards, so every surface refuses the same way. A client token
+//   is then refused (403) on the owner-only paths in `./clientTokenAccess.ts`.
 
 import type { Request, Response, NextFunction } from "express";
-import { getCurrentToken } from "./token.js";
-import { isAuthorizedToken, UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
-import { unauthorized } from "../../utils/httpError.js";
+import { resolveTokenPrincipal } from "./principal.js";
+import { isOwnerOnlyApiPath } from "./clientTokenAccess.js";
+import { UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
+import { forbidden, unauthorized } from "../../utils/httpError.js";
+import { log } from "../../system/logger/index.js";
 
 const BEARER_PREFIX = "Bearer ";
 
@@ -37,10 +39,16 @@ export function bearerAuth(req: Request, res: Response, next: NextFunction): voi
     unauthorized(res, UNAUTHORIZED_MESSAGE);
     return;
   }
-  // `getCurrentToken()` is null until bootstrap, which the rule refuses too:
-  // a request that beats `generateAndWriteToken()` gets a 401, not a pass.
-  if (!isAuthorizedToken(header.slice(BEARER_PREFIX.length), getCurrentToken())) {
+  // The owner token is null until bootstrap, which the rule refuses too: a
+  // request that beats `generateAndWriteToken()` gets a 401, not a pass.
+  const principal = resolveTokenPrincipal(header.slice(BEARER_PREFIX.length));
+  if (principal === null) {
     unauthorized(res, UNAUTHORIZED_MESSAGE);
+    return;
+  }
+  if (principal.kind === "client" && isOwnerOnlyApiPath(req.path)) {
+    log.warn("auth", "client token refused on an owner-only path", { client: principal.name, method: req.method, path: req.path });
+    forbidden(res, "forbidden");
     return;
   }
   next();

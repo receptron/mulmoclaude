@@ -75,7 +75,7 @@ const notFound = (res: Response, error: string) => res.status(404).json({ error 
 // ── Factory ──────────────────────────────────────────────────
 
 export function createChatService(deps: ChatServiceDeps): ChatService {
-  const { startChat, onSessionEvent, loadAllRoles, getRole, defaultRoleId, tokenProvider } = deps;
+  const { startChat, onSessionEvent, loadAllRoles, getRole, defaultRoleId, tokenProvider, authorizeToken } = deps;
   const logger = deps.logger;
   const store = createChatStateStore({
     transportsDir: deps.transportsDir,
@@ -240,6 +240,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
         queue,
         logger,
         tokenProvider,
+        authorizeToken,
       });
       livePush = handle.pushToBridge;
     },

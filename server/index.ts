@@ -142,6 +142,7 @@ import { connectRelay } from "./events/relay-client.js";
 import { startConfiguredBridges } from "./bridges/registry.js";
 import { requireSameOrigin } from "./api/csrfGuard.js";
 import { bearerAuth } from "./api/auth/bearerAuth.js";
+import { isAuthorizedBearer } from "./api/auth/principal.js";
 import { isViewDataPath } from "./api/auth/viewToken.js";
 import { deleteTokenFile, generateAndWriteToken, getCurrentToken } from "./api/auth/token.js";
 import { boundPortOf, deleteServerPort, publishServerPort, setBoundPort } from "./workspace/serverPort.js";
@@ -747,6 +748,7 @@ const chatService = createChatService({
   // Socket.io handshake (see #268 Phase A) needs to validate the
   // same bearer token the HTTP middleware enforces.
   tokenProvider: getCurrentToken,
+  authorizeToken: isAuthorizedBearer,
   listSessions: listSessionsForBridge,
   getSessionHistory: getSessionHistoryForBridge,
   getSessionRole: getSessionRoleForBridge,
@@ -1472,7 +1474,7 @@ process.on("SIGTERM", () => {
     // (CodeRabbit review on PR #1196). Both `createPubSub` and
     // `initNotifier` are sync, so wiring them up here costs nothing
     // and closes the window.
-    const earlyPubsub = createPubSub(httpServer, { tokenProvider: getCurrentToken });
+    const earlyPubsub = createPubSub(httpServer, { authorizeToken: isAuthorizedBearer });
     initNotifier({
       publish: (channel, payload) => earlyPubsub.publish(channel, payload),
     });

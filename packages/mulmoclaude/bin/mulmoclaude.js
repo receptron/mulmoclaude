@@ -5,7 +5,7 @@
 // Ships with server source (TypeScript) + pre-built client (Vite).
 // Runs the server via tsx (TypeScript executor).
 
-import { execSync, spawn } from "child_process";
+import { execSync, spawn, spawnSync } from "child_process";
 import { existsSync } from "fs";
 import { get as httpGet } from "http";
 import { createRequire } from "module";
@@ -97,6 +97,24 @@ function printReadyBanner(url) {
   console.log("");
 }
 
+// Resolve tsx's CLI entry via Node's module resolution so this works
+// whether tsx is nested (`npx`/local install) or hoisted (`npm i -g`).
+// tsx doesn't export `./cli`, so locate via its package.json + `bin`.
+function resolveTsxCli() {
+  try {
+    const tsxPkgJson = require.resolve("tsx/package.json");
+    // Path is the resolved location of tsx's own package.json under
+    // node_modules — not user-influenced, so the dynamic require is
+    // safe. require.resolve already validated the path.
+    // eslint-disable-next-line security/detect-non-literal-require -- resolved package.json path from require.resolve, not user input
+    const tsxPkg = require(tsxPkgJson);
+    return join(dirname(tsxPkgJson), tsxPkg.bin);
+  } catch {
+    error("Failed to locate 'tsx' — the package may be installed incorrectly.");
+    return process.exit(1);
+  }
+}
+
 // ── Parse args ──────────────────────────────────────────────
 
 const args = process.argv.slice(2);
@@ -104,10 +122,13 @@ if (args.includes("--help") || args.includes("-h")) {
   console.log(`
 Usage: npx mulmoclaude [options]
        npx mulmoclaude create-shortcut [--dir <path>] [--yes]
+       npx mulmoclaude token add|list|revoke [<name>]
 
 Commands:
   create-shortcut      Create a clickable MulmoClaude.app (macOS) so the
                        app can be started without a terminal
+  token                Issue, list or revoke a named token for a bridge or
+                       script; each can be revoked without touching the others
 
 Options:
   --port <number>      Server port (default: ${DEFAULT_PORT})
@@ -136,6 +157,15 @@ if (args[0] === "create-shortcut") {
   const { runCreateShortcut } = await import("../server/utils/launcher/create-shortcut.mjs");
   const { version } = require(join(PKG_DIR, "package.json"));
   process.exit(await runCreateShortcut(args.slice(1), { version }));
+}
+
+// Edits the client-token store and exits — it never starts a server, and a
+// running one picks the change up on its next request.
+if (args[0] === "token") {
+  const result = spawnSync(process.execPath, [resolveTsxCli(), join(PKG_DIR, "server", "api", "auth", "clientTokenCli.ts"), ...args.slice(1)], {
+    stdio: "inherit",
+  });
+  process.exit(result.status ?? 1);
 }
 
 const { requestedPort, portExplicit } = parsePortArg();
@@ -246,22 +276,7 @@ async function chooseAvailablePort(requested, explicit) {
 
 log(`Starting MulmoClaude on port ${port}...`);
 
-// Resolve tsx's CLI entry via Node's module resolution so this works
-// whether tsx is nested (`npx`/local install) or hoisted (`npm i -g`).
-// tsx doesn't export `./cli`, so locate via its package.json + `bin`.
-let tsxCli;
-try {
-  const tsxPkgJson = require.resolve("tsx/package.json");
-  // Path is the resolved location of tsx's own package.json under
-  // node_modules — not user-influenced, so the dynamic require is
-  // safe. require.resolve already validated the path.
-  // eslint-disable-next-line security/detect-non-literal-require -- resolved package.json path from require.resolve, not user input
-  const tsxPkg = require(tsxPkgJson);
-  tsxCli = join(dirname(tsxPkgJson), tsxPkg.bin);
-} catch {
-  error("Failed to locate 'tsx' — the package may be installed incorrectly.");
-  process.exit(1);
-}
+const tsxCli = resolveTsxCli();
 
 const serverEnv = {
   ...baseEnv,

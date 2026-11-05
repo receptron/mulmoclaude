@@ -33,6 +33,7 @@ const HARNESS_TOKEN = "harness-token-xyz";
 
 interface HarnessOpts {
   tokenProvider?: () => string | null;
+  authorizeToken?: (token: unknown) => boolean;
 }
 
 interface Harness {
@@ -57,6 +58,7 @@ async function startHarness(opts: HarnessOpts = {}): Promise<Harness> {
     queue: createPushQueue(),
     logger: silentLogger,
     tokenProvider: opts.tokenProvider ?? (() => HARNESS_TOKEN),
+    authorizeToken: opts.authorizeToken,
   });
 
   await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", () => resolve()));
@@ -455,5 +457,17 @@ describe("chat-service socket — bearer token", () => {
 
   it("checks the token before the transportId", async () => {
     await refusedGenerically(connectClient(harness.url, { token: "not-the-right-one" }));
+  });
+
+  it("lets a host-supplied authorizeToken decide instead of tokenProvider", async () => {
+    await stopHarness(harness);
+    const accepted = new Set(["client-a", "client-b"]);
+    harness = await startHarness({ tokenProvider: () => EXPECTED, authorizeToken: (token) => typeof token === "string" && accepted.has(token) });
+    const client = connectClient(harness.url, { transportId: "cli", token: "client-b" });
+    await waitConnect(client);
+    client.disconnect();
+    accepted.delete("client-b");
+    await refusedGenerically(connectClient(harness.url, { transportId: "cli", token: "client-b" }));
+    await refusedGenerically(connectClient(harness.url, { transportId: "cli", token: EXPECTED }));
   });
 });

@@ -1,9 +1,7 @@
-import { isAuthorizedToken } from "@mulmoclaude/common/token-guard";
 import { isRecord } from "../../utils/types.js";
 
 // `auth` is whatever the socket.io client put in `io({ auth })`. Only a record
-// whose `token` passes the shared bearer rule connects; a server with no token
-// yet refuses everything, as `bearerAuth` does for HTTP.
-export function isAuthorizedPubSubHandshake(auth: unknown, expectedToken: string | null): boolean {
-  return isRecord(auth) && isAuthorizedToken(auth.token, expectedToken);
+// whose `token` passes `authorizeToken` (the host's bearer rule) connects.
+export function isAuthorizedPubSubHandshake(auth: unknown, authorizeToken: (token: unknown) => boolean): boolean {
+  return isRecord(auth) && authorizeToken(auth.token);
 }

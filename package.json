@@ -37,6 +37,7 @@
     "server": "node scripts/dev-server.mjs",
     "server:debug": "node scripts/dev-server.mjs --debug",
     "cli": "tsx packages/bridges/cli/src/index.ts",
+    "token": "tsx server/api/auth/clientTokenCli.ts",
     "google:auth": "tsx server/services/google/authCli.ts",
     "telegram": "tsx packages/bridges/telegram/src/index.ts",
     "lint": "yarn dumpi18n && eslint src server test e2e e2e-live packages scripts batch build-config --cache --cache-location node_modules/.cache/eslint/ --format ./scripts/eslint-formatter-summary.mjs",

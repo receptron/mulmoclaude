@@ -17,7 +17,8 @@
 //   the room drains its transport's queue on connect.
 //
 // Auth: the handshake is refused unless `auth.token` passes the shared
-// bearer rule against `tokenProvider()` (see ./handshake.ts). The refusal
+// bearer rule against `tokenProvider()`, or `authorizeToken` when the host
+// supplies one (see ./handshake.ts). The refusal
 // is the same generic `unauthorized` every other bearer surface sends, and
 // `tokenProvider` is required so a chat socket is never open by accident.
 //
@@ -32,7 +33,8 @@ import { Server as SocketServer } from "socket.io";
 import type { Socket } from "socket.io";
 import type { RelayFn } from "./relay.js";
 import type { PushQueue } from "./push-queue.js";
-import { validateHandshake, type BridgeOptions } from "./handshake.js";
+import { isAuthorizedToken } from "@mulmoclaude/common/token-guard";
+import { validateHandshakeWith, type BridgeOptions } from "./handshake.js";
 import type { Attachment, Logger } from "./types.js";
 
 export const CHAT_SOCKET_PATH = "/ws/chat";
@@ -66,6 +68,8 @@ export interface ChatSocketDeps {
   /** Current bearer token the handshake must carry. Null means
    *  bootstrap in progress — refuse everything. */
   tokenProvider: () => string | null;
+  /** When set, decides which handshake tokens pass instead of `tokenProvider`. */
+  authorizeToken?: ((token: unknown) => boolean) | undefined;
 }
 
 export interface ChatSocketHandle {
@@ -122,6 +126,7 @@ function warnRefusedOnce(logger: Logger, socket: Socket, error: string): void {
 
 export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): ChatSocketHandle {
   const { relay, queue, logger, tokenProvider } = deps;
+  const authorizeToken = deps.authorizeToken ?? ((token: unknown): boolean => isAuthorizedToken(token, tokenProvider()));
 
   const io = new SocketServer(server, {
     path: CHAT_SOCKET_PATH,
@@ -137,7 +142,7 @@ export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): Cha
   });
 
   io.use((socket, next) => {
-    const result = validateHandshake(socket.handshake.auth, tokenProvider());
+    const result = validateHandshakeWith(socket.handshake.auth, authorizeToken);
     if (!result.ok) {
       warnRefusedOnce(logger, socket, result.error);
       next(new Error(result.error));

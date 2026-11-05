@@ -114,6 +114,12 @@ export interface ChatServiceDeps {
    */
   tokenProvider: () => string | null;
   /**
+   * Optional: decides which `/ws/chat` handshake tokens pass, replacing the
+   * `tokenProvider` comparison — for a host that accepts more than one token.
+   * It must refuse everything while the host has no token of its own.
+   */
+  authorizeToken?: ((token: unknown) => boolean) | undefined;
+  /**
    * List recent sessions from the server. Used by /sessions command.
    * Omit if session listing is not available (command will reply
    * "not available").

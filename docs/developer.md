@@ -328,6 +328,8 @@ Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on
 
 **Current scope**: Vue client (HTTP and the `/ws/pubsub` socket), Express middleware, the pub/sub handshake middleware, the `/ws/chat` handshake in `@mulmobridge/chat-service`, and every bridge through `@mulmobridge/client`. A bridge presents the token in the socket.io handshake (`auth`), not as a `fetch` header, and it resolves it from `MULMOCLAUDE_AUTH_TOKEN` or `<workspace>/.session-token` — re-reading that pair after a failed connection rather than once at startup (#3078).
 
+**Named client tokens (#3618)**: besides the owner token above, `mulmoclaude token add|list|revoke <name>` (`yarn token …`) issues tokens of the form `mct_<id>_<secret>` into `~/.mulmoclaude/client-tokens.json` (0600, hashes only). Every bearer surface goes through `server/api/auth/principal.ts`: the owner token first, then the store, which is consulted only for a token in the client format and re-read when the file changes (so `revoke` needs no restart). A client token is refused with 403 on the paths in `server/api/auth/clientTokenAccess.ts`; `test/server/test_clientTokens.ts` fails when a new `/api/<segment>` is routed without being classified there. Until the server has its own token, client tokens are refused too.
+
 **Files**
 
 - `server/api/auth/token.ts` — generate / write / unlink

@@ -11,9 +11,9 @@ export interface IPubSub {
 }
 
 export interface PubSubOptions {
-  /** The bearer token a handshake must present. `null` while the server
-   *  has none yet, which refuses every handshake. */
-  tokenProvider: () => string | null;
+  /** Whether a handshake's token is accepted; refuses everything until the
+   *  server has a token of its own. */
+  authorizeToken: (token: unknown) => boolean;
 }
 
 const logRoomError =
@@ -73,7 +73,7 @@ export function createPubSub(server: http.Server, options: PubSubOptions): IPubS
   // destroys the client socket, so socket.io does not retry it — the SPA
   // reads that as "reload for a fresh token" rather than spinning.
   ioServer.use((socket, next) => {
-    if (isAuthorizedPubSubHandshake(socket.handshake.auth, options.tokenProvider())) {
+    if (isAuthorizedPubSubHandshake(socket.handshake.auth, options.authorizeToken)) {
       next();
       return;
     }

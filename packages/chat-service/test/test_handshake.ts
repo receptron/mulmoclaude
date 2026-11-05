@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
-import { TRANSPORT_ID_REQUIRED_MESSAGE, validateHandshake } from "../src/handshake.js";
+import { TRANSPORT_ID_REQUIRED_MESSAGE, validateHandshake, validateHandshakeWith } from "../src/handshake.js";
 
 // The `/ws/chat` handshake rule in both directions. The property that
 // matters most is the one a reader cannot see from the accepted cases:
@@ -103,5 +103,32 @@ describe("validateHandshake — refuses the transportId only once the token pass
     [undefined, null, "", "   ", 42, true, ["cli"], { id: "cli" }].forEach((transportId) => {
       refusedWith({ transportId, token }, token, TRANSPORT_ID_REQUIRED_MESSAGE);
     });
+  });
+});
+
+describe("validateHandshakeWith — the host decides which tokens pass", () => {
+  const issued = new Set([randomToken(), randomToken()]);
+  const authorize = (provided: unknown): boolean => typeof provided === "string" && issued.has(provided);
+
+  it("accepts every token the host accepts", () => {
+    issued.forEach((token) => {
+      assert.equal(validateHandshakeWith({ transportId: "cli", token }, authorize).ok, true);
+    });
+  });
+
+  it("refuses any other token with the generic message, before the transportId", () => {
+    [randomToken(), "", undefined, 42].forEach((token) => {
+      assert.deepEqual(validateHandshakeWith({ token }, authorize), { ok: false, error: UNAUTHORIZED_MESSAGE });
+    });
+    assert.deepEqual(validateHandshakeWith(null, authorize), { ok: false, error: UNAUTHORIZED_MESSAGE });
+  });
+
+  it("hands the authorizer only the token field", () => {
+    const seen: unknown[] = [];
+    validateHandshakeWith({ transportId: "cli", token: "t", options: { a: 1 } }, (provided) => {
+      seen.push(provided);
+      return true;
+    });
+    assert.deepEqual(seen, ["t"]);
   });
 });

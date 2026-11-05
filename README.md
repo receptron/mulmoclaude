@@ -172,6 +172,18 @@ MULMOCLAUDE_AUTH_TOKEN=long-random-string \
 
 Recommended: at least 32 characters of random data (the server logs a warning at startup for shorter values).
 
+#### A separate token per bridge or script
+
+To give each client — a bridge, an n8n workflow, a script — its own token that can be revoked without touching the others, issue a named client token:
+
+```bash
+npx mulmoclaude token add n8n        # prints the token once
+npx mulmoclaude token list           # names and ids, never values
+npx mulmoclaude token revoke n8n     # a running server refuses it on the next request
+```
+
+(`yarn token …` in a checkout.) Give the printed token to that client as `MULMOCLAUDE_AUTH_TOKEN` — and only to that client, never to the server's own environment. Client tokens survive server restarts and work on `/api/*`, `/ws/pubsub` and `/ws/chat`, but are refused (403) on settings, secrets, roles, skills, plugins, automations, direct agent runs and the other host-management APIs. Only a hash of each is stored, in `~/.mulmoclaude/client-tokens.json`.
+
 ### Why do you need a Gemini API key?
 
 MulmoClaude uses Google's **Gemini 3.1 Flash Image (nano banana 2)** model for image generation and editing. This powers:

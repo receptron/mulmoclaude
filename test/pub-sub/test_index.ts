@@ -4,6 +4,7 @@ import http from "node:http";
 import { AddressInfo } from "node:net";
 import WebSocket from "ws";
 import { io as connect, type Socket } from "socket.io-client";
+import { isAuthorizedToken } from "@mulmoclaude/common/token-guard";
 import { createPubSub, type IPubSub } from "../../server/events/pub-sub/index.js";
 import { log } from "../../server/system/logger/index.js";
 import { ONE_SECOND_MS } from "../../server/utils/time.js";
@@ -36,7 +37,7 @@ describe("pub-sub (socket.io round trip)", { timeout: SUITE_TIMEOUT_MS }, () => 
 
   before(async () => {
     server = http.createServer();
-    pubsub = createPubSub(server, { tokenProvider: () => serverToken });
+    pubsub = createPubSub(server, { authorizeToken: (provided) => isAuthorizedToken(provided, serverToken) });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;
     url = `http://127.0.0.1:${port}`;
