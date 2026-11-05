@@ -38,7 +38,7 @@ const PACKAGE_NAME = "@mulmoclaude/core";
 
 /** The entries whose NAME says they need the SDK. Everything else in the
  *  exports map must load without it. */
-const SDK_BOUND = new Set(["./collection/firestore", "./remote-host", "./remote-host/server"]);
+const SDK_BOUND = new Set(["./collection/firestore", "./remote-host/server"]);
 
 /** Fences the child's answer off from anything else it may print — a module
  *  that logged on import would otherwise turn a real result into a parse

@@ -4,16 +4,13 @@
 // A host signs in to Firebase as the user, listens to that user's per-host
 // command queue in Firestore, runs a handler, and writes the result back; the
 // remote writes commands and reads results via a real-time listener. This module
-// owns the wire types + the Firestore path helpers. It is the single source of
+// owns the wire types + pure helpers, and must load without the Firebase SDK; the
+// Firestore path helpers live in `./server/paths.ts`. It is the single source of
 // truth so the host runner and the client never drift on the protocol.
 //
 // Ported from ../mulmoserver/src/firestore/commandChannel.ts and the per-host
-// copy that lived in MulmoClaude's server/remoteHost/. The one change vs. those
-// copies: the path helpers take the `firestore` instance as a parameter (rather
-// than importing a module-level singleton) so a single extracted module serves
-// every host's own Firebase init. The hostId is host-specific ("mulmoclaude",
-// "mulmoterminal") and is supplied by each host.
-import { CollectionReference, DocumentData, DocumentReference, Firestore, collection, doc } from "firebase/firestore";
+// copy that lived in MulmoClaude's server/remoteHost/. The hostId is
+// host-specific ("mulmoclaude", "mulmoterminal") and is supplied by each host.
 import { isRecord } from "@mulmoclaude/common";
 
 // JSON payloads carried by the command channel. Explicit JSON types keep the
@@ -244,15 +241,6 @@ export const buildHostPresence = (channel: Channel, handlers: CommandHandlers, o
   capabilities: Object.keys(handlers),
   ...(machine ? { machineId: machine.machineId, label: machine.label } : {}),
 });
-
-// Per-host command queue: users/{uid}/hosts/{hostId}/commands.
-export const commandsCollection = (firestore: Firestore, channel: Channel): CollectionReference<DocumentData> =>
-  collection(firestore, "users", channel.uid, "hosts", channel.hostId, "commands");
-
-// Presence doc for a host: users/{uid}/hosts/{hostId}. The host heartbeats
-// { online, updatedAt } here; the remote reads it to know if the host is up.
-export const hostDoc = (firestore: Firestore, channel: Channel): DocumentReference<DocumentData> =>
-  doc(firestore, "users", channel.uid, "hosts", channel.hostId);
 
 // Channel health as the resilient runner reports it. Browser-safe alongside the
 // wire types because the control that renders it runs in the client.

@@ -92,8 +92,8 @@ browser-safe boundary — mirroring `@mulmoclaude/core/remote-view`:
 
 | Import | Surface | Provides |
 |---|---|---|
-| `@mulmoclaude/core/remote-host` | **browser-safe** | Protocol wire types (`Command`, `CommandStatus`, `Channel`, `CommandHandlers`) + Firestore path helpers `commandsCollection(firestore, channel)` / `hostDoc(firestore, channel)` + the capability advertisement (`HostPresence`, `REMOTE_HOST_PROTOCOL_VERSION`, `buildHostPresence`) + channel health (`RunnerHealth`, `RUNNER_HEALTH_STATES`, `isRunnerHealth`) for a host that renders it. Shared by host **and** the mobile client. |
-| `@mulmoclaude/core/remote-host/server` | **server-only** | `startHostRunner(firestore, channel, handlers, opts)` — the command loop; `startResilientHostRunner(deps)` — the outer recovery ring around it; `createPresenceProbe(deps)` — the liveness sensor it reads; `createRemoteHost(deps)` — the connect/disconnect/status lifecycle factory; `createRemoteHostAuth(auth)` + `createRemoteHostFirebase(config)` — the Firebase init/auth primitives. `firebase` is an optional peer dep of core. |
+| `@mulmoclaude/core/remote-host` | **browser-safe** | Protocol wire types (`Command`, `CommandStatus`, `Channel`, `CommandHandlers`) + the capability advertisement (`HostPresence`, `REMOTE_HOST_PROTOCOL_VERSION`, `buildHostPresence`) + channel health (`RunnerHealth`, `RUNNER_HEALTH_STATES`, `isRunnerHealth`) for a host that renders it. Shared by host **and** the mobile client. Loads without `firebase`. |
+| `@mulmoclaude/core/remote-host/server` | **server-only** | `startHostRunner(firestore, channel, handlers, opts)` — the command loop; `startResilientHostRunner(deps)` — the outer recovery ring around it; `createPresenceProbe(deps)` — the liveness sensor it reads; `createRemoteHost(deps)` — the connect/disconnect/status lifecycle factory; `createRemoteHostAuth(auth)` + `createRemoteHostFirebase(config)` — the Firebase init/auth primitives; `commandsCollection(firestore, channel)` / `hostDoc(firestore, channel)` — the Firestore path helpers. `firebase` is an optional peer dep of core. |
 
 Each host supplies only its own specifics under `server/remoteHost/`:
 

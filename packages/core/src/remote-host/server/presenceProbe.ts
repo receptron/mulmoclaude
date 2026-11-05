@@ -13,7 +13,8 @@
 import { getDocFromServer } from "firebase/firestore";
 import type { Firestore } from "firebase/firestore";
 
-import { hostDoc, type Channel } from "../index.js";
+import type { Channel } from "../index.js";
+import { hostDoc } from "./paths.js";
 import { presenceStaleAfterMs } from "./hostRunner.js";
 import { withTimeout } from "./withTimeout.js";
 
