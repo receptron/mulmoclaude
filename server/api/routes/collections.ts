@@ -64,7 +64,7 @@ import { clampImageMaxEdge, clampLimit, clampOffset, normalizeFields, normalizeM
 import { resolveThumbnail } from "../../utils/files/thumbnail-store.js";
 import { badRequest, notFound, conflict, forbidden, methodNotAllowed, serverError, serviceUnavailable, type ApiResponse } from "../../utils/httpError.js";
 import { isClientTokenRequest } from "../auth/principal.js";
-import { isOwnerOnlyActionKind } from "../auth/clientTokenAccess.js";
+import { startsAgentRun } from "../auth/clientTokenAccess.js";
 import { requestBodyRecord } from "../../utils/requestBody.js";
 import { ONE_MINUTE_MS } from "../../utils/time.js";
 import { errorMessage } from "../../utils/errors.js";
@@ -468,6 +468,10 @@ router.post(API_ROUTES.collections.refresh, async (req: Request<{ slug: string }
     badRequest(res, `collection '${collection.slug}' is not refreshable (no ingest or googleCalendar config)`);
     return;
   }
+  if (isClientTokenRequest(req) && startsAgentRun(collection.schema.ingest?.kind)) {
+    forbidden(res, "forbidden");
+    return;
+  }
   try {
     if (collection.schema.ingest) await refreshFeedCollection(collection, res);
     else await refreshCalendarCollection(collection.slug, res);
@@ -524,7 +528,7 @@ async function respondForActionKind(
     res.json(seed);
     return;
   }
-  if (isClientTokenRequest(req) && isOwnerOnlyActionKind(action.kind)) {
+  if (isClientTokenRequest(req) && startsAgentRun(action.kind)) {
     forbidden(res, "forbidden");
     return;
   }
@@ -945,6 +949,10 @@ router.get(API_ROUTES.collections.viewI18n, async (req: Request<{ slug: string }
 // real frontend can mint); clamps requested caps to what the view declared
 // so a `read`-only view can never obtain a `write` token.
 router.post(API_ROUTES.collections.viewToken, async (req: Request<{ slug: string }>, res: Response) => {
+  if (isClientTokenRequest(req)) {
+    forbidden(res, "forbidden");
+    return;
+  }
   try {
     const { slug } = req.params;
     const body = requestBodyRecord(req.body);

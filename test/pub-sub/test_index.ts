@@ -213,7 +213,7 @@ describe("pub-sub (socket.io round trip)", { timeout: SUITE_TIMEOUT_MS }, () => 
 });
 
 describe("pub-sub — a revoked token loses an open socket", { timeout: SUITE_TIMEOUT_MS }, () => {
-  const REVALIDATE_MS = 50;
+  const REVALIDATE_MS = ONE_SECOND_MS / 20;
   const accepted = new Set([VALID_TOKEN, ROTATED_TOKEN]);
   const server = http.createServer();
   createPubSub(server, { authorizeToken: (provided) => typeof provided === "string" && accepted.has(provided), revalidateIntervalMs: REVALIDATE_MS });

@@ -26,13 +26,14 @@ import {
 } from "../../server/api/auth/clientTokenStore.js";
 import { runClientTokenCommand, type ClientTokenCommandDeps } from "../../server/api/auth/clientTokenCommands.js";
 import { isAuthorizedBearer, isClientTokenRequest, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
-import { isOwnerOnlyActionKind, isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
+import { startsAgentRun, isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
 import { bearerAuth } from "../../server/api/auth/bearerAuth.js";
 import { API_ROUTES } from "../../src/config/apiRoutes.js";
 import type { Request, Response, NextFunction } from "express";
 import { __resetForTests, generateAndWriteToken } from "../../server/api/auth/token.js";
 import { makeTempDir } from "../helpers/tempDir.js";
 import { log } from "../../server/system/logger/index.js";
+import { ONE_MINUTE_MS } from "../../server/utils/time.js";
 import { isolateHome } from "../helpers/isolatedHome.js";
 
 const OWNER = "o".repeat(64);
@@ -267,7 +268,7 @@ describe("the store on disk", () => {
       "after",
     );
     writeFileSync(`${paths.storePath}.lock`, "");
-    const longAgo = new Date(nowMs - 60_000);
+    const longAgo = new Date(nowMs - ONE_MINUTE_MS);
     utimesSync(`${paths.storePath}.lock`, longAgo, longAgo);
     assert.equal(
       withClientTokenLock(paths.storePath, () => "took over", nowMs),
@@ -494,10 +495,10 @@ describe("isOwnerOnlyApiPath", () => {
   });
 });
 
-describe("isOwnerOnlyActionKind", () => {
+describe("startsAgentRun", () => {
   it("only the hidden agent run is the owner's", () => {
-    assert.equal(isOwnerOnlyActionKind("agent"), true);
-    ["chat", "mutate", "Agent", ""].forEach((kind) => assert.equal(isOwnerOnlyActionKind(kind), false));
+    assert.equal(startsAgentRun("agent"), true);
+    ["chat", "mutate", "rss", "Agent", "", undefined].forEach((kind) => assert.equal(startsAgentRun(kind), false));
   });
 });
 
