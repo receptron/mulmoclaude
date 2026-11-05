@@ -199,7 +199,7 @@ test.describe("session selection failure handling", () => {
     const rowA = page.getByTestId(`session-item-${SESSION_A.id}`);
     await expect(rowA).toBeVisible();
     // Unread rows render bold via previewClasses.
-    await expect(rowA.locator("p")).toHaveClass(/font-bold/);
+    await expect(page.getByTestId(`session-row-preview-${SESSION_A.id}`)).toHaveClass(/font-bold/);
 
     await rowA.click();
 
@@ -207,7 +207,7 @@ test.describe("session selection failure handling", () => {
     // has a signal to synchronise on, so give the failure path a beat.
     // eslint-disable-next-line sonarjs/no-fixed-wait-in-tests -- see above
     await page.waitForTimeout(500);
-    await expect(rowA.locator("p")).toHaveClass(/font-bold/);
+    await expect(page.getByTestId(`session-row-preview-${SESSION_A.id}`)).toHaveClass(/font-bold/);
     await expect(rowA).not.toHaveClass(/border-blue-500/);
     await expect(page).toHaveURL(new RegExp(SESSION_B.id));
     expect(markReadCalls).toBe(0);
