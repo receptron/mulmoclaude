@@ -23,7 +23,10 @@ the machine is not covered). The one-time-code + cookie design stays open on
 when ALL hold:
 
 - the peer address is loopback (`127.0.0.0/8`, `::1`, `::ffff:127.*`);
-- the `Host` header's hostname is one of `localhost`, `127.0.0.1`, `[::1]`
+- the request target is origin-form (`/…`), not a forward proxy's
+  absolute-form `http://host/…`;
+- there is exactly one `Host` field (Node keeps only the first of two), and
+  its hostname is one of `localhost`, `127.0.0.1`, `[::1]`
   (a permitted list: a proxy that forwards the public host is refused, and so
   is a DNS-rebinding page);
 - no proxy header is present (`Forwarded`, `X-Forwarded-*`, `X-Real-IP`,
@@ -32,7 +35,9 @@ when ALL hold:
 
 Otherwise the page is served with an empty token, which the client already
 treats as "no auth" (API calls 401, the stale-token banner offers Reload),
-and the server logs why, without the token.
+and the server logs why, without the token. The production page is sent
+`Cache-Control: no-store`, so no cache in between can replay a token-bearing
+response.
 
 ## Wiring
 

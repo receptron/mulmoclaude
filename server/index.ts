@@ -173,7 +173,12 @@ const HTML_TOKEN_PLACEHOLDER = "__MULMOCLAUDE_AUTH_TOKEN__";
 // Withheld from a page load that came through a tunnel or proxy (#3627); the
 // page then treats itself as signed out.
 function ownerTokenForPage(req: Request): string {
-  const handoff = decideOwnerTokenHandoff({ remoteAddress: req.socket.remoteAddress, headers: req.headers });
+  const handoff = decideOwnerTokenHandoff({
+    remoteAddress: req.socket.remoteAddress,
+    target: req.originalUrl,
+    headers: req.headers,
+    rawHeaders: req.rawHeaders,
+  });
   if (handoff.ok) return getCurrentToken() ?? "";
   log.warn("auth", "index.html served without the owner token: not a direct localhost load", { reason: handoff.reason, path: req.path });
   return "";
@@ -805,6 +810,8 @@ if (env.isProduction) {
     }
     html = html.replace(HTML_TOKEN_PLACEHOLDER, ownerTokenForPage(req));
     res.set("Content-Type", "text/html; charset=utf-8");
+    // The page may carry the owner token, so no proxy or browser cache may keep it.
+    res.set("Cache-Control", "no-store");
     res.send(html);
   });
 }

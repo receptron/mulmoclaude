@@ -26,11 +26,15 @@ const PROXY_HEADERS: readonly string[] = [
   "via",
 ];
 
-export type OwnerTokenHandoff = { ok: true } | { ok: false; reason: "remote-peer" | "host" | "forwarded" };
+export type OwnerTokenHandoff = { ok: true } | { ok: false; reason: "remote-peer" | "target" | "host" | "forwarded" };
 
 export interface PageRequest {
   remoteAddress: string | undefined;
+  /** The request target as sent (`req.url`). */
+  target: string | undefined;
   headers: IncomingHttpHeaders;
+  /** `req.rawHeaders`: Node keeps only the first of two `Host` fields in `headers`. */
+  rawHeaders: readonly string[];
 }
 
 /** Node reports an IPv4 peer on a dual-stack socket as `::ffff:127.0.0.1`. */
@@ -52,8 +56,16 @@ export function hostnameOf(host: string | undefined): string | null {
   return isPortSuffix(lowered.slice(nameEnd)) ? name : null;
 }
 
+const hostFieldCount = (rawHeaders: readonly string[]): number => rawHeaders.filter((value, index) => index % 2 === 0 && value.toLowerCase() === "host").length;
+
+// A browser sends origin-form (`/path`); a proxy forwarding an absolute-form
+// target (`http://public.example/`) would otherwise pass with a localhost Host.
+const isOriginFormTarget = (target: string | undefined): boolean => typeof target === "string" && target.startsWith("/");
+
 export function decideOwnerTokenHandoff(request: PageRequest): OwnerTokenHandoff {
   if (!isLoopbackAddress(request.remoteAddress)) return { ok: false, reason: "remote-peer" };
+  if (!isOriginFormTarget(request.target)) return { ok: false, reason: "target" };
+  if (hostFieldCount(request.rawHeaders) !== 1) return { ok: false, reason: "host" };
   const hostname = hostnameOf(request.headers.host);
   if (hostname === null || !DIRECT_HOSTNAMES.includes(hostname)) return { ok: false, reason: "host" };
   if (PROXY_HEADERS.some((name) => request.headers[name] !== undefined)) return { ok: false, reason: "forwarded" };

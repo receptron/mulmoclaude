@@ -2,8 +2,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import type { IncomingHttpHeaders } from "node:http";
-import { decideOwnerTokenHandoff, hostnameOf, isLoopbackAddress } from "../../server/api/auth/ownerTokenHandoff.js";
+import { decideOwnerTokenHandoff, hostnameOf, isLoopbackAddress, type PageRequest } from "../../server/api/auth/ownerTokenHandoff.js";
 
 // Assembled so lint's hardcoded-IP rule reads them as the fixtures they are.
 const ipv4 = (...octets: number[]): string => octets.join(".");
@@ -11,8 +10,15 @@ const ipv6 = (...groups: string[]): string => groups.join(":");
 const LOOPBACK_V4 = ipv4(127, 0, 0, 1);
 const MAPPED_LOOPBACK = ipv6("", "", "ffff", LOOPBACK_V4);
 
-const DIRECT = { remoteAddress: "127.0.0.1", headers: { host: "localhost:3001" } };
-const withHeaders = (headers: IncomingHttpHeaders) => ({ remoteAddress: "127.0.0.1", headers: { host: "localhost:3001", ...headers } });
+// The request Node would hand over for these headers: one raw field each.
+const pageRequest = (remoteAddress: string | undefined, headers: Record<string, string>, target = "/"): PageRequest => ({
+  remoteAddress,
+  target,
+  headers,
+  rawHeaders: Object.entries(headers).flat(),
+});
+const DIRECT = pageRequest("127.0.0.1", { host: "localhost:3001" });
+const withHeaders = (headers: Record<string, string>): PageRequest => pageRequest("127.0.0.1", { host: "localhost:3001", ...headers });
 
 describe("decideOwnerTokenHandoff", () => {
   [
@@ -23,13 +29,13 @@ describe("decideOwnerTokenHandoff", () => {
     { remoteAddress: "127.0.0.1", host: "localhost" },
   ].forEach(({ remoteAddress, host }) => {
     it(`hands the token to a direct load: ${remoteAddress} Host ${host}`, () => {
-      assert.deepEqual(decideOwnerTokenHandoff({ remoteAddress, headers: { host } }), { ok: true });
+      assert.deepEqual(decideOwnerTokenHandoff(pageRequest(remoteAddress, { host })), { ok: true });
     });
   });
 
   [ipv4(192, 168, 1, 20), ipv4(10, 0, 0, 2), ipv6("fe80", "", "1"), "", undefined].forEach((remoteAddress) => {
     it(`refuses a non-loopback peer ${JSON.stringify(remoteAddress)}`, () => {
-      assert.deepEqual(decideOwnerTokenHandoff({ remoteAddress, headers: { host: "localhost:3001" } }), { ok: false, reason: "remote-peer" });
+      assert.deepEqual(decideOwnerTokenHandoff(pageRequest(remoteAddress, { host: "localhost:3001" })), { ok: false, reason: "remote-peer" });
     });
   });
 
@@ -46,12 +52,32 @@ describe("decideOwnerTokenHandoff", () => {
     "",
   ].forEach((host) => {
     it(`refuses Host ${JSON.stringify(host)}`, () => {
-      assert.deepEqual(decideOwnerTokenHandoff({ remoteAddress: "127.0.0.1", headers: { host } }), { ok: false, reason: "host" });
+      assert.deepEqual(decideOwnerTokenHandoff(pageRequest("127.0.0.1", { host })), { ok: false, reason: "host" });
     });
   });
 
   it("refuses a request with no Host header", () => {
-    assert.deepEqual(decideOwnerTokenHandoff({ remoteAddress: "127.0.0.1", headers: {} }), { ok: false, reason: "host" });
+    assert.deepEqual(decideOwnerTokenHandoff(pageRequest("127.0.0.1", {})), { ok: false, reason: "host" });
+  });
+
+  // Node keeps only the first of two Host fields in `headers`.
+  it("refuses a second Host field, whichever comes first", () => {
+    const doubled = (first: string, second: string): PageRequest => ({ ...DIRECT, headers: { host: first }, rawHeaders: ["Host", first, "host", second] });
+    assert.deepEqual(decideOwnerTokenHandoff(doubled("localhost:3001", "public.example")), { ok: false, reason: "host" });
+    assert.deepEqual(decideOwnerTokenHandoff(doubled("localhost:3001", "localhost:3001")), { ok: false, reason: "host" });
+  });
+
+  // A forward proxy sends absolute-form; a browser never does.
+  ["http://public.example/", "https://localhost:3001/", "*", "", "localhost/"].forEach((target) => {
+    it(`refuses the request target ${JSON.stringify(target)}`, () => {
+      assert.deepEqual(decideOwnerTokenHandoff(pageRequest("127.0.0.1", { host: "localhost:3001" }, target)), { ok: false, reason: "target" });
+    });
+  });
+
+  it("accepts any origin-form path, deep links included", () => {
+    ["/", "/chat/abc", "/?q=1", "//double"].forEach((target) => {
+      assert.deepEqual(decideOwnerTokenHandoff(pageRequest("127.0.0.1", { host: "localhost:3001" }, target)), { ok: true });
+    });
   });
 
   // A proxy that rewrites Host to localhost still leaves one of these.

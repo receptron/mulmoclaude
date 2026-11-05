@@ -227,7 +227,13 @@ function startsWithProxiedPrefix(url: string | undefined): boolean {
   return PROXIED_BACKEND_PREFIXES.some((prefix) => url?.startsWith(prefix) ?? false)
 }
 
-function mulmoclaudeAuthTokenPlugin(): Plugin {
+// Only a navigation is worth a warning; every module and asset request of a
+// refused page would otherwise log the same line.
+const isPageLoad = (accept: string | undefined): boolean => accept?.includes('text/html') ?? false
+
+// Exported for `test/config/test_viteAuthTokenPlugin.ts` alone (see
+// PROXIED_BACKEND_PREFIXES on why client code cannot import this module).
+export function mulmoclaudeAuthTokenPlugin(): Plugin {
   return {
     name: 'mulmoclaude-auth-token',
     // **Dev only.** In production the built index.html keeps the
@@ -257,7 +263,15 @@ function mulmoclaudeAuthTokenPlugin(): Plugin {
           res.end(JSON.stringify({ error: 'Forbidden: backend access is loopback-only' }))
           return
         }
-        const handoff = decideOwnerTokenHandoff({ remoteAddress: req.socket.remoteAddress, headers: req.headers })
+        const handoff = decideOwnerTokenHandoff({
+          remoteAddress: req.socket.remoteAddress,
+          target: req.url,
+          headers: req.headers,
+          rawHeaders: req.rawHeaders
+        })
+        if (!handoff.ok && isPageLoad(req.headers.accept)) {
+          server.config.logger.warn(`[auth] index.html served without the token: not a direct localhost load (${handoff.reason})`)
+        }
         requestMayReceiveToken.run(handoff.ok, next)
       })
 
