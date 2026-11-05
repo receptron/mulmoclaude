@@ -108,6 +108,7 @@ import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "./workspace/paths.js";
 import { resolveClientDir } from "./utils/clientDir.js";
 import { serverError } from "./utils/httpError.js";
 import { browserVisibleOrigin } from "./utils/forwardedOrigin.js";
+import { decideOwnerTokenHandoff } from "./api/auth/ownerTokenHandoff.js";
 import { makeUuid } from "./utils/id.js";
 import { mcpToolsRouter, mcpTools, isMcpToolEnabled, MCP_TOOL_PROMPT_FILE_SOURCES } from "./agent/mcp-tools/index.js";
 import { preflightUserServers, logPreflightResult } from "./agent/mcpPreflight.js";
@@ -168,6 +169,15 @@ import { findLiveInstancePort, instanceGuardMessage, shouldStopForRunningInstanc
 import { SCHEDULE_TYPES, MISSED_RUN_POLICIES } from "@receptron/task-scheduler";
 
 const HTML_TOKEN_PLACEHOLDER = "__MULMOCLAUDE_AUTH_TOKEN__";
+
+// Withheld from a page load that came through a tunnel or proxy (#3627); the
+// page then treats itself as signed out.
+function ownerTokenForPage(req: Request): string {
+  const handoff = decideOwnerTokenHandoff({ remoteAddress: req.socket.remoteAddress, headers: req.headers });
+  if (handoff.ok) return getCurrentToken() ?? "";
+  log.warn("auth", "index.html served without the owner token: not a direct localhost load", { reason: handoff.reason, path: req.path });
+  return "";
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -784,7 +794,7 @@ if (env.isProduction) {
   const clientDir = resolveClientDir(process.env.MULMOCLAUDE_CLIENT_DIR, path.join(__dirname, "../client"));
   app.use(express.static(clientDir, { index: false }));
   const indexHtmlPath = path.join(clientDir, "index.html");
-  app.get("/{*splat}", (_req: Request, res: Response) => {
+  app.get("/{*splat}", (req: Request, res: Response) => {
     let html: string;
     try {
       html = readFileSync(indexHtmlPath, "utf-8");
@@ -793,8 +803,7 @@ if (env.isProduction) {
       serverError(res, "Internal Server Error");
       return;
     }
-    const token = getCurrentToken() ?? "";
-    html = html.replace(HTML_TOKEN_PLACEHOLDER, token);
+    html = html.replace(HTML_TOKEN_PLACEHOLDER, ownerTokenForPage(req));
     res.set("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   });
