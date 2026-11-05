@@ -14,7 +14,7 @@ Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`,
 
 #### Named client tokens (#3618)
 
-`mulmoclaude token add <name>` issues a bearer token for one bridge or script, `token list` shows them and `token revoke <name>` revokes one without restarting the server or touching the others. Client tokens are accepted on `/api/*`, `/ws/pubsub` and `/ws/chat` (`/ws/chat` for npm installs once `@mulmobridge/chat-service` ships `authorizeToken`), refused on settings, secrets, agent-starting actions and other host-management APIs, and stored as hashes in `~/.mulmoclaude/client-tokens.json`. Open sockets using a revoked token are closed within seconds. Nothing changes unless a token is issued.
+`mulmoclaude token add <name>` issues a bearer token for one bridge or script, `token list` shows them and `token revoke <name>` revokes one without restarting the server or touching the others. Client tokens are accepted on `/api/*`, `/ws/pubsub` and `/ws/chat` (`/ws/chat` through `authorizeToken`, new in `@mulmobridge/chat-service@2.1.0`), refused on settings, secrets, agent-starting actions and other host-management APIs, and stored as hashes in `~/.mulmoclaude/client-tokens.json`. Open sockets using a revoked token are closed within seconds. Nothing changes unless a token is issued. Ships `@mulmobridge/chat-service@2.1.0`.
 
 #### Environment variables for the Docker sandbox (#3617)
 
