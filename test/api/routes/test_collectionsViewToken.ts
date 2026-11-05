@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Request, Response } from "express";
 
+import { rememberRequestPrincipal } from "../../../server/api/auth/principal.js";
 import { createViewTokenHandler, type ViewTokenDeps } from "../../../server/api/routes/collections.js";
 import type { LoadedCollection } from "../../../server/workspace/collections/index.js";
 
@@ -97,5 +98,19 @@ describe("createViewTokenHandler", () => {
     assert.equal((await mint("ghost", { viewId: "board" })).status, 404);
     assert.equal((await mint("tickets", { viewId: "nope" })).status, 404);
     assert.equal((await mint("tickets", { viewId: "board" }, { mint: () => null })).status, 500);
+  });
+
+  it("403s a client-token request before minting anything", async () => {
+    const minted: string[] = [];
+    const req = fakeReq("tickets", { viewId: "board" });
+    rememberRequestPrincipal(req, { kind: "client", id: "c1", name: "phone", scopes: [] });
+    const { res, status } = fakeRes();
+    const recordMint: ViewTokenDeps["mint"] = (slug) => {
+      minted.push(slug);
+      return null;
+    };
+    await createViewTokenHandler(deps({ mint: recordMint }))(req, res);
+    assert.equal(status(), 403);
+    assert.deepEqual(minted, []);
   });
 });

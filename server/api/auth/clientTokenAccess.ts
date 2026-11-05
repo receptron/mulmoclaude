@@ -1,0 +1,57 @@
+// Which `/api/*` paths a client token may NOT call (#3618): settings, secrets,
+// and everything that changes how the host itself behaves or runs the agent
+// outside a bridge chat. A leaked client token should reach the data external
+// services read and write, not the keys to the house. Pure.
+//
+// Bridge chats (`/api/transports/…`, `/ws/chat`) stay open: a bridge is the
+// main reason to issue a client token at all. A path that runs the agent only
+// for some requests (a collection action of kind "agent") refuses client
+// tokens in its own handler, via `isClientTokenRequest`. So does minting a
+// view token: it is signed with the owner key and would outlive a revoke.
+
+// Relative to the `/api` mount, which is where `bearerAuth` sees them.
+const OWNER_ONLY_PREFIXES: readonly string[] = [
+  "/agent",
+  "/internal",
+  "/wiki/internal",
+  "/config",
+  "/secrets",
+  "/roles",
+  "/skills",
+  "/scheduler",
+  "/plugins",
+  "/hooks",
+  "/mcp",
+  "/mcp-tools",
+  "/shutdown",
+  "/remote-host",
+  "/google",
+  "/diagnostics",
+  "/sandbox",
+  "/shortcuts",
+  "/collections-registry",
+  "/chat-index",
+];
+
+/** A collection action or feed ingest of kind "agent" starts a hidden agent
+ *  run, which only the owner may do; every other kind returns or applies data. */
+export const startsAgentRun = (kind: string | undefined): boolean => kind === "agent";
+
+// Express matches routes case-insensitively and does not collapse `//`, so the
+// check folds both and strips a trailing slash; an undecodable path is treated
+// as owner-only rather than guessed at.
+function normalizeApiPath(rawPath: string): string | null {
+  try {
+    const decoded = decodeURIComponent(rawPath).toLowerCase();
+    const collapsed = decoded.replace(/\/{2,}/g, "/");
+    return collapsed.length > 1 && collapsed.endsWith("/") ? collapsed.slice(0, -1) : collapsed;
+  } catch {
+    return null;
+  }
+}
+
+export function isOwnerOnlyApiPath(rawPath: string): boolean {
+  const normalized = normalizeApiPath(rawPath);
+  if (normalized === null) return true;
+  return OWNER_ONLY_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`));
+}
