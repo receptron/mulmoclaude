@@ -1,10 +1,10 @@
 // Named client tokens (#3618): the pure rule, the store on disk, the CLI
 // commands, and the bearer check every host surface shares.
 
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
+import { chmodSync, readFileSync, statSync, utimesSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import {
   addClientToken,
@@ -17,15 +17,22 @@ import {
   serializeClientTokenStore,
   type ClientTokenRecord,
 } from "../../server/api/auth/clientTokenRule.js";
-import { clientTokensPath, createClientTokenSource, readClientTokenFile, writeClientTokenFile } from "../../server/api/auth/clientTokenStore.js";
+import {
+  clientTokensPath,
+  createClientTokenSource,
+  readClientTokenFile,
+  withClientTokenLock,
+  writeClientTokenFile,
+} from "../../server/api/auth/clientTokenStore.js";
 import { runClientTokenCommand, type ClientTokenCommandDeps } from "../../server/api/auth/clientTokenCommands.js";
-import { isAuthorizedBearer, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
-import { isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
+import { isAuthorizedBearer, isClientTokenRequest, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
+import { isOwnerOnlyActionKind, isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
 import { bearerAuth } from "../../server/api/auth/bearerAuth.js";
 import { API_ROUTES } from "../../src/config/apiRoutes.js";
 import type { Request, Response, NextFunction } from "express";
 import { __resetForTests, generateAndWriteToken } from "../../server/api/auth/token.js";
 import { makeTempDir } from "../helpers/tempDir.js";
+import { log } from "../../server/system/logger/index.js";
 import { isolateHome } from "../helpers/isolatedHome.js";
 
 const OWNER = "o".repeat(64);
@@ -202,6 +209,73 @@ describe("the store on disk", () => {
     assert.throws(() => readClientTokenFile(paths.storePath), /larger than/);
   });
 
+  it("refuses to write a store it could not read back", () => {
+    const many = Array.from({ length: 8000 }, (_, index) => issue([], `n${index}`).records[0]).filter(
+      (record): record is ClientTokenRecord => record !== undefined,
+    );
+    assert.throws(() => writeClientTokenFile(paths.storePath, many), /would exceed/);
+    assert.throws(() => statSync(paths.storePath));
+  });
+
+  it("re-reads after a chmod alone, and fails closed while unreadable", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
+    const first = issue([], "one");
+    writeClientTokenFile(paths.storePath, first.records);
+    const source = createClientTokenSource(paths.storePath);
+    assert.deepEqual(source(), first.records);
+    const { mtime } = statSync(paths.storePath);
+    chmodSync(paths.storePath, 0o000);
+    utimesSync(paths.storePath, mtime, mtime);
+    assert.deepEqual(source(), []);
+    chmodSync(paths.storePath, 0o600);
+    utimesSync(paths.storePath, mtime, mtime);
+    assert.deepEqual(source(), first.records);
+  });
+
+  it("fails closed when the store cannot even be stat'ed", { skip: process.platform === "win32" || process.getuid?.() === 0 }, () => {
+    const first = issue([], "one");
+    writeClientTokenFile(paths.storePath, first.records);
+    const source = createClientTokenSource(paths.storePath);
+    assert.deepEqual(source(), first.records);
+    const dir = path.dirname(paths.storePath);
+    const warn = mock.method(log, "warn", () => undefined);
+    chmodSync(dir, 0o000);
+    try {
+      assert.deepEqual(source(), []);
+      assert.equal(
+        warn.mock.calls.some((call) => String(call.arguments[1]).includes("unreadable")),
+        true,
+        "an unreadable store is logged, not mistaken for a missing one",
+      );
+    } finally {
+      chmodSync(dir, 0o700);
+      warn.mock.restore();
+    }
+    assert.deepEqual(source(), first.records);
+  });
+
+  it("the lock refuses a second command while one runs, and takes over a stale one", () => {
+    const nowMs = Date.now();
+    withClientTokenLock(
+      paths.storePath,
+      () => {
+        assert.throws(() => withClientTokenLock(paths.storePath, () => "inner", nowMs), /another token command is running/);
+      },
+      nowMs,
+    );
+    assert.equal(
+      withClientTokenLock(paths.storePath, () => "after", nowMs),
+      "after",
+    );
+    writeFileSync(`${paths.storePath}.lock`, "");
+    const longAgo = new Date(nowMs - 60_000);
+    utimesSync(`${paths.storePath}.lock`, longAgo, longAgo);
+    assert.equal(
+      withClientTokenLock(paths.storePath, () => "took over", nowMs),
+      "took over",
+    );
+    assert.throws(() => statSync(`${paths.storePath}.lock`));
+  });
+
   it("the server's source follows every change to the file, and fails closed on a broken one", () => {
     const source = createClientTokenSource(paths.storePath);
     assert.deepEqual(source(), []);
@@ -276,6 +350,16 @@ describe("runClientTokenCommand", () => {
       assert.equal(err.length > 0, true);
       assert.throws(() => statSync(paths.storePath));
     });
+  });
+
+  it("a held lock fails the command without touching the store", () => {
+    runClientTokenCommand(["add", "bridge"], commandHarness(paths.storePath).deps);
+    const before = readFileSync(paths.storePath, "utf8");
+    writeFileSync(`${paths.storePath}.lock`, "");
+    const { deps, err } = commandHarness(paths.storePath);
+    assert.equal(runClientTokenCommand(["revoke", "bridge"], deps), 1);
+    assert.match(err.join("\n"), /another token command is running/);
+    assert.equal(readFileSync(paths.storePath, "utf8"), before);
   });
 
   it("does not overwrite a store it cannot read", () => {
@@ -360,7 +444,6 @@ describe("isOwnerOnlyApiPath", () => {
     "attachments",
     "canvas",
     "chart",
-    "chat-index",
     "collections",
     "dashboard",
     "edit-image",
@@ -398,9 +481,23 @@ describe("isOwnerOnlyApiPath", () => {
     if (typeof value === "string") return value.startsWith("/api/") ? [value.split("/")[2] ?? ""] : [];
     return value !== null && typeof value === "object" ? Object.values(value).flatMap(routedSegments) : [];
   };
+  it("no segment is listed both open and owner-only", () => {
+    assert.deepEqual(
+      [...CLIENT_OPEN_SEGMENTS].filter((segment) => isOwnerOnlyApiPath(`/${segment}`)),
+      [],
+    );
+  });
+
   it("classifies every routed /api segment", () => {
     const unclassified = [...new Set(routedSegments(API_ROUTES))].filter((segment) => !CLIENT_OPEN_SEGMENTS.has(segment) && !isOwnerOnlyApiPath(`/${segment}`));
     assert.deepEqual(unclassified, []);
+  });
+});
+
+describe("isOwnerOnlyActionKind", () => {
+  it("only the hidden agent run is the owner's", () => {
+    assert.equal(isOwnerOnlyActionKind("agent"), true);
+    ["chat", "mutate", "Agent", ""].forEach((kind) => assert.equal(isOwnerOnlyActionKind(kind), false));
   });
 });
 
@@ -450,6 +547,17 @@ describe("bearerAuth — client tokens", () => {
 
   it("still lets the owner token through the owner-only paths", () => {
     assert.deepEqual(callMiddleware(state.owner, "/config/settings"), { nextCalled: true, statusCode: 200 });
+  });
+
+  it("marks the request as a client's so a handler can refuse agent actions", () => {
+    const req = { headers: { authorization: `Bearer ${state.client}` }, path: "/collections/todo/actions/run", method: "POST" };
+    const res = { status: () => res, json: () => res };
+    bearerAuth(req as unknown as Request, res as unknown as Response, () => undefined);
+    assert.equal(isClientTokenRequest(req), true);
+    const ownerReq = { headers: { authorization: `Bearer ${state.owner}` }, path: "/collections/todo/actions/run", method: "POST" };
+    bearerAuth(ownerReq as unknown as Request, res as unknown as Response, () => undefined);
+    assert.equal(isClientTokenRequest(ownerReq), false);
+    assert.equal(isClientTokenRequest({}), false);
   });
 
   it("refuses an unknown token with 401 everywhere", () => {

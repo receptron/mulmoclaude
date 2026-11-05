@@ -37,6 +37,11 @@ without touching the others. First of the three PRs proposed on the issue.
   `revoke` takes effect on the next request without a restart. An unreadable
   or malformed file yields no client tokens (fails closed) and logs once.
 - There is no HTTP API for the store, so a client token cannot mint tokens.
+- Collection actions of kind `agent` refuse client tokens in the handler
+  (the path alone cannot tell them apart). Open sockets are re-checked on a
+  short interval and on every chat message, so a revoke also closes them.
+- `token add|revoke` holds a lock file for the read-modify-write, and refuses
+  to write a store larger than the server will read.
 - `/ws/chat` lives in `@mulmobridge/chat-service`: it gains an optional
   `authorizeToken` dep; without it the old `tokenProvider` rule applies.
   An npm-installed launcher gets client tokens on `/ws/chat` only after that

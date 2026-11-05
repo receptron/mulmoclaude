@@ -34,6 +34,7 @@ const HARNESS_TOKEN = "harness-token-xyz";
 interface HarnessOpts {
   tokenProvider?: () => string | null;
   authorizeToken?: (token: unknown) => boolean;
+  revalidateIntervalMs?: number;
 }
 
 interface Harness {
@@ -59,6 +60,7 @@ async function startHarness(opts: HarnessOpts = {}): Promise<Harness> {
     logger: silentLogger,
     tokenProvider: opts.tokenProvider ?? (() => HARNESS_TOKEN),
     authorizeToken: opts.authorizeToken,
+    revalidateIntervalMs: opts.revalidateIntervalMs,
   });
 
   await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", () => resolve()));
@@ -469,5 +471,41 @@ describe("chat-service socket — bearer token", () => {
     accepted.delete("client-b");
     await refusedGenerically(connectClient(harness.url, { transportId: "cli", token: "client-b" }));
     await refusedGenerically(connectClient(harness.url, { transportId: "cli", token: EXPECTED }));
+  });
+
+  it("refuses a message on an open socket once its token is revoked, and drops the socket", async () => {
+    await stopHarness(harness);
+    const accepted = new Set(["client-a"]);
+    // A sweep far slower than the test, so the per-message check is what is measured.
+    harness = await startHarness({ authorizeToken: (token) => typeof token === "string" && accepted.has(token), revalidateIntervalMs: 60_000 });
+    const client = connectClient(harness.url, { transportId: "cli", token: "client-a" });
+    await waitConnect(client);
+    assert.equal((await emitMessage(client, { externalChatId: "terminal", text: "hi" })).ok, true);
+    const dropped = new Promise<string>((resolve, reject) => {
+      client.once("disconnect", (reason) => resolve(reason));
+      setTimeout(() => reject(new Error("the revoked socket was not dropped")), 2000);
+    });
+    accepted.delete("client-a");
+    assert.deepEqual(await emitMessage(client, { externalChatId: "terminal", text: "again" }), { ok: false, error: UNAUTHORIZED_MESSAGE, status: 401 });
+    assert.equal(await dropped, "io server disconnect");
+  });
+
+  it("drops an open, idle socket on the sweep after its token is revoked", async () => {
+    await stopHarness(harness);
+    const accepted = new Set(["client-a", "client-b"]);
+    harness = await startHarness({ authorizeToken: (token) => typeof token === "string" && accepted.has(token), revalidateIntervalMs: 50 });
+    const revoked = connectClient(harness.url, { transportId: "cli", token: "client-a" });
+    const kept = connectClient(harness.url, { transportId: "cli2", token: "client-b" });
+    await waitConnect(revoked);
+    await waitConnect(kept);
+    const dropped = new Promise<string>((resolve, reject) => {
+      revoked.once("disconnect", (reason) => resolve(reason));
+      setTimeout(() => reject(new Error("the revoked socket was not dropped")), 2000);
+    });
+    accepted.delete("client-a");
+    assert.equal(await dropped, "io server disconnect");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.equal(kept.connected, true);
+    kept.disconnect();
   });
 });

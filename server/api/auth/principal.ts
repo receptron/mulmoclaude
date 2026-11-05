@@ -21,3 +21,13 @@ export function resolveTokenPrincipal(provided: unknown): Principal | null {
 }
 
 export const isAuthorizedBearer = (provided: unknown): boolean => resolveTokenPrincipal(provided) !== null;
+
+// Who `bearerAuth` let in, for a handler whose rule depends on more than the
+// path. A WeakMap so a finished request leaves nothing behind.
+const requestPrincipals = new WeakMap<object, Principal>();
+
+export function rememberRequestPrincipal(req: object, principal: Principal): void {
+  requestPrincipals.set(req, principal);
+}
+
+export const isClientTokenRequest = (req: object): boolean => requestPrincipals.get(req)?.kind === "client";

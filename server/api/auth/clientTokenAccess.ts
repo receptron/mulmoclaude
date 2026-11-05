@@ -4,7 +4,9 @@
 // services read and write, not the keys to the house. Pure.
 //
 // Bridge chats (`/api/transports/…`, `/ws/chat`) stay open: a bridge is the
-// main reason to issue a client token at all.
+// main reason to issue a client token at all. A path that runs the agent only
+// for some requests (a collection action of kind "agent") refuses client
+// tokens in its own handler, via `isClientTokenRequest`.
 
 // Relative to the `/api` mount, which is where `bearerAuth` sees them.
 const OWNER_ONLY_PREFIXES: readonly string[] = [
@@ -26,7 +28,12 @@ const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/sandbox",
   "/shortcuts",
   "/collections-registry",
+  "/chat-index",
 ];
+
+/** A collection action of kind "agent" starts a hidden agent run, which only
+ *  the owner may do; every other kind just returns or applies data. */
+export const isOwnerOnlyActionKind = (kind: string): boolean => kind === "agent";
 
 // Express matches routes case-insensitively and does not collapse `//`, so the
 // check folds both and strips a trailing slash; an undecodable path is treated

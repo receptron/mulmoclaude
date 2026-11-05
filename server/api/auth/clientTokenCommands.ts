@@ -3,7 +3,7 @@
 
 import { addClientToken, revokeClientToken, type ClientTokenRecord } from "./clientTokenRule.js";
 import { errorMessage } from "../../utils/errors.js";
-import { readClientTokenFile, writeClientTokenFile } from "./clientTokenStore.js";
+import { readClientTokenFile, withClientTokenLock, writeClientTokenFile } from "./clientTokenStore.js";
 
 export interface ClientTokenCommandDeps {
   storePath: string;
@@ -71,14 +71,18 @@ function dispatch(args: readonly string[], records: readonly ClientTokenRecord[]
   return null;
 }
 
+function runLocked(args: readonly string[], deps: ClientTokenCommandDeps): number {
+  const { records, droppedCount } = readClientTokenFile(deps.storePath);
+  if (droppedCount > 0) deps.printError(`${deps.storePath}: ${droppedCount} invalid entries are ignored and will be dropped on the next change.`);
+  const exitCode = dispatch(args, records, deps);
+  if (exitCode !== null) return exitCode;
+  CLIENT_TOKEN_USAGE.forEach((line) => deps.printError(line));
+  return EXIT_USAGE;
+}
+
 export function runClientTokenCommand(args: readonly string[], deps: ClientTokenCommandDeps): number {
   try {
-    const { records, droppedCount } = readClientTokenFile(deps.storePath);
-    if (droppedCount > 0) deps.printError(`${deps.storePath}: ${droppedCount} invalid entries are ignored and will be dropped on the next change.`);
-    const exitCode = dispatch(args, records, deps);
-    if (exitCode !== null) return exitCode;
-    CLIENT_TOKEN_USAGE.forEach((line) => deps.printError(line));
-    return EXIT_USAGE;
+    return withClientTokenLock(deps.storePath, () => runLocked(args, deps));
   } catch (err) {
     deps.printError(errorMessage(err));
     return EXIT_FAILURE;

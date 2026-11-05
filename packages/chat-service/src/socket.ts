@@ -33,7 +33,8 @@ import { Server as SocketServer } from "socket.io";
 import type { Socket } from "socket.io";
 import type { RelayFn } from "./relay.js";
 import type { PushQueue } from "./push-queue.js";
-import { isAuthorizedToken } from "@mulmoclaude/common/token-guard";
+import { isAuthorizedToken, UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
+import { isRecord } from "@mulmoclaude/common";
 import { validateHandshakeWith, type BridgeOptions } from "./handshake.js";
 import type { Attachment, Logger } from "./types.js";
 
@@ -70,6 +71,8 @@ export interface ChatSocketDeps {
   tokenProvider: () => string | null;
   /** When set, decides which handshake tokens pass instead of `tokenProvider`. */
   authorizeToken?: ((token: unknown) => boolean) | undefined;
+  /** Test seam for how often open sockets are re-checked. */
+  revalidateIntervalMs?: number | undefined;
 }
 
 export interface ChatSocketHandle {
@@ -124,6 +127,23 @@ function warnRefusedOnce(logger: Logger, socket: Socket, error: string): void {
   logger.warn("chat-service", "handshake refused", { address: socket.handshake.address, error });
 }
 
+// A token is checked at the handshake, and a revoked one must not keep an
+// already-open socket: each message re-checks it, and a periodic sweep drops
+// sockets that are only receiving pushes.
+const REVALIDATE_INTERVAL_MS = 5_000;
+
+const handshakeToken = (socket: Socket): unknown => (isRecord(socket.handshake.auth) ? socket.handshake.auth.token : undefined);
+
+function startRevalidation(server: http.Server, io: SocketServer, authorizeToken: (token: unknown) => boolean, intervalMs: number): void {
+  const timer = setInterval(() => {
+    io.sockets.sockets.forEach((socket) => {
+      if (!authorizeToken(handshakeToken(socket))) socket.disconnect(true);
+    });
+  }, intervalMs);
+  timer.unref();
+  server.once("close", () => clearInterval(timer));
+}
+
 export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): ChatSocketHandle {
   const { relay, queue, logger, tokenProvider } = deps;
   const authorizeToken = deps.authorizeToken ?? ((token: unknown): boolean => isAuthorizedToken(token, tokenProvider()));
@@ -154,6 +174,8 @@ export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): Cha
     socket.data.bridgeOptions = result.options;
     next();
   });
+
+  startRevalidation(server, io, authorizeToken, deps.revalidateIntervalMs ?? REVALIDATE_INTERVAL_MS);
 
   io.on("connection", (socket: Socket) => {
     const transportId: string = socket.data.transportId;
@@ -198,6 +220,11 @@ export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): Cha
           socketId: socket.id,
           transportId,
         });
+        return;
+      }
+      if (!authorizeToken(handshakeToken(socket))) {
+        ack({ ok: false, error: UNAUTHORIZED_MESSAGE, status: 401 });
+        socket.disconnect(true);
         return;
       }
 

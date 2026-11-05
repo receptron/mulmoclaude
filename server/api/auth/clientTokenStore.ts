@@ -2,13 +2,14 @@
 // beside `secrets/` and outside the workspace — the workspace is the agent's
 // data space and may be synced, and this file decides who may call the API.
 
-import { closeSync, fstatSync, mkdirSync, openSync, readSync, statSync, type Stats } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { writeFileAtomicSync } from "../../utils/files/atomic.js";
 import { log } from "../../system/logger/index.js";
 import { errorMessage } from "../../utils/errors.js";
 import { isErrorWithCode } from "../../utils/types.js";
+import { ONE_SECOND_MS } from "../../utils/time.js";
 import { parseClientTokenStore, serializeClientTokenStore, type ClientTokenRecord } from "./clientTokenRule.js";
 
 const STORE_FILE_MODE = 0o600;
@@ -46,18 +47,61 @@ export function readClientTokenFile(filePath: string): { records: ClientTokenRec
   }
 }
 
+/** Refuses a store it could not read back, rather than locking every client out. */
 export function writeClientTokenFile(filePath: string, records: readonly ClientTokenRecord[]): void {
+  const text = serializeClientTokenStore(records);
+  if (Buffer.byteLength(text, "utf8") > STORE_MAX_BYTES) throw new Error(`${filePath}: the store would exceed ${STORE_MAX_BYTES} bytes`);
   mkdirSync(path.dirname(filePath), { recursive: true, mode: STORE_DIR_MODE });
-  writeFileAtomicSync(filePath, serializeClientTokenStore(records), { mode: STORE_FILE_MODE });
+  writeFileAtomicSync(filePath, text, { mode: STORE_FILE_MODE });
 }
 
-const statKey = (stats: Stats | null): string => (stats === null ? "missing" : `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}`);
+// A lock left by a killed command is taken over after this long.
+const LOCK_STALE_MS = 30 * ONE_SECOND_MS;
 
-function statOrNull(filePath: string): Stats | null {
+function isStaleLock(lockPath: string, nowMs: number): boolean {
   try {
-    return statSync(filePath);
+    return nowMs - statSync(lockPath).mtimeMs > LOCK_STALE_MS;
   } catch {
-    return null;
+    return true;
+  }
+}
+
+function acquireLock(lockPath: string, nowMs: number): number {
+  try {
+    return openSync(lockPath, "wx", STORE_FILE_MODE);
+  } catch (err) {
+    if (!isErrorWithCode(err) || err.code !== "EEXIST" || !isStaleLock(lockPath, nowMs)) {
+      throw new Error(`${lockPath}: another token command is running; retry once it finishes`);
+    }
+    rmSync(lockPath, { force: true });
+    return openSync(lockPath, "wx", STORE_FILE_MODE);
+  }
+}
+
+/** Runs a read-modify-write of the store with no other token command in between,
+ *  so two commands cannot drop each other's add or undo each other's revoke. */
+export function withClientTokenLock<T>(filePath: string, run: () => T, nowMs: number = Date.now()): T {
+  mkdirSync(path.dirname(filePath), { recursive: true, mode: STORE_DIR_MODE });
+  const lockPath = `${filePath}.lock`;
+  const handle = acquireLock(lockPath, nowMs);
+  try {
+    return run();
+  } finally {
+    closeSync(handle);
+    rmSync(lockPath, { force: true });
+  }
+}
+
+const MISSING_KEY = "missing";
+
+// `ctimeMs` so a chmod alone is noticed. Any stat failure other than ENOENT
+// gets its own key and goes on to the read, which logs why it failed.
+function statKey(filePath: string): string {
+  try {
+    const stats = statSync(filePath);
+    return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeMs}:${stats.ctimeMs}`;
+  } catch (err) {
+    return isMissing(err) ? MISSING_KEY : `stat-error:${isErrorWithCode(err) ? err.code : "unknown"}`;
   }
 }
 
@@ -77,9 +121,9 @@ function loadForServer(filePath: string): ClientTokenRecord[] {
 export function createClientTokenSource(filePath: string): () => readonly ClientTokenRecord[] {
   const cache: { key: string | null; records: readonly ClientTokenRecord[] } = { key: null, records: [] };
   return () => {
-    const key = statKey(statOrNull(filePath));
+    const key = statKey(filePath);
     if (key !== cache.key) {
-      cache.records = key === "missing" ? [] : loadForServer(filePath);
+      cache.records = key === MISSING_KEY ? [] : loadForServer(filePath);
       cache.key = key;
     }
     return cache.records;

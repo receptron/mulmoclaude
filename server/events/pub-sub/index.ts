@@ -3,6 +3,7 @@ import { Server as IOServer, type Socket } from "socket.io";
 
 import { UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
 import { log } from "../../system/logger/index.js";
+import { ONE_SECOND_MS } from "../../utils/time.js";
 import { isAuthorizedPubSubHandshake } from "./handshakeAuth.js";
 
 export interface IPubSub {
@@ -14,6 +15,22 @@ export interface PubSubOptions {
   /** Whether a handshake's token is accepted; refuses everything until the
    *  server has a token of its own. */
   authorizeToken: (token: unknown) => boolean;
+  /** Test seam for how often open sockets are re-checked. */
+  revalidateIntervalMs?: number | undefined;
+}
+
+// The token is checked at the handshake; this re-checks open sockets so a
+// revoked client token stops receiving events without waiting to reconnect.
+const REVALIDATE_INTERVAL_MS = 5 * ONE_SECOND_MS;
+
+function startRevalidation(server: http.Server, ioServer: IOServer, authorizeToken: (token: unknown) => boolean, intervalMs: number): void {
+  const timer = setInterval(() => {
+    ioServer.sockets.sockets.forEach((socket) => {
+      if (!isAuthorizedPubSubHandshake(socket.handshake.auth, authorizeToken)) socket.disconnect(true);
+    });
+  }, intervalMs);
+  timer.unref();
+  server.once("close", () => clearInterval(timer));
 }
 
 const logRoomError =
@@ -81,6 +98,7 @@ export function createPubSub(server: http.Server, options: PubSubOptions): IPubS
     next(new Error(UNAUTHORIZED_MESSAGE));
   });
 
+  startRevalidation(server, ioServer, options.authorizeToken, options.revalidateIntervalMs ?? REVALIDATE_INTERVAL_MS);
   ioServer.on("connection", bindRoomEvents);
 
   return {

@@ -25,7 +25,7 @@
 //   is then refused (403) on the owner-only paths in `./clientTokenAccess.ts`.
 
 import type { Request, Response, NextFunction } from "express";
-import { resolveTokenPrincipal } from "./principal.js";
+import { rememberRequestPrincipal, resolveTokenPrincipal } from "./principal.js";
 import { isOwnerOnlyApiPath } from "./clientTokenAccess.js";
 import { UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
 import { forbidden, unauthorized } from "../../utils/httpError.js";
@@ -51,5 +51,6 @@ export function bearerAuth(req: Request, res: Response, next: NextFunction): voi
     forbidden(res, "forbidden");
     return;
   }
+  rememberRequestPrincipal(req, principal);
   next();
 }
