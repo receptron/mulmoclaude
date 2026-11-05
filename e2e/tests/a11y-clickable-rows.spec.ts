@@ -37,8 +37,9 @@ test.describe("session-history row keyboard contract", () => {
     await expect(row).not.toHaveAttribute("role", /./);
     await expect(row).not.toHaveAttribute("tabindex", /./);
 
-    const nestedControls = await row.evaluate((rowEl) => rowEl.querySelectorAll("button button, [role=button] button").length);
-    expect(nestedControls).toBe(0);
+    // A button may hold only phrasing content, so no block element or second control inside it.
+    const invalidButtonContent = await row.evaluate((rowEl) => rowEl.querySelectorAll("button :is(button, p, div), [role=button] button").length);
+    expect(invalidButtonContent).toBe(0);
 
     const open = page.getByTestId(`session-row-open-${SESSION_A.id}`);
     expect(await open.evaluate((element) => element.tagName)).toBe("BUTTON");

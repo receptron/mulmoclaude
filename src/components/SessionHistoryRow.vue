@@ -37,9 +37,13 @@
         :aria-current="selected ? 'true' : undefined"
         :data-testid="`session-row-open-${session.id}`"
       >
-        <p class="flex-1 min-w-0" :class="[previewClasses, hasVisibleSummary ? 'line-clamp-2' : 'truncate']">
+        <span
+          class="flex-1 min-w-0"
+          :class="[previewClasses, hasVisibleSummary ? 'line-clamp-2' : 'block truncate']"
+          :data-testid="`session-row-preview-${session.id}`"
+        >
           {{ primaryText }}
-        </p>
+        </span>
         <span v-if="session.isRunning" class="flex-shrink-0 flex items-center mt-0.5" :aria-label="t('sessionHistoryPanel.running')">
           <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
         </span>
