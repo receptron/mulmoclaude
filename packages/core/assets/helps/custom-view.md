@@ -70,6 +70,7 @@ window.__MC_VIEW = {
   onSearchQueryChange: (cb) => unsubscribe, // fires when the user types there
   openItem: (id, mode) => void, // open a record in the host's panel — see "Opening a record"
   startChat: (prompt, role) => void, // start a new chat — draft, or sent when the view declares allowSendChat; see "Starting a chat"
+  fields: { status: { type: "enum", values: ["open", "done"] } }, // schema enum values — see "Enum choices"
 };
 ```
 
@@ -271,6 +272,26 @@ async function resolveImages(paths, onResolved, workers = 3) {
   file, goes stale the moment a record's image changes, and needs manual
   regeneration — this endpoint (or an https URL field) is always the
   better answer.
+
+### Enum choices — `fields`
+
+`__MC_VIEW.fields` carries the `values` of every top-level `enum` field in this
+collection's `schema.json`, keyed by field name:
+`{ <field>: { type: "enum", values: [...] } }`. Build dropdowns, filter chips
+and kanban columns from it instead of hard-coding the list — then adding a value
+to the schema shows up in the view without touching the HTML.
+
+```js
+const FALLBACK_STATUSES = ["open", "done"]; // only for an older host that sends no `fields`
+const statuses = window.__MC_VIEW.fields?.status?.values ?? FALLBACK_STATUSES;
+select.replaceChildren(...statuses.map((value) => new Option(value, value)));
+```
+
+- Only `enum` fields appear (not `ref`, not enums inside a `table`). A schema
+  with no enum fields gives `{}`.
+- It is a snapshot taken when the view opens. `onChange` re-fetches records,
+  not `fields`; a schema edit reaches the view the next time it is opened.
+- Always read it with `?.` and a fallback, as above.
 
 ### Staying live — `onChange`
 

@@ -155,6 +155,23 @@ describe("buildCustomViewSrcdoc", () => {
       assert.match(out, /\\u003c\/script>/);
     });
   });
+
+  describe("field metadata injection (#2169)", () => {
+    it("emits __MC_VIEW.fields with each enum's values when the boot carries them", () => {
+      const out = buildCustomViewSrcdoc("<head></head>", { ...boot, fields: { status: { type: "enum", values: ["要レビュー", "確認済み"] } } });
+      assert.match(out, /"fields":\{"status":\{"type":"enum","values":\["要レビュー","確認済み"\]\}\}/);
+    });
+
+    it("emits an empty fields object when the boot omits it", () => {
+      const out = buildCustomViewSrcdoc("<head></head>", boot);
+      assert.match(out, /"fields":\{\}/);
+    });
+
+    it("escapes < in enum values so a hostile value can't break out of the bootstrap <script>", () => {
+      const out = buildCustomViewSrcdoc("<head></head>", { ...boot, fields: { status: { type: "enum", values: ["</script><b>"] } } });
+      assert.equal(out.match(/<\/script>/gi)?.length, 1, "only the bootstrap's own closing </script> may appear");
+    });
+  });
 });
 
 // ── The bridge, actually running ──

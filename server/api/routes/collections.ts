@@ -10,7 +10,7 @@
 
 import { Router, Request, Response, NextFunction } from "express";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
-import { actionVisible } from "@mulmoclaude/core/collection";
+import { actionVisible, buildCustomViewFields } from "@mulmoclaude/core/collection";
 import {
   collectionWritable,
   computeCollectionIcon,
@@ -950,14 +950,20 @@ router.post(API_ROUTES.collections.viewToken, async (req: Request<{ slug: string
     }
     const resolved = await resolveCustomViewOr404(slug, viewId, res);
     if (!resolved) return;
-    const { view } = resolved;
+    const { collection, view } = resolved;
     const granted = clampCapabilities(view.capabilities, parseCapabilities(body.capabilities));
     const minted = mintViewToken(slug, granted);
     if (!minted) {
       serverError(res, "view token unavailable (server not ready)");
       return;
     }
-    res.json({ token: minted.token, exp: minted.exp, dataUrl: API_ROUTES.collections.viewData.replace(":slug", slug), capabilities: granted });
+    res.json({
+      token: minted.token,
+      exp: minted.exp,
+      dataUrl: API_ROUTES.collections.viewData.replace(":slug", slug),
+      capabilities: granted,
+      fields: buildCustomViewFields(collection.schema),
+    });
   } catch (err) {
     log.warn("collections", "view-token mint failed", { slug: singleLineForLog(req.params.slug), error: errorMessage(err) });
     serverError(res, errorMessage(err));

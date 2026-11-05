@@ -33,7 +33,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
 import { useCollectionI18n } from "../lang";
-import { customViewSendsChat, errorMessage } from "@mulmoclaude/core/collection";
+import { customViewFieldsFrom, customViewSendsChat, errorMessage } from "@mulmoclaude/core/collection";
 import type { CollectionCustomView } from "@mulmoclaude/core/collection";
 import { useCollectionUi } from "../scopedUi";
 import { decideSearchChannelClaim, type SearchChannelState } from "../searchChannelPolicy";
@@ -206,6 +206,7 @@ async function load(): Promise<void> {
       origin: window.location.origin,
       locale: i18nBoot.locale,
       dict: i18nBoot.dict,
+      fields: customViewFieldsFrom(mint.data.fields),
     });
   } catch (err) {
     if (!stale()) error.value = errorMessage(err);
