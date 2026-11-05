@@ -18,10 +18,10 @@ without the optional `firebase` peer.
 ## BREAKING — release note
 
 `@mulmoclaude/core/remote-host` no longer exports `commandsCollection` / `hostDoc`
-(import them from `@mulmoclaude/core/remote-host/server`). No version is bumped here; the next
-core release MUST be a major (`6.0.0`), done in its own `chore(release)` PR, and in that PR every
-consumer range MUST be swept to `^6.0.0` per the internal-dep-range rule in `CLAUDE.md`:
-the launcher (`packages/mulmoclaude`) and every plugin's `peerDependencies` + `devDependencies`.
+(import them from `@mulmoclaude/core/remote-host/server`). Core is bumped to `6.0.0` in this PR
+(the publish-drift gate requires a bump whenever core's exports change), and every consumer range
+is swept to `^6.0.0`: the launcher (`packages/mulmoclaude`) and every plugin's
+`peerDependencies` + `devDependencies`. Publishing 6.0.0 and the plugins is a separate step.
 
 ## Known importers
 
