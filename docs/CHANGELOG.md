@@ -8,7 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
-Ships `@mulmoclaude/accounting-plugin@4.0.2`, `@mulmoclaude/chart-plugin@4.6.2`, `@mulmoclaude/collection-plugin@5.5.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@6.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@4.1.0`, `@mulmoclaude/html-plugin@5.2.0`, `@mulmoclaude/markdown-plugin@5.2.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@5.5.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+## [2.11.0] - 2026-11-06
+
+**Each bridge or script can hold its own named token, revocable on its own; host environment variables can reach the
+Docker sandbox by name; custom views get a collection's enum choices; and a session's role icon toggles its bookmark.**
+
+Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@6.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ### Added
 
@@ -23,6 +28,19 @@ passes a docker-style env file. Values never appear in the docker command line; 
 through a pipe, never a copy on disk (not supported on Windows hosts yet), and a file inside the workspace or any other directory the sandbox mounts is refused. The variables
 the sandbox and its entrypoint use cannot be overridden. See `docs/sandbox-credentials.md`.
 
+#### Custom views receive a collection's enum choices (#2169, PR #3625)
+
+A custom view (`views/*.html`) now finds every top-level `enum` field of its collection in
+`window.__MC_VIEW.fields` (`{ status: { type: "enum", values: [...] } }`), so a dropdown, filter or kanban column can
+follow `schema.json` instead of a hard-coded list. It is always present (`{}` when there are none), and existing views
+are unaffected. `ref` choices are not covered yet. Ships in `@mulmoclaude/core@6.0.0` and
+`@mulmoclaude/collection-plugin@6.0.0`.
+
+#### Clicking a session's role icon toggles its bookmark (#1685, PR #3624)
+
+In the session history, clicking a row's role icon bookmarks or unbookmarks that session instead of opening it; the rest
+of the row still opens it. Keyboard and screen-reader users keep the `…` menu item.
+
 ### Changed
 
 #### `@mulmoclaude/core/remote-host` loads without `firebase` — breaking, core 6.0.0 (#3266)
@@ -30,6 +48,9 @@ the sandbox and its entrypoint use cannot be overridden. See `docs/sandbox-crede
 `commandsCollection` and `hostDoc` are no longer exported from `@mulmoclaude/core/remote-host`; import them from
 `@mulmoclaude/core/remote-host/server`. The `./remote-host` entry now loads with the optional `firebase` peer absent, as
 a browser-safe entry should. Nothing in MulmoClaude or MulmoTerminal imported the two helpers from the old path.
+
+The seven plugins that take core as a peer (`accounting`, `chart`, `collection`, `google`, `html`, `markdown`,
+`mulmoscript`) move their peer range to `^6.0.0` and therefore take a major version each; their own APIs are unchanged.
 
 ## [2.10.0] - 2026-10-26
 
