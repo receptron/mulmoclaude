@@ -23,6 +23,14 @@ passes a docker-style env file. Values never appear in the docker command line; 
 through a pipe, never a copy on disk (not supported on Windows hosts yet), and a file inside the workspace or any other directory the sandbox mounts is refused. The variables
 the sandbox and its entrypoint use cannot be overridden. See `docs/sandbox-credentials.md`.
 
+### Changed
+
+#### `@mulmoclaude/core/remote-host` loads without `firebase` — breaking, core 6.0.0 (#3266)
+
+`commandsCollection` and `hostDoc` are no longer exported from `@mulmoclaude/core/remote-host`; import them from
+`@mulmoclaude/core/remote-host/server`. The `./remote-host` entry now loads with the optional `firebase` peer absent, as
+a browser-safe entry should. Nothing in MulmoClaude or MulmoTerminal imported the two helpers from the old path.
+
 ## [2.10.0] - 2026-10-26
 
 **A file the workspace has been made to point outside of is no longer read or written: the file explorer, artifact
