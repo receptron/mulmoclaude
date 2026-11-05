@@ -4,6 +4,7 @@ import http from "node:http";
 import { AddressInfo } from "node:net";
 import WebSocket from "ws";
 import { io as connect, type Socket } from "socket.io-client";
+import { isAuthorizedToken } from "@mulmoclaude/common/token-guard";
 import { createPubSub, type IPubSub } from "../../server/events/pub-sub/index.js";
 import { log } from "../../server/system/logger/index.js";
 import { ONE_SECOND_MS } from "../../server/utils/time.js";
@@ -36,7 +37,7 @@ describe("pub-sub (socket.io round trip)", { timeout: SUITE_TIMEOUT_MS }, () => 
 
   before(async () => {
     server = http.createServer();
-    pubsub = createPubSub(server, { tokenProvider: () => serverToken });
+    pubsub = createPubSub(server, { authorizeToken: (provided) => isAuthorizedToken(provided, serverToken) });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const { port } = server.address() as AddressInfo;
     url = `http://127.0.0.1:${port}`;
@@ -208,5 +209,48 @@ describe("pub-sub (socket.io round trip)", { timeout: SUITE_TIMEOUT_MS }, () => 
         raw.close();
       }
     });
+  });
+});
+
+describe("pub-sub — a revoked token loses an open socket", { timeout: SUITE_TIMEOUT_MS }, () => {
+  const REVALIDATE_MS = ONE_SECOND_MS / 20;
+  const accepted = new Set([VALID_TOKEN, ROTATED_TOKEN]);
+  const server = http.createServer();
+  createPubSub(server, { authorizeToken: (provided) => typeof provided === "string" && accepted.has(provided), revalidateIntervalMs: REVALIDATE_MS });
+
+  before(async () => {
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  });
+  after(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  async function open(token: string): Promise<Socket> {
+    const { port } = server.address() as AddressInfo;
+    const socket = connect(`http://127.0.0.1:${port}`, { path: "/ws/pubsub", transports: ["websocket"], reconnection: false, auth: { token } });
+    await new Promise<void>((resolve, reject) => {
+      socket.once("connect", () => resolve());
+      socket.once("connect_error", reject);
+    });
+    return socket;
+  }
+
+  it("drops the revoked socket and keeps the other", async () => {
+    const revoked = await open(ROTATED_TOKEN);
+    const kept = await open(VALID_TOKEN);
+    try {
+      const dropped = new Promise<string>((resolve, reject) => {
+        revoked.once("disconnect", (reason) => resolve(reason));
+        setTimeout(() => reject(new Error("the revoked socket was not dropped")), 2 * ONE_SECOND_MS);
+      });
+      accepted.delete(ROTATED_TOKEN);
+      assert.equal(await dropped, "io server disconnect");
+      await new Promise((resolve) => setTimeout(resolve, REVALIDATE_MS * 3));
+      assert.equal(kept.connected, true);
+    } finally {
+      // An open socket keeps `server.close()` waiting, which turns a red test into a hung run.
+      revoked.disconnect();
+      kept.disconnect();
+    }
   });
 });

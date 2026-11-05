@@ -63,6 +63,8 @@ import {
 import { clampImageMaxEdge, clampLimit, clampOffset, normalizeFields, normalizeMutate } from "@mulmoclaude/core/remote-view";
 import { resolveThumbnail } from "../../utils/files/thumbnail-store.js";
 import { badRequest, notFound, conflict, forbidden, methodNotAllowed, serverError, serviceUnavailable, type ApiResponse } from "../../utils/httpError.js";
+import { isClientTokenRequest } from "../auth/principal.js";
+import { startsAgentRun } from "../auth/clientTokenAccess.js";
 import { requestBodyRecord } from "../../utils/requestBody.js";
 import { ONE_MINUTE_MS } from "../../utils/time.js";
 import { errorMessage } from "../../utils/errors.js";
@@ -466,6 +468,10 @@ router.post(API_ROUTES.collections.refresh, async (req: Request<{ slug: string }
     badRequest(res, `collection '${collection.slug}' is not refreshable (no ingest or googleCalendar config)`);
     return;
   }
+  if (isClientTokenRequest(req) && startsAgentRun(collection.schema.ingest?.kind)) {
+    forbidden(res, "forbidden");
+    return;
+  }
   try {
     if (collection.schema.ingest) await refreshFeedCollection(collection, res);
     else await refreshCalendarCollection(collection.slug, res);
@@ -513,14 +519,17 @@ router.post(API_ROUTES.collections.calendarPush, async (req: Request<{ slug: str
 // 409 on a double-dispatch (the stamp-at-dispatch guard); 503 on a
 // cap-miss / launch failure so the button un-sticks and reads honest.
 async function respondForActionKind(
+  req: Request,
   res: ApiResponse<ActionRunResponse>,
-  collection: LoadedCollection,
-  action: CollectionSeededAction,
-  seed: ActionSeedResponse,
-  itemId?: string | undefined,
+  dispatch: { collection: LoadedCollection; action: CollectionSeededAction; seed: ActionSeedResponse; itemId?: string | undefined },
 ): Promise<void> {
+  const { collection, action, seed, itemId } = dispatch;
   if (action.kind !== "agent") {
     res.json(seed);
+    return;
+  }
+  if (isClientTokenRequest(req) && startsAgentRun(action.kind)) {
+    forbidden(res, "forbidden");
     return;
   }
   const outcome = await dispatchAgentAction({ collection, action, seed: seed.prompt, itemId });
@@ -618,7 +627,7 @@ router.post(
         kind: action.kind,
       });
       const seed = { prompt: buildActionSeedPrompt(record, template, promptPathsFor(collection, workspacePath)), role: action.role };
-      await respondForActionKind(res, collection, action, seed, req.params.itemId);
+      await respondForActionKind(req, res, { collection, action, seed, itemId: req.params.itemId });
     } catch (err) {
       log.warn("collections", "action seed failed", {
         slug: collection.slug,
@@ -665,7 +674,7 @@ router.post(API_ROUTES.collections.collectionAction, async (req: Request<{ slug:
       serverError(res, `template '${action.template}' for action '${action.id}' could not be read`);
       return;
     }
-    await respondForActionKind(res, collection, action, seed);
+    await respondForActionKind(req, res, { collection, action, seed });
   } catch (err) {
     log.warn("collections", "collection action seed failed", {
       slug: collection.slug,
@@ -940,6 +949,10 @@ router.get(API_ROUTES.collections.viewI18n, async (req: Request<{ slug: string }
 // real frontend can mint); clamps requested caps to what the view declared
 // so a `read`-only view can never obtain a `write` token.
 router.post(API_ROUTES.collections.viewToken, async (req: Request<{ slug: string }>, res: Response) => {
+  if (isClientTokenRequest(req)) {
+    forbidden(res, "forbidden");
+    return;
+  }
   try {
     const { slug } = req.params;
     const body = requestBodyRecord(req.body);

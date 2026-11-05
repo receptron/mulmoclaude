@@ -17,7 +17,8 @@
 //   the room drains its transport's queue on connect.
 //
 // Auth: the handshake is refused unless `auth.token` passes the shared
-// bearer rule against `tokenProvider()` (see ./handshake.ts). The refusal
+// bearer rule against `tokenProvider()`, or `authorizeToken` when the host
+// supplies one (see ./handshake.ts). The refusal
 // is the same generic `unauthorized` every other bearer surface sends, and
 // `tokenProvider` is required so a chat socket is never open by accident.
 //
@@ -32,7 +33,9 @@ import { Server as SocketServer } from "socket.io";
 import type { Socket } from "socket.io";
 import type { RelayFn } from "./relay.js";
 import type { PushQueue } from "./push-queue.js";
-import { validateHandshake, type BridgeOptions } from "./handshake.js";
+import { isAuthorizedToken, UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
+import { isRecord } from "@mulmoclaude/common";
+import { validateHandshakeWith, type BridgeOptions } from "./handshake.js";
 import type { Attachment, Logger } from "./types.js";
 
 export const CHAT_SOCKET_PATH = "/ws/chat";
@@ -66,6 +69,10 @@ export interface ChatSocketDeps {
   /** Current bearer token the handshake must carry. Null means
    *  bootstrap in progress — refuse everything. */
   tokenProvider: () => string | null;
+  /** When set, decides which handshake tokens pass instead of `tokenProvider`. */
+  authorizeToken?: ((token: unknown) => boolean) | undefined;
+  /** Test seam for how often open sockets are re-checked. */
+  revalidateIntervalMs?: number | undefined;
 }
 
 export interface ChatSocketHandle {
@@ -120,8 +127,26 @@ function warnRefusedOnce(logger: Logger, socket: Socket, error: string): void {
   logger.warn("chat-service", "handshake refused", { address: socket.handshake.address, error });
 }
 
+// A token is checked at the handshake, and a revoked one must not keep an
+// already-open socket: each message re-checks it, and a periodic sweep drops
+// sockets that are only receiving pushes.
+const REVALIDATE_INTERVAL_MS = 5_000;
+
+const handshakeToken = (socket: Socket): unknown => (isRecord(socket.handshake.auth) ? socket.handshake.auth.token : undefined);
+
+function startRevalidation(server: http.Server, io: SocketServer, authorizeToken: (token: unknown) => boolean, intervalMs: number): void {
+  const timer = setInterval(() => {
+    io.sockets.sockets.forEach((socket) => {
+      if (!authorizeToken(handshakeToken(socket))) socket.disconnect(true);
+    });
+  }, intervalMs);
+  timer.unref();
+  server.once("close", () => clearInterval(timer));
+}
+
 export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): ChatSocketHandle {
   const { relay, queue, logger, tokenProvider } = deps;
+  const authorizeToken = deps.authorizeToken ?? ((token: unknown): boolean => isAuthorizedToken(token, tokenProvider()));
 
   const io = new SocketServer(server, {
     path: CHAT_SOCKET_PATH,
@@ -137,7 +162,7 @@ export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): Cha
   });
 
   io.use((socket, next) => {
-    const result = validateHandshake(socket.handshake.auth, tokenProvider());
+    const result = validateHandshakeWith(socket.handshake.auth, authorizeToken);
     if (!result.ok) {
       warnRefusedOnce(logger, socket, result.error);
       next(new Error(result.error));
@@ -149,6 +174,8 @@ export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): Cha
     socket.data.bridgeOptions = result.options;
     next();
   });
+
+  startRevalidation(server, io, authorizeToken, deps.revalidateIntervalMs ?? REVALIDATE_INTERVAL_MS);
 
   io.on("connection", (socket: Socket) => {
     const transportId: string = socket.data.transportId;
@@ -193,6 +220,11 @@ export function attachChatSocket(server: http.Server, deps: ChatSocketDeps): Cha
           socketId: socket.id,
           transportId,
         });
+        return;
+      }
+      if (!authorizeToken(handshakeToken(socket))) {
+        ack({ ok: false, error: UNAUTHORIZED_MESSAGE, status: 401 });
+        socket.disconnect(true);
         return;
       }
 
