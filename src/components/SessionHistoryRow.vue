@@ -67,18 +67,15 @@
          first-message fallback stays on a single line via `truncate`
          so short prompts don't disturb row heights. -->
     <div class="flex items-start gap-1.5">
-      <button
-        type="button"
-        class="flex-shrink-0 mt-0.5 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-400"
-        :aria-label="bookmarkLabel"
+      <!-- Mouse-only on purpose: a <button> would nest inside the role="button" row; keyboard users have the menu item. -->
+      <span
+        class="flex-shrink-0 mt-0.5 cursor-pointer"
         :title="bookmarkLabel"
         :data-testid="`session-row-icon-bookmark-${session.id}`"
         @click.stop="emit('toggleBookmark', session)"
-        @keydown.enter.stop
-        @keydown.space.stop
       >
         <SessionRoleIcon :session="session" :roles="roles" size="sm" />
-      </button>
+      </span>
       <p class="flex-1 min-w-0" :class="[previewClasses, hasVisibleSummary ? 'line-clamp-2' : 'truncate']">
         {{ primaryText }}
       </p>

@@ -315,11 +315,11 @@ test.describe("session-history filter pills", () => {
     await page.goto("/chat");
     await page.getByTestId("session-history-toggle-off").click();
     const icon = page.getByTestId(`session-row-icon-bookmark-${SESSION_A.id}`);
-    await expect(icon).toHaveAttribute("aria-label", "Bookmark");
+    await expect(icon).toHaveAttribute("title", "Bookmark");
 
     await icon.click();
     await expect.poll(() => bookmarkBodies).toEqual([{ bookmarked: true }]);
-    await expect(icon).toHaveAttribute("aria-label", "Remove bookmark");
+    await expect(icon).toHaveAttribute("title", "Remove bookmark");
     await expect(page).not.toHaveURL(new RegExp(`/chat/${SESSION_A.id}`));
 
     await icon.click();
