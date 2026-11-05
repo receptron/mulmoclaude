@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/google-plugin",
-  "version": "4.1.0",
+  "version": "5.0.0",
   "description": "Google integration tool for MulmoClaude and MulmoTerminal — operates the user's locally linked Google account: Calendar (list, sync, create, update, delete), Tasks and Drive, as one kind-discriminated `google` tool. Server-only; no Vue View.",
   "repository": {
     "type": "git",

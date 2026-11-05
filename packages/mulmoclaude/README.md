@@ -96,6 +96,10 @@ SANDBOX_MOUNT_CONFIGS=gh \
   npx mulmoclaude
 ```
 
+To hand the agent other host environment variables, name them with `SANDBOX_ENV=NAME1,NAME2`, or point
+`SANDBOX_ENV_FILE` at a docker-style env file kept outside the workspace. Values never appear on the docker command line
+(see [`docs/sandbox-credentials.md`](https://github.com/receptron/mulmoclaude/blob/main/docs/sandbox-credentials.md)).
+
 Or run directly on the host (no sandbox, full access):
 
 ```bash
@@ -145,6 +149,13 @@ MULMOCLAUDE_AUTH_TOKEN=long-random-string \
 ```
 
 Recommended: ≥ 32 characters of random data (shorter values trigger a startup warning).
+
+### A separate token per bridge or script
+
+`npx mulmoclaude token add <name>` prints a token for one client (a bridge, n8n, a script); `token list` shows them and
+`token revoke <name>` cuts one off at once, without a restart and without touching the others. These tokens work on the
+API and both sockets, but are refused on settings, secrets and other host-management endpoints. Only a hash is stored,
+in `~/.mulmoclaude/client-tokens.json`.
 
 ## Roles, skills, and collections
 
