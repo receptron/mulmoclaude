@@ -41,6 +41,12 @@ answers `connect_error` with the generic `unauthorized` — the same message
 `/api/*` sends — never with which part failed. The wire contract is in
 `docs/bridge-protocol.md` in the repository.
 
+`authorizeToken` (optional, since 2.1.0) replaces that comparison for a host
+that accepts more than one token: it receives the presented token and returns
+whether it passes. It must refuse everything while the host has no token of
+its own. Since 2.1.0, open sockets are also re-checked every few seconds and on
+every message, so a token the host stops accepting is disconnected.
+
 ## Architecture
 
 ```text
