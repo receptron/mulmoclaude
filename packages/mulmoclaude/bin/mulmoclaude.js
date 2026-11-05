@@ -7,7 +7,6 @@
 
 import { execSync, spawn, spawnSync } from "child_process";
 import { existsSync } from "fs";
-import { get as httpGet } from "http";
 import { createRequire } from "module";
 import { join, dirname, delimiter as PATH_DELIMITER } from "path";
 import { fileURLToPath } from "url";
@@ -22,6 +21,7 @@ import { parseEnvFile, mergeLaunchEnv, describeLaunchEnvLoad } from "../server/u
 import { LAUNCH_ENV_PATH_VAR } from "../server/utils/launch-vars.mjs";
 import { findLiveInstancePort, instanceGuardMessage, serverPortPathIn, shouldStopForRunningInstance } from "../server/utils/instance-guard.mjs";
 import { resolveWorkspacePath } from "../server/utils/workspace-path.mjs";
+import { slowStartMessage, waitUntilReady } from "../server/utils/wait-ready.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -53,37 +53,6 @@ function pickOpenCommand() {
   if (process.platform === "darwin") return "open";
   if (process.platform === "win32") return "start";
   return "xdg-open";
-}
-
-// Poll the server until it answers an HTTP request, then call `onReady`.
-// Gives up after ~15s so the launcher doesn't hang forever on a crash loop.
-function waitUntilReady(portNum, onReady) {
-  const startedAt = Date.now();
-  const timeoutMs = 15000;
-  const intervalMs = 300;
-
-  // `function` declarations (not arrow consts) so the mutual
-  // reference between `attempt` and `retry` works without TDZ
-  // ordering problems. Both forms are hoisted to the top of the
-  // enclosing function scope.
-  function attempt() {
-    const req = httpGet({ host: "127.0.0.1", port: portNum, path: "/", timeout: 1000 }, (res) => {
-      res.resume();
-      onReady();
-    });
-    req.on("error", retry);
-    req.on("timeout", () => {
-      req.destroy();
-      retry();
-    });
-  }
-
-  function retry() {
-    if (Date.now() - startedAt > timeoutMs) return;
-    setTimeout(attempt, intervalMs);
-  }
-
-  attempt();
 }
 
 function printReadyBanner(url) {
@@ -323,7 +292,8 @@ const server = spawn(process.execPath, [tsxCli, SERVER_ENTRY], {
 // actually responds — not a fixed-delay timer, so the banner appears
 // right when the UI is reachable.
 const url = `http://localhost:${port}`;
-waitUntilReady(port, () => {
+
+function openBrowserWhenReady() {
   printReadyBanner(url);
   if (noOpen) return;
   const openCmd = pickOpenCommand();
@@ -333,7 +303,15 @@ waitUntilReady(port, () => {
   } catch {
     log(`Open your browser: ${url}`);
   }
-});
+}
+
+// Not awaited: the shutdown handlers below must be live while the server boots.
+async function openBrowserOnceServerAnswers() {
+  const isServerAlive = () => server.exitCode === null && server.signalCode === null;
+  const ready = await waitUntilReady({ port, isServerAlive, onSlowStart: () => log(slowStartMessage(url)) });
+  if (ready) openBrowserWhenReady();
+}
+openBrowserOnceServerAnswers();
 
 // Graceful shutdown
 process.on("SIGINT", () => {
