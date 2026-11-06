@@ -63,7 +63,7 @@ import {
 import { clampImageMaxEdge, clampLimit, clampOffset, normalizeFields, normalizeMutate } from "@mulmoclaude/core/remote-view";
 import { resolveThumbnail } from "../../utils/files/thumbnail-store.js";
 import { badRequest, notFound, conflict, forbidden, methodNotAllowed, serverError, serviceUnavailable, type ApiResponse } from "../../utils/httpError.js";
-import { isClientTokenRequest } from "../auth/principal.js";
+import { isClientTokenRequest, isCollectionVisibleToRequest } from "../auth/principal.js";
 import { startsAgentRun } from "../auth/clientTokenAccess.js";
 import { requestBodyRecord } from "../../utils/requestBody.js";
 import { ONE_MINUTE_MS } from "../../utils/time.js";
@@ -269,9 +269,9 @@ async function toClientSummary(collection: LoadedCollection): Promise<Collection
   return { ...summary, icon, iconSources: [spec.source.collection] };
 }
 
-router.get(API_ROUTES.collections.list, async (_req: Request, res: ApiResponse<CollectionsListResponse>) => {
+router.get(API_ROUTES.collections.list, async (req: Request, res: ApiResponse<CollectionsListResponse>) => {
   try {
-    const collections = await discoverCollections();
+    const collections = (await discoverCollections()).filter((collection) => isCollectionVisibleToRequest(req, collection.slug));
     const summaries = await Promise.all(collections.map(toClientSummary));
     res.json({ collections: summaries });
   } catch (err) {

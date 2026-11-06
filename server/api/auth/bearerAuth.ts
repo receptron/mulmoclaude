@@ -19,16 +19,35 @@
 // - **The token rule lives in `./principal.ts`**: the owner token or a named
 //   client token (#3618), shared with the `/ws/pubsub` and `/ws/chat`
 //   handshake guards, so every surface refuses the same way. A client token
-//   is then refused (403) on the owner-only paths in `./clientTokenAccess.ts`.
+//   is then refused (403) on the owner-only paths in `./clientTokenAccess.ts`,
+//   and outside its scopes (`./clientTokenScope.ts`).
 
 import type { Request, Response, NextFunction } from "express";
 import { rememberRequestPrincipal, resolveTokenPrincipal } from "./principal.js";
 import { isOwnerOnlyApiPath } from "./clientTokenAccess.js";
+import { isWithinClientTokenScopes, type ClientTokenScope } from "./clientTokenScope.js";
+import type { Principal } from "./clientTokenRule.js";
 import { UNAUTHORIZED_MESSAGE } from "@mulmoclaude/common/token-guard";
 import { forbidden, unauthorized } from "../../utils/httpError.js";
 import { log } from "../../system/logger/index.js";
 
 const BEARER_PREFIX = "Bearer ";
+
+function clientRefusalReason(scopes: ClientTokenScope[], req: Request): string | null {
+  if (isOwnerOnlyApiPath(req.path)) return "client token refused on an owner-only path";
+  if (!isWithinClientTokenScopes(scopes, { method: req.method, path: req.path })) return "client token refused outside its scopes";
+  return null;
+}
+
+/** True when the request was refused; the owner is never refused here. */
+function refuseClientOutOfReach(principal: Principal, req: Request, res: Response): boolean {
+  if (principal.kind !== "client") return false;
+  const reason = clientRefusalReason(principal.scopes, req);
+  if (reason === null) return false;
+  log.warn("auth", reason, { client: principal.name, method: req.method, path: req.path });
+  forbidden(res, "forbidden");
+  return true;
+}
 
 export function bearerAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
@@ -43,11 +62,7 @@ export function bearerAuth(req: Request, res: Response, next: NextFunction): voi
     unauthorized(res, UNAUTHORIZED_MESSAGE);
     return;
   }
-  if (principal.kind === "client" && isOwnerOnlyApiPath(req.path)) {
-    log.warn("auth", "client token refused on an owner-only path", { client: principal.name, method: req.method, path: req.path });
-    forbidden(res, "forbidden");
-    return;
-  }
+  if (refuseClientOutOfReach(principal, req, res)) return;
   rememberRequestPrincipal(req, principal);
   next();
 }
