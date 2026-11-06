@@ -65,15 +65,20 @@ test.describe("Settings → API tokens", () => {
     const n8n = page.getByTestId("settings-client-token-n8n");
     await n8n.getByTestId("settings-client-token-revoke-btn").click();
     await expect(page.getByTestId("settings-client-token-confirm-body")).toContainText("n8n");
+    // Focus moves to Cancel, the safe choice, and the buttons point at the warning.
+    await expect(n8n.getByTestId("settings-client-token-cancel-btn")).toBeFocused();
+    await expect(n8n.getByTestId("settings-client-token-confirm-btn")).toHaveAttribute("aria-describedby", "settings-client-token-confirm-body");
     expect(state.revoked).toEqual([]);
 
-    await n8n.getByTestId("settings-client-token-cancel-btn").click();
+    await page.keyboard.press("Enter");
     await expect(page.getByTestId("settings-client-token-confirm-body")).toHaveCount(0);
+    await expect(n8n.getByTestId("settings-client-token-revoke-btn")).toBeFocused();
     expect(state.revoked).toEqual([]);
 
     await n8n.getByTestId("settings-client-token-revoke-btn").click();
     await n8n.getByTestId("settings-client-token-confirm-btn").click();
     await expect(page.getByTestId("settings-client-token-n8n")).toHaveCount(0);
+    await expect(page.getByTestId("settings-client-tokens-tab")).toBeFocused();
     await expect(page.getByTestId("settings-client-token-discord")).toBeVisible();
     expect(state.revoked).toEqual([`DELETE n8n id=${"a".repeat(16)}`]);
   });

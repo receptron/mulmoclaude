@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-3" data-testid="settings-client-tokens-tab">
+  <div ref="tabRoot" class="space-y-3 outline-none" tabindex="-1" data-testid="settings-client-tokens-tab">
     <p class="text-sm text-gray-700">{{ t("settingsModal.clientTokensTab.description") }}</p>
     <p class="text-xs text-gray-500">
       {{ t("settingsModal.clientTokensTab.issueHint") }}
@@ -35,28 +35,32 @@
                 type="button"
                 class="rounded bg-red-700 px-2 py-1 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-50"
                 :disabled="revokingName !== null"
+                :aria-describedby="CONFIRM_BODY_ID"
                 data-testid="settings-client-token-confirm-btn"
                 @click="revoke(token)"
               >
                 {{ revokingName === token.name ? t("settingsModal.clientTokensTab.revoking") : t("settingsModal.clientTokensTab.confirmLabel") }}
               </button>
               <button
+                :ref="rememberCancelButton"
                 type="button"
                 class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
                 :disabled="revokingName !== null"
+                :aria-describedby="CONFIRM_BODY_ID"
                 data-testid="settings-client-token-cancel-btn"
-                @click="confirmingName = null"
+                @click="cancelConfirm(token.name)"
               >
                 {{ t("common.cancel") }}
               </button>
             </div>
             <button
               v-else
+              :ref="(el) => rememberRevokeButton(token.name, el)"
               type="button"
               class="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
               :disabled="revokingName !== null"
               data-testid="settings-client-token-revoke-btn"
-              @click="confirmingName = token.name"
+              @click="openConfirm(token.name)"
             >
               {{ t("settingsModal.clientTokensTab.revokeLabel") }}
             </button>
@@ -65,7 +69,7 @@
       </tbody>
     </table>
 
-    <p v-if="confirmingName !== null" class="text-xs text-red-900" data-testid="settings-client-token-confirm-body">
+    <p v-if="confirmingName !== null" :id="CONFIRM_BODY_ID" class="text-xs text-red-900" role="status" data-testid="settings-client-token-confirm-body">
       {{ t("settingsModal.clientTokensTab.confirmBody", { name: confirmingName }) }}
     </p>
     <p class="text-xs text-gray-500">{{ t("settingsModal.clientTokensTab.lastUsedNote") }}</p>
@@ -78,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref, type ComponentPublicInstance } from "vue";
 import { useI18n } from "vue-i18n";
 import { apiDelete, apiGet } from "../utils/api";
 import { API_ROUTES } from "../config/apiRoutes";
@@ -101,6 +105,37 @@ const loadError = ref("");
 const revokeError = ref("");
 const confirmingName = ref<string | null>(null);
 const revokingName = ref<string | null>(null);
+
+// The confirm swaps out the button that had focus, so focus is moved on purpose:
+// to Cancel when it opens, back to the row's Revoke when cancelled, and to the
+// tab once the row is gone.
+const CONFIRM_BODY_ID = "settings-client-token-confirm-body";
+const tabRoot = ref<HTMLElement | null>(null);
+const revokeButtons = new Map<string, HTMLButtonElement>();
+const cancelButton = ref<HTMLButtonElement | null>(null);
+
+type TemplateRef = Element | ComponentPublicInstance | null;
+
+function rememberRevokeButton(name: string, element: TemplateRef): void {
+  if (element instanceof HTMLButtonElement) revokeButtons.set(name, element);
+  else revokeButtons.delete(name);
+}
+
+function rememberCancelButton(element: TemplateRef): void {
+  cancelButton.value = element instanceof HTMLButtonElement ? element : null;
+}
+
+async function openConfirm(name: string): Promise<void> {
+  confirmingName.value = name;
+  await nextTick();
+  cancelButton.value?.focus();
+}
+
+async function cancelConfirm(name: string): Promise<void> {
+  confirmingName.value = null;
+  await nextTick();
+  revokeButtons.get(name)?.focus();
+}
 
 function formatIso(iso: string): string {
   const epochMs = Date.parse(iso);
@@ -133,6 +168,8 @@ async function revoke(token: ClientTokenRow): Promise<void> {
   revokeError.value = response.ok ? "" : response.error || t("settingsModal.clientTokensTab.revokeError");
   await load();
   revokingName.value = null;
+  await nextTick();
+  (revokeButtons.get(token.name) ?? tabRoot.value)?.focus();
 }
 
 onMounted(load);

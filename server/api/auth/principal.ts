@@ -21,9 +21,19 @@ function storedClientTokens(): readonly ClientTokenRecord[] {
   return source();
 }
 
+// Read fresh rather than through the cached source, which serves an unreadable
+// store as an empty one: a flush must not prune on that.
+function liveClientTokenIds(): string[] | null {
+  try {
+    return readClientTokenFile(clientTokensPath()).records.map((record) => record.id);
+  } catch {
+    return null;
+  }
+}
+
 function usageTracker(): ClientTokenUsageTracker {
   const filePath = clientTokenUsagePath();
-  const tracker = usageTrackers.get(filePath) ?? createClientTokenUsageTracker({ filePath, liveIds: () => storedClientTokens().map((record) => record.id) });
+  const tracker = usageTrackers.get(filePath) ?? createClientTokenUsageTracker({ filePath, liveIds: liveClientTokenIds });
   usageTrackers.set(filePath, tracker);
   return tracker;
 }

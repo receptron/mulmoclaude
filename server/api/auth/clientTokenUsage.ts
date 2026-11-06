@@ -19,14 +19,15 @@ export interface ClientTokenUsageTracker {
 
 export interface ClientTokenUsageTrackerOptions {
   filePath: string;
-  /** The ids still in the store, so a flush drops revoked ones. */
-  liveIds: () => readonly string[];
+  /** The ids still in the store, so a flush drops revoked ones; null when the
+   *  store cannot be read, which drops nothing. */
+  liveIds: () => readonly string[] | null;
   now?: () => number;
   flushDelayMs?: number;
 }
 
 /** True when written; a failure is logged and leaves the changes to the next flush. */
-function writeUsage(filePath: string, usage: ClientTokenUsage, liveIds: readonly string[]): boolean {
+function writeUsage(filePath: string, usage: ClientTokenUsage, liveIds: readonly string[] | null): boolean {
   try {
     writeClientTokenUsageFile(filePath, serializeClientTokenUsage(usage, liveIds));
     return true;

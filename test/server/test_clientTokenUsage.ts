@@ -26,7 +26,7 @@ import {
   revokeStoredClientToken,
   writeClientTokenFile,
 } from "../../server/api/auth/clientTokenStore.js";
-import { listStoredClientTokens, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
+import { flushClientTokenUsage, listStoredClientTokens, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
 import { createClientTokensRouter, type ClientTokensDeps } from "../../server/api/routes/clientTokens.js";
 import { bearerAuth } from "../../server/api/auth/bearerAuth.js";
 import { __resetForTests, generateAndWriteToken } from "../../server/api/auth/token.js";
@@ -73,9 +73,10 @@ describe("usage rule", () => {
     assert.deepEqual([...parsed], [[ID_A, "2026-11-06T10:20:00.000Z"]]);
   });
 
-  it("drops nothing when the store reads as empty, since that may be an unreadable store", () => {
+  it("drops nothing when the store could not be read, and everything when it is empty", () => {
     const usage: ClientTokenUsage = new Map([[ID_A, "2026-11-06T10:20:00.000Z"]]);
-    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, []))).get(ID_A), "2026-11-06T10:20:00.000Z");
+    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, null))).get(ID_A), "2026-11-06T10:20:00.000Z");
+    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, []))).size, 0);
   });
 
   [null, 7, "x", [], {}, { version: 2, lastUsed: {} }, { version: 1 }, { version: 1, lastUsed: [] }].forEach((raw) => {
@@ -354,6 +355,24 @@ describe("client tokens through the host", () => {
     resolveTokenPrincipal(state.client);
     assert.notEqual(listStoredClientTokens().tokens[0]?.lastUsedAt, null);
     assert.equal(clientTokenUsagePath().startsWith(path.dirname(clientTokensPath())), true);
+  });
+
+  it("issuing, using and revoking tokens repeatedly leaves the usage file with nothing of theirs", () => {
+    ["one", "two", "three"].forEach((name) => {
+      const issued = issue([], name);
+      writeClientTokenFile(clientTokensPath(), issued.records);
+      resolveTokenPrincipal(issued.token);
+      writeClientTokenFile(clientTokensPath(), []);
+      flushClientTokenUsage();
+    });
+    assert.equal(parseClientTokenUsage(JSON.parse(readFileSync(clientTokenUsagePath(), "utf8"))).size, 0);
+  });
+
+  it("keeps last-used times through a flush while the store cannot be read", () => {
+    resolveTokenPrincipal(state.client);
+    writeFileSync(clientTokensPath(), "{broken");
+    flushClientTokenUsage();
+    assert.equal(parseClientTokenUsage(JSON.parse(readFileSync(clientTokenUsagePath(), "utf8"))).size, 1);
   });
 
   it("lists a broken store as an error, and counts entries it cannot read", () => {
