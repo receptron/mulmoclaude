@@ -28,6 +28,8 @@ import {
 } from "../../server/api/auth/clientTokenStore.js";
 import { parseScopeFlags, runClientTokenCommand, type ClientTokenCommandDeps } from "../../server/api/auth/clientTokenCommands.js";
 import type { ClientTokenScope } from "../../server/api/auth/clientTokenScope.js";
+import { createCollectionsListHandler } from "../../server/api/routes/collections.js";
+import type { CollectionSummary, LoadedCollection } from "../../server/workspace/collections/index.js";
 import { isSocketAuthorizedBearer, isClientTokenRequest, isCollectionVisibleToRequest, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
 import { startsAgentRun, isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
 import { bearerAuth } from "../../server/api/auth/bearerAuth.js";
@@ -489,7 +491,7 @@ describe("isSocketAuthorizedBearer — the host's shared check", () => {
     runClientTokenCommand(["add", "bridge"], add.deps);
     const token = add.out.find((line) => line.startsWith("mct_")) ?? "";
     assert.deepEqual(resolveTokenPrincipal(token), { kind: "client", id: clientTokenId(token), name: "bridge", scopes: ["full"] });
-    assert.equal(isSocketAuthorizedBearer(state.owner), true);
+    assert.equal(isSocketAuthorizedBearer(token), true);
     runClientTokenCommand(["revoke", "bridge"], commandHarness(clientTokensPath()).deps);
     assert.equal(isSocketAuthorizedBearer(token), false);
     assert.equal(isSocketAuthorizedBearer(state.owner), true);
@@ -731,6 +733,31 @@ describe("bearerAuth — client tokens", () => {
     const fullReq = { headers: { authorization: `Bearer ${state.client}` }, path: "/collections", method: "GET" };
     bearerAuth(fullReq as unknown as Request, res as unknown as Response, () => undefined);
     assert.equal(isCollectionVisibleToRequest(fullReq, "notes"), true);
+  });
+
+  it("the list route returns a scoped token only its collections, and a full token all of them", async () => {
+    const tasks = issueScoped("tasks", ["read", "collection:tasks"]);
+    const listFor = async (token: string): Promise<unknown> => {
+      const req = { headers: { authorization: `Bearer ${token}` }, path: "/collections", method: "GET" };
+      const outcome: { body: unknown } = { body: undefined };
+      const res = {
+        status: () => res,
+        json: (payload: unknown) => {
+          outcome.body = payload;
+          return res;
+        },
+      };
+      bearerAuth(req as unknown as Request, res as unknown as Response, () => undefined);
+      const handler = createCollectionsListHandler({
+        discover: async () => ["notes", "tasks"].map((slug) => ({ slug }) as unknown as LoadedCollection),
+        summarize: async (collection) => ({ slug: collection.slug }) as unknown as CollectionSummary,
+      });
+      await handler(req as unknown as Request, res as unknown as Response);
+      return outcome.body;
+    };
+    assert.deepEqual(await listFor(tasks), { collections: [{ slug: "tasks" }] });
+    assert.deepEqual(await listFor(state.client), { collections: [{ slug: "notes" }, { slug: "tasks" }] });
+    assert.deepEqual(await listFor(state.owner), { collections: [{ slug: "notes" }, { slug: "tasks" }] });
   });
 });
 

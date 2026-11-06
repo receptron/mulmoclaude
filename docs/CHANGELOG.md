@@ -14,8 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 `mulmoclaude token add <name> --scope read` issues a token that may only `GET` / `HEAD`; `--scope collection:<slug>`
 (repeatable) limits it to those collections' API, with `GET /api/collections` listing only them. The two combine. A
-scoped token is refused (403) everywhere else, including the collection ontology, and cannot open `/ws/pubsub` or
-`/ws/chat`. Without `--scope` a token is `full`, as before. `GET /api/files/*` needs no token at all, so a scope does not
+`read` token is refused (403) on every write; a `collection:` token is refused on every path outside its collections,
+the collection ontology included. Any scoped token cannot open `/ws/pubsub` or `/ws/chat`. Without `--scope` a token is `full`, as before. `GET /api/files/*` needs no token at all, so a scope does not
 stop a file read. A server older than this one ignores a scoped token rather than granting it more.
 
 ### Security
