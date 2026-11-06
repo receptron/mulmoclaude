@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Security
+
+#### The page no longer hands the owner token through a tunnel or proxy (#3627)
+
+`GET /` embeds the API's owner token only when the page is loaded directly from `localhost` (or `127.0.0.1` / `[::1]`) on
+this machine. A load through a tunnel or reverse proxy — a public `Host`, or any `X-Forwarded-*` / `Forwarded` /
+`Via`-style header — gets a page without it, so putting MulmoClaude behind ngrok, cloudflared or similar no longer gives
+the token to anyone who can reach that address. The web UI therefore does not work through such a proxy; use the remote
+host for a phone. The dev server applies the same rule. A process on the same machine can still read the token.
+
 ## [2.11.0] - 2026-11-06
 
 **Each bridge or script can hold its own named token, revocable on its own; host environment variables can reach the
