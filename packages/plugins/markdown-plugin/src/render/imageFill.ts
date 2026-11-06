@@ -7,6 +7,8 @@
 // owns the regex + substitution so every host stays in lockstep, while image
 // GENERATION + STORAGE is injected (each host wires Gemini + URL/data-URI).
 
+import { mapWithConcurrency } from "@mulmoclaude/common";
+
 // Groups: 1 = alt text (prompt OR Marp directive), 2 = optional quoted title
 // (the prompt when the alt is a directive). The title allows escaped chars
 // (`\"`, `\\`) so a prompt containing quotes still matches. Both groups are
@@ -91,22 +93,6 @@ export interface FillImagePlaceholdersDeps {
    *  many placeholders doesn't fan out into a burst of provider calls
    *  (rate limits / resource spikes). Default 4. */
   concurrency?: number;
-}
-
-/** Run `worker` over `items` with at most `limit` in flight, preserving
- *  input order in the results. */
-async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  // One shared iterator IS the work queue: each runner pulls the next
-  // entry, so no runner can hand `worker` an index past the end.
-  const pending = items.entries();
-  const runners = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
-    for (const [index, item] of pending) {
-      results[index] = await worker(item, index);
-    }
-  });
-  await Promise.all(runners);
-  return results;
 }
 
 /** Replace every `__too_be_replaced_image_path__` placeholder. Returns
