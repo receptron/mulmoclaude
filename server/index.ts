@@ -80,6 +80,7 @@ import { fakeEchoBackend } from "./agent/backend/fake-echo.js";
 import { startMacosReminderAdapter } from "./notifier/macosReminderAdapter.js";
 import notifierRoutes from "./api/routes/notifier.js";
 import { createShutdownRouter } from "./api/routes/shutdown.js";
+import { createClientTokensRouter } from "./api/routes/clientTokens.js";
 import { initNotifier } from "./notifier/engine.js";
 import { registerSaveAttachmentHook } from "./utils/files/attachment-store.js";
 import { capturePhotoLocation } from "./workspace/photo-locations/index.js";
@@ -144,7 +145,7 @@ import { startConfiguredBridges } from "./bridges/registry.js";
 import { requireSameOrigin } from "./api/csrfGuard.js";
 import { bearerAuth } from "./api/auth/bearerAuth.js";
 import { isBearerExempt } from "./api/auth/bearerExemption.js";
-import { isSocketAuthorizedBearer } from "./api/auth/principal.js";
+import { flushClientTokenUsage, isSocketAuthorizedBearer } from "./api/auth/principal.js";
 import { isViewDataPath } from "./api/auth/viewToken.js";
 import { deleteTokenFile, generateAndWriteToken, getCurrentToken } from "./api/auth/token.js";
 import { boundPortOf, deleteServerPort, publishServerPort, setBoundPort } from "./workspace/serverPort.js";
@@ -742,6 +743,7 @@ app.use(createTranslationRouter());
 app.use(mcpToolsRouter);
 app.use(schedulerTasksRoutes);
 app.use(createShutdownRouter());
+app.use(createClientTokensRouter());
 
 if (env.isProduction) {
   // `{ index: false }` so express.static doesn't intercept `GET /`
@@ -1344,7 +1346,7 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
 // (#3082). That residue is accepted and reasoned about in
 // `docs/bridge-protocol.md`; it is not covered by this cleanup, which only
 // closes the graceful path.
-const shutdownHooks: (() => void)[] = [stopWhisperSidecar];
+const shutdownHooks: (() => void)[] = [stopWhisperSidecar, flushClientTokenUsage];
 function registerShutdownHook(hook: () => void): void {
   shutdownHooks.push(hook);
 }

@@ -1,0 +1,176 @@
+<template>
+  <div ref="tabRoot" class="space-y-3 outline-none" tabindex="-1" data-testid="settings-client-tokens-tab">
+    <p class="text-sm text-gray-700">{{ t("settingsModal.clientTokensTab.description") }}</p>
+    <p class="text-xs text-gray-500">
+      {{ t("settingsModal.clientTokensTab.issueHint") }}
+      <code class="rounded bg-gray-100 px-1 py-0.5 font-mono text-gray-800">{{ t("settingsModal.clientTokensTab.issueCommand") }}</code>
+    </p>
+
+    <p v-if="loading" class="text-sm text-gray-500" data-testid="settings-client-tokens-loading">{{ t("settingsModal.clientTokensTab.loading") }}</p>
+    <p v-else-if="tokens.length === 0 && !loadError" class="text-sm text-gray-500" data-testid="settings-client-tokens-empty">
+      {{ t("settingsModal.clientTokensTab.empty") }}
+    </p>
+
+    <table v-else-if="tokens.length > 0" class="w-full text-sm" data-testid="settings-client-tokens-list">
+      <thead>
+        <tr class="text-left text-xs text-gray-500 border-b border-gray-200">
+          <th class="py-1 pr-3 font-medium">{{ t("settingsModal.clientTokensTab.columnName") }}</th>
+          <th class="py-1 pr-3 font-medium">{{ t("settingsModal.clientTokensTab.columnScopes") }}</th>
+          <th class="py-1 pr-3 font-medium">{{ t("settingsModal.clientTokensTab.columnCreated") }}</th>
+          <th class="py-1 pr-3 font-medium">{{ t("settingsModal.clientTokensTab.columnLastUsed") }}</th>
+          <th class="py-1" />
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="token in tokens" :key="token.id" class="border-b border-gray-100 align-top" :data-testid="`settings-client-token-${token.name}`">
+          <td class="py-1.5 pr-3 font-mono text-gray-900">{{ token.name }}</td>
+          <td class="py-1.5 pr-3 font-mono text-xs text-gray-700">{{ token.scopes.join(", ") }}</td>
+          <td class="py-1.5 pr-3 text-xs text-gray-700">{{ formatIso(token.createdAt) }}</td>
+          <td class="py-1.5 pr-3 text-xs text-gray-700" data-testid="settings-client-token-last-used">
+            {{ token.lastUsedAt === null ? t("settingsModal.clientTokensTab.neverUsed") : formatIso(token.lastUsedAt) }}
+          </td>
+          <td class="py-1.5 text-right">
+            <div v-if="confirmingName === token.name" class="flex justify-end gap-2">
+              <button
+                type="button"
+                class="rounded bg-red-700 px-2 py-1 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-50"
+                :disabled="revokingName !== null"
+                :aria-describedby="CONFIRM_BODY_ID"
+                data-testid="settings-client-token-confirm-btn"
+                @click="revoke(token)"
+              >
+                {{ revokingName === token.name ? t("settingsModal.clientTokensTab.revoking") : t("settingsModal.clientTokensTab.confirmLabel") }}
+              </button>
+              <button
+                :ref="rememberCancelButton"
+                type="button"
+                class="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                :disabled="revokingName !== null"
+                :aria-describedby="CONFIRM_BODY_ID"
+                data-testid="settings-client-token-cancel-btn"
+                @click="cancelConfirm(token.name)"
+              >
+                {{ t("common.cancel") }}
+              </button>
+            </div>
+            <button
+              v-else
+              :ref="(el) => rememberRevokeButton(token.name, el)"
+              type="button"
+              class="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
+              :disabled="revokingName !== null"
+              data-testid="settings-client-token-revoke-btn"
+              @click="openConfirm(token.name)"
+            >
+              {{ t("settingsModal.clientTokensTab.revokeLabel") }}
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p v-if="confirmingName !== null" :id="CONFIRM_BODY_ID" class="text-xs text-red-900" role="status" data-testid="settings-client-token-confirm-body">
+      {{ t("settingsModal.clientTokensTab.confirmBody", { name: confirmingName }) }}
+    </p>
+    <p class="text-xs text-gray-500">{{ t("settingsModal.clientTokensTab.lastUsedNote") }}</p>
+    <p v-if="unreadableEntryCount > 0" class="text-sm text-amber-800" role="status" data-testid="settings-client-tokens-unreadable">
+      {{ t("settingsModal.clientTokensTab.unreadableEntries", { count: unreadableEntryCount }) }}
+    </p>
+    <p v-if="loadError" class="text-sm text-red-700" role="alert" data-testid="settings-client-tokens-error">{{ loadError }}</p>
+    <p v-if="revokeError" class="text-sm text-red-700" role="alert" data-testid="settings-client-tokens-revoke-error">{{ revokeError }}</p>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { nextTick, onMounted, ref, type ComponentPublicInstance } from "vue";
+import { useI18n } from "vue-i18n";
+import { apiDelete, apiGet } from "../utils/api";
+import { API_ROUTES } from "../config/apiRoutes";
+import { formatDateTime } from "../utils/format/date";
+
+interface ClientTokenRow {
+  name: string;
+  id: string;
+  createdAt: string;
+  scopes: string[];
+  lastUsedAt: string | null;
+}
+
+const { t } = useI18n();
+
+const tokens = ref<ClientTokenRow[]>([]);
+const unreadableEntryCount = ref(0);
+const loading = ref(true);
+const loadError = ref("");
+const revokeError = ref("");
+const confirmingName = ref<string | null>(null);
+const revokingName = ref<string | null>(null);
+
+// The confirm swaps out the button that had focus, so focus is moved on purpose:
+// to Cancel when it opens, back to the row's Revoke when cancelled, and to the
+// tab once the row is gone.
+const CONFIRM_BODY_ID = "settings-client-token-confirm-body";
+const tabRoot = ref<HTMLElement | null>(null);
+const revokeButtons = new Map<string, HTMLButtonElement>();
+const cancelButton = ref<HTMLButtonElement | null>(null);
+
+type TemplateRef = Element | ComponentPublicInstance | null;
+
+function rememberRevokeButton(name: string, element: TemplateRef): void {
+  if (element instanceof HTMLButtonElement) revokeButtons.set(name, element);
+  else revokeButtons.delete(name);
+}
+
+function rememberCancelButton(element: TemplateRef): void {
+  cancelButton.value = element instanceof HTMLButtonElement ? element : null;
+}
+
+async function openConfirm(name: string): Promise<void> {
+  confirmingName.value = name;
+  await nextTick();
+  cancelButton.value?.focus();
+}
+
+async function cancelConfirm(name: string): Promise<void> {
+  confirmingName.value = null;
+  await nextTick();
+  revokeButtons.get(name)?.focus();
+}
+
+function formatIso(iso: string): string {
+  const epochMs = Date.parse(iso);
+  return Number.isNaN(epochMs) ? iso : formatDateTime(epochMs);
+}
+
+async function load(): Promise<void> {
+  const response = await apiGet<{ tokens: ClientTokenRow[]; unreadableEntryCount: number }>(API_ROUTES.config.clientTokens);
+  loading.value = false;
+  if (!response.ok) {
+    loadError.value = response.error || t("settingsModal.clientTokensTab.loadError");
+    return;
+  }
+  loadError.value = "";
+  tokens.value = response.data.tokens;
+  unreadableEntryCount.value = response.data.unreadableEntryCount;
+}
+
+// Revoking stays disabled until the reload lands, so an older list can never
+// arrive after a newer one and bring a revoked row back.
+async function revoke(token: ClientTokenRow): Promise<void> {
+  if (revokingName.value !== null) return;
+  revokingName.value = token.name;
+  // The id pins the row the user confirmed: a token re-issued under the same
+  // name since the list loaded is refused rather than revoked.
+  const response = await apiDelete<{ revoked: string }>(API_ROUTES.config.clientToken.replace(":name", encodeURIComponent(token.name)), undefined, {
+    query: { id: token.id },
+  });
+  confirmingName.value = null;
+  revokeError.value = response.ok ? "" : response.error || t("settingsModal.clientTokensTab.revokeError");
+  await load();
+  revokingName.value = null;
+  await nextTick();
+  (revokeButtons.get(token.name) ?? tabRoot.value)?.focus();
+}
+
+onMounted(load);
+</script>

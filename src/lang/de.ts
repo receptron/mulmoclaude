@@ -281,6 +281,7 @@ const deMessages = {
       notifications: "Web Push",
       skills: "Skills",
       roles: "Rollen",
+      clientTokens: "API-Tokens",
       quit: "Beenden",
     },
     groups: {
@@ -346,6 +347,30 @@ const deMessages = {
       statusOff: "Automatische Erfassung AUS",
       loadError: "Einstellungen konnten nicht geladen werden",
       saveError: "Speichern fehlgeschlagen",
+    },
+    clientTokensTab: {
+      description:
+        "Benannte Tokens für Bridges, n8n-Workflows und Skripte. Wird eines hier widerrufen, wird dieser Client ab seiner nächsten Anfrage abgewiesen – ohne Neustart und ohne die anderen zu berühren.",
+      issueHint: "Tokens werden im Terminal ausgestellt, damit ihr Wert nie über diese Seite läuft:",
+      // Message function: the `<` and `>` would otherwise reach the message compiler.
+      issueCommand: () => "npx mulmoclaude token add <name>",
+      loading: "Wird geladen…",
+      empty: "Keine Tokens ausgestellt.",
+      columnName: "Name",
+      columnScopes: "Bereiche",
+      columnCreated: "Erstellt",
+      columnLastUsed: "Zuletzt verwendet",
+      neverUsed: "Nie",
+      revokeLabel: "Widerrufen",
+      confirmBody:
+        "„{name}“ widerrufen? Ein Client, der es verwendet, wird ab seiner nächsten Anfrage abgewiesen, und eine offene Verbindung wird binnen Sekunden geschlossen.",
+      confirmLabel: "Widerrufen",
+      revoking: "Wird widerrufen…",
+      lastUsedNote: "Die letzte Verwendung wird minutengenau erfasst.",
+      unreadableEntries:
+        "client-tokens.json enthält {count} Einträge, die dieser Server nicht lesen kann. Sie berechtigen zu nichts, und diese Seite widerruft nicht, solange sie vorhanden sind, weil ein Neuschreiben der Datei sie entfernen würde. `mulmoclaude token revoke` funktioniert weiterhin und entfernt sie.",
+      loadError: "Tokens konnten nicht geladen werden",
+      revokeError: "Token konnte nicht widerrufen werden",
     },
     quitTab: {
       description:

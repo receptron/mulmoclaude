@@ -279,6 +279,7 @@ const ptBRMessages = {
       notifications: "Web Push",
       skills: "Skills",
       roles: "Papéis",
+      clientTokens: "Tokens de API",
       quit: "Encerrar",
     },
     groups: {
@@ -343,6 +344,29 @@ const ptBRMessages = {
       statusOff: "Captura automática DESATIVADA",
       loadError: "Falha ao carregar as configurações",
       saveError: "Falha ao salvar",
+    },
+    clientTokensTab: {
+      description:
+        "Tokens nomeados para bridges, fluxos do n8n e scripts. Revogar um aqui bloqueia esse cliente a partir da próxima requisição, sem reiniciar e sem afetar os outros.",
+      issueHint: "Os tokens são emitidos pelo terminal, para que o valor nunca passe por esta página:",
+      // Message function: the `<` and `>` would otherwise reach the message compiler.
+      issueCommand: () => "npx mulmoclaude token add <name>",
+      loading: "Carregando…",
+      empty: "Nenhum token emitido.",
+      columnName: "Nome",
+      columnScopes: "Escopos",
+      columnCreated: "Criado em",
+      columnLastUsed: "Último uso",
+      neverUsed: "Nunca",
+      revokeLabel: "Revogar",
+      confirmBody: 'Revogar "{name}"? Um cliente que o use será recusado a partir da próxima requisição, e uma conexão aberta será fechada em segundos.',
+      confirmLabel: "Revogar",
+      revoking: "Revogando…",
+      lastUsedNote: "O último uso é registrado com precisão de minutos.",
+      unreadableEntries:
+        "client-tokens.json tem {count} entradas que este servidor não consegue ler. Elas não autorizam nada, e esta página não revoga enquanto existirem, porque reescrever o arquivo as apagaria. `mulmoclaude token revoke` continua funcionando e as remove.",
+      loadError: "Não foi possível carregar os tokens",
+      revokeError: "Não foi possível revogar o token",
     },
     quitTab: {
       description:

@@ -116,6 +116,10 @@ const HOST_API_ROUTES = {
     // Safe to call ad-hoc — pure side effect, no body.
     refresh: "/api/config/refresh",
     connectors: "/api/config/connectors",
+    /** GET → { tokens: [{ name, id, createdAt, scopes, lastUsedAt }] } (#3637). Never a value. */
+    clientTokens: "/api/config/client-tokens",
+    /** DELETE → revoke that client token (404 unknown name, 409 while a CLI token command runs). */
+    clientToken: "/api/config/client-tokens/:name",
   },
 
   files: {
