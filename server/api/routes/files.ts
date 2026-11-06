@@ -112,8 +112,8 @@ const SENSITIVE_BASENAMES = new Set([
   "credentials.json",
   // Claude Code credentials file written by server/credentials.ts.
   ".session-token",
-  // Bearer auth token file — readable without auth via /api/files/*
-  // exemption, so it must be blocked here (defense in depth).
+  // Bearer auth token file — readable without auth via the
+  // `GET /api/files/*` exemption, so it must be blocked here (defense in depth).
   ".npmrc",
   ".htpasswd",
   // Neither carries an extension, and `classify` answers "text" for every
@@ -202,10 +202,8 @@ export const VIDEO_EXTENSIONS = new Set([".mp4", ".webm", ".mov", ".m4v", ".ogv"
 
 /** Things a later double-click would execute. Refused on upload — a drop into
  *  the workspace is for data, not for programs — and refused by the write gate
- *  for the same reason: `/api/files/*` is exempt from bearer auth
- *  (`server/index.ts`), so create and PUT are reachable by anything that can
- *  talk to the loopback port, and "typed through one unauthenticated route" is
- *  not a weaker capability than "dropped through another". PREVIEW is
+ *  for the same reason: "typed through one route" is not a weaker capability
+ *  than "dropped through another". PREVIEW is
  *  deliberately unaffected — a `.sh` still renders as text, it just cannot be
  *  written here. */
 export const BLOCKED_UPLOAD_EXTENSIONS = new Set([".exe", ".dll", ".so", ".dylib", ".bat", ".cmd", ".com", ".scr", ".msi", ".app", ".sh", ".ps1"]);
