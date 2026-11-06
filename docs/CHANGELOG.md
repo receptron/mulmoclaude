@@ -10,6 +10,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ### Security
 
+#### File writes need the bearer token (#3628)
+
+`/api/files/*` was exempt from bearer auth so that `<img src="/api/files/raw?…">` works, but the exemption also covered
+the routes that write workspace files or start an OS handler. `POST /api/files/create`, `POST /api/files/upload`,
+`PUT /api/files/content`, `POST /api/files/open` and `POST /api/files/reveal` now need the token like every other
+`/api/*` call; only `GET` / `HEAD` under `/api/files/` stays exempt. The web UI already sent the token. A script that
+wrote files through these routes without one now gets 401.
+
 #### The page no longer hands the owner token through a tunnel or proxy (#3627)
 
 `GET /` embeds the API's owner token only when the page is loaded directly from `localhost` (or `127.0.0.1` / `[::1]`) on

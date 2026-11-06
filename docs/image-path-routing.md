@@ -367,8 +367,8 @@ These are observations, not bugs to fix in this audit.
 
 8. **Image fetches don't carry the bearer token.** `<img src="/api/files/raw?path=…">`
    is a regular browser image request; it does not include the `Authorization`
-   header. The `/api/files/*` routes are exempt from auth in
-   `server/api/auth.ts` for this reason (and because file viewing is a core UX
+   header. `GET /api/files/*` is exempt from auth in
+   `server/api/auth/bearerExemption.ts` for this reason (writes are not) (and because file viewing is a core UX
    need). Worth re-confirming during a redesign that the exemption is still
    acceptable, especially if the app ever runs in a multi-user context.
 

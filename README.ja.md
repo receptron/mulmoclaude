@@ -182,7 +182,7 @@ MulmoClaude は AI バックエンドとして Claude Code を使用しており
 
 **Docker Desktop がインストールされている場合**、MulmoClaude は自動的に Claude をサンドボックス化されたコンテナ内で実行します。マウントされるのはワークスペースと Claude 自身の設定 (`~/.claude`) のみ — 残りのファイルシステムは Claude からは見えません。設定は不要です: アプリは起動時に Docker を検出し、自動的にサンドボックスを有効化します。
 
-**Bearer トークン認証**: すべての `/api/*` エンドポイントは `Authorization: Bearer <token>` ヘッダーを要求します。トークンはサーバー起動時に自動生成され、`<meta>` タグ経由でブラウザに注入されます — 手動設定は不要です。唯一の例外は `/api/files/*` です (レンダリングされたドキュメント内の `<img>` タグはヘッダーを付与できないため免除)。詳細は [`docs/developer.md`](docs/developer.md#auth-bearer-token-on-api) を参照してください。
+**Bearer トークン認証**: すべての `/api/*` エンドポイントは `Authorization: Bearer <token>` ヘッダーを要求します。トークンはサーバー起動時に自動生成され、`<meta>` タグ経由でブラウザに注入されます — 手動設定は不要です。主な例外は `GET /api/files/*` です (レンダリングされたドキュメント内の `<img>` タグはヘッダーを付与できないため免除)。`/api/files/` 以下への書き込みにはトークンが必要です。詳細は [`docs/developer.md`](docs/developer.md#auth-bearer-token-on-api) を参照してください。
 
 **サンドボックスへの資格情報フォワーディング** (オプトイン): デフォルトではサンドボックスはホストの資格情報にアクセスできません。2 つの環境変数で、`git` / `gh` が必要とするものだけを選択的に公開できます:
 

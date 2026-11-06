@@ -162,7 +162,7 @@ O MulmoClaude usa o Claude Code como backend de IA, que tem acesso a ferramentas
 
 **Com o Docker Desktop instalado**, o MulmoClaude executa automaticamente o Claude dentro de um contêiner em sandbox. Apenas seu workspace e a configuração do próprio Claude (`~/.claude`) são montados — o restante do seu sistema de arquivos é invisível para o Claude. Nenhuma configuração é necessária: o app detecta o Docker na inicialização e ativa o sandbox automaticamente.
 
-**Autenticação por bearer token**: todo endpoint `/api/*` requer um cabeçalho `Authorization: Bearer <token>`. O token é gerado automaticamente na inicialização do servidor e injetado no navegador via uma tag `<meta>` — sem configuração manual. A única exceção é `/api/files/*` (isento porque as tags `<img>` em documentos renderizados não conseguem anexar cabeçalhos). Consulte [`docs/developer.md`](docs/developer.md#auth-bearer-token-on-api) para detalhes.
+**Autenticação por bearer token**: todo endpoint `/api/*` requer um cabeçalho `Authorization: Bearer <token>`. O token é gerado automaticamente na inicialização do servidor e injetado no navegador via uma tag `<meta>` — sem configuração manual. A principal exceção é `GET /api/files/*` (isento porque as tags `<img>` em documentos renderizados não conseguem anexar cabeçalhos); escritas sob `/api/files/` exigem o token. Consulte [`docs/developer.md`](docs/developer.md#auth-bearer-token-on-api) para detalhes.
 
 **Encaminhamento de credenciais do sandbox** (opcional): por padrão, o sandbox não tem acesso às credenciais do host. Duas variáveis de ambiente permitem expor seletivamente o que o `git` / `gh` precisam:
 

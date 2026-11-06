@@ -143,6 +143,7 @@ import { connectRelay } from "./events/relay-client.js";
 import { startConfiguredBridges } from "./bridges/registry.js";
 import { requireSameOrigin } from "./api/csrfGuard.js";
 import { bearerAuth } from "./api/auth/bearerAuth.js";
+import { isBearerExempt } from "./api/auth/bearerExemption.js";
 import { isAuthorizedBearer } from "./api/auth/principal.js";
 import { isViewDataPath } from "./api/auth/viewToken.js";
 import { deleteTokenFile, generateAndWriteToken, getCurrentToken } from "./api/auth/token.js";
@@ -340,53 +341,10 @@ app.use((req, res, next) => {
 // Layered *on top of* CSRF guard so we catch both cross-origin
 // browser attacks (origin check) and local sibling processes that
 // bypass browser CORS (bearer check). See #272 and
-// plans/done/feat-bearer-token-auth.md.
-//
-// /api/files/* is exempt because <img src="/api/files/raw?path=...">
-// tags in rendered markdown can't attach Authorization headers.
-// /api/plugins/runtime/<pkg>/<version>/<file> (#1043 C-2) is exempt
-// for the same reason: the frontend dynamic-imports plugin assets
-// (`import("/api/plugins/runtime/<pkg>/<ver>/dist/vue.js")`) and the
-// browser cannot attach Authorization headers to those module
-// requests. The pattern "4+ segments past /plugins/runtime/" only
-// matches asset GETs — `/plugins/runtime/list` (3 segments) and
-// `/plugins/runtime/<pkg>/dispatch` (3 segments) still require auth.
-// Path traversal is hardened separately by `resolveWithinRoot` in
-// the asset route handler.
-// The CSRF origin check + loopback-only binding still apply.
-const RUNTIME_PLUGIN_ASSET_PATH_RE = /^\/plugins\/runtime\/[^/]+\/[^/]+\//;
-// Generic OAuth callback receiver for runtime plugins (#1162). Same
-// browser-redirect-can't-carry-Authorization-header reason as the
-// asset path above. Trust model: registry-membership (the host's
-// route handler 404s an unknown :alias) plus the plugin's single-use
-// `state` for CSRF.
-const RUNTIME_PLUGIN_OAUTH_CALLBACK_RE = /^\/plugins\/runtime\/oauth-callback\/[^/]+$/;
+// plans/done/feat-bearer-token-auth.md. The requests a browser makes
+// without a header are exempt — see `isBearerExempt`.
 app.use("/api", (req, res, next) => {
-  if (req.path.startsWith("/files/")) {
-    next();
-    return;
-  }
-  // Custom-view data endpoints carry a scoped capability token, not the
-  // global bearer (the sandboxed iframe can't read it). `requireViewToken`
-  // guards them instead. See server/api/auth/viewToken.ts.
-  if (isViewDataPath(req.path)) {
-    next();
-    return;
-  }
-  if ((req.method === "GET" || req.method === "HEAD") && RUNTIME_PLUGIN_ASSET_PATH_RE.test(req.path)) {
-    // HEAD is bypassed for the same reason as GET: the frontend
-    // runtime-plugin loader HEAD-probes `dist/vue.js` to distinguish
-    // "no Vue bundle (404, server-only plugin)" from real load
-    // failures before `import()`-ing the asset (#1273 follow-up).
-    // That probe is a raw `fetch`, not the bearer-attaching `apiGet`,
-    // and the actual `import()` itself can't attach Authorization
-    // either — so the auth-bypass must cover both verbs or every
-    // runtime plugin's Vue View silently downgrades to a
-    // definition-only entry (401 → "unexpected status" → no view).
-    next();
-    return;
-  }
-  if (req.method === "GET" && RUNTIME_PLUGIN_OAUTH_CALLBACK_RE.test(req.path)) {
+  if (isBearerExempt({ method: req.method, path: req.path }, isViewDataPath)) {
     next();
     return;
   }

@@ -10,12 +10,9 @@
 // 401'd.
 //
 // Design choices:
-// - **One exemption**: `/api/files/*` is bearer-exempt because `<img>`
-//   tags in rendered markdown (`presentDocument`, wiki) can't attach
-//   an `Authorization` header — the browser makes a plain GET. These
-//   endpoints are still CSRF-guarded (origin check) and the server
-//   binds to loopback only, so the exposure is localhost-scoped.
-//   The exemption is applied via a regex in `server/index.ts`.
+// - **Exemptions** for requests the browser makes without a header
+//   (`GET /api/files/*` for `<img>`, among others) are decided in
+//   `./bearerExemption.ts` and applied in `server/index.ts`.
 // - **No token in logs**. Reject messages are generic ("unauthorized")
 //   so a leaked log line doesn't reveal whether "no header" vs
 //   "wrong token" — matches common auth-hardening guidance.
