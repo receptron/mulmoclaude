@@ -22,10 +22,12 @@ function storedClientTokens(): readonly ClientTokenRecord[] {
 }
 
 // Read fresh rather than through the cached source, which serves an unreadable
-// store as an empty one: a flush must not prune on that.
+// store as an empty one. Null unless the read was complete: an entry this server
+// cannot read may be a live token whose last use must survive the flush.
 function liveClientTokenIds(): string[] | null {
   try {
-    return readClientTokenFile(clientTokensPath()).records.map((record) => record.id);
+    const { records, droppedCount } = readClientTokenFile(clientTokensPath());
+    return droppedCount > 0 ? null : records.map((record) => record.id);
   } catch {
     return null;
   }

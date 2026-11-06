@@ -11,6 +11,7 @@ import {
   listClientTokens,
   noteClientTokenUse,
   parseClientTokenUsage,
+  pruneClientTokenUsage,
   serializeClientTokenUsage,
   usageMinuteIso,
   type ClientTokenUsage,
@@ -69,14 +70,14 @@ describe("usage rule", () => {
       [ID_A, "2026-11-06T10:20:00.000Z"],
       [ID_B, "2026-11-06T10:21:00.000Z"],
     ]);
-    const parsed = parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, [ID_A])));
+    const parsed = parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(pruneClientTokenUsage(usage, [ID_A]))));
     assert.deepEqual([...parsed], [[ID_A, "2026-11-06T10:20:00.000Z"]]);
   });
 
   it("drops nothing when the store could not be read, and everything when it is empty", () => {
     const usage: ClientTokenUsage = new Map([[ID_A, "2026-11-06T10:20:00.000Z"]]);
-    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, null))).get(ID_A), "2026-11-06T10:20:00.000Z");
-    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, []))).size, 0);
+    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(pruneClientTokenUsage(usage, null)))).get(ID_A), "2026-11-06T10:20:00.000Z");
+    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(pruneClientTokenUsage(usage, [])))).size, 0);
   });
 
   [null, 7, "x", [], {}, { version: 2, lastUsed: {} }, { version: 1 }, { version: 1, lastUsed: [] }].forEach((raw) => {
@@ -168,6 +169,30 @@ describe("usage tracker", () => {
     rmSync(paths.file, { recursive: true });
     usage.flush();
     assert.equal(parseClientTokenUsage(JSON.parse(readFileSync(paths.file, "utf8"))).get(ID_A), "2026-11-06T10:20:00.000Z");
+  });
+
+  it("forgets revoked ids in memory too once a flush has written", () => {
+    const usage = tracker([ID_A]);
+    usage.note(ID_A);
+    usage.note(ID_B);
+    usage.flush();
+    assert.deepEqual([...usage.snapshot().keys()], [ID_A]);
+  });
+
+  it("keeps everything in memory when the write fails, and survives a throwing live-id source", () => {
+    const usage = createClientTokenUsageTracker({
+      filePath: paths.file,
+      liveIds: () => {
+        throw new Error("homedir unavailable");
+      },
+      now: () => START_MS,
+      flushDelayMs: ONE_MINUTE_MS,
+    });
+    usage.note(ID_A);
+    usage.note(ID_B);
+    assert.doesNotThrow(() => usage.flush());
+    assert.deepEqual([...usage.snapshot().keys()], [ID_A, ID_B]);
+    assert.throws(() => statSync(paths.file));
   });
 
   it("retries a failed write on its own, without another use", async () => {
@@ -373,6 +398,22 @@ describe("client tokens through the host", () => {
     writeFileSync(clientTokensPath(), "{broken");
     flushClientTokenUsage();
     assert.equal(parseClientTokenUsage(JSON.parse(readFileSync(clientTokenUsagePath(), "utf8"))).size, 1);
+  });
+
+  it("keeps the last use of an entry this server cannot read", () => {
+    resolveTokenPrincipal(state.client);
+    flushClientTokenUsage();
+    const raw = JSON.parse(readFileSync(clientTokensPath(), "utf8"));
+    const unreadable = { ...raw.tokens[0], scopes: ["a-scope-from-a-newer-version"] };
+    const second = issue([], "second");
+    writeClientTokenFile(clientTokensPath(), second.records);
+    const withUnreadable = JSON.parse(readFileSync(clientTokensPath(), "utf8"));
+    withUnreadable.tokens.push(unreadable);
+    writeFileSync(clientTokensPath(), JSON.stringify(withUnreadable));
+    resolveTokenPrincipal(second.token);
+    flushClientTokenUsage();
+    const written = parseClientTokenUsage(JSON.parse(readFileSync(clientTokenUsagePath(), "utf8")));
+    assert.equal(written.has(unreadable.id), true);
   });
 
   it("lists a broken store as an error, and counts entries it cannot read", () => {

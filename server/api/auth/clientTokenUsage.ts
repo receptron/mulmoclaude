@@ -5,7 +5,7 @@
 import { log } from "../../system/logger/index.js";
 import { errorMessage } from "../../utils/errors.js";
 import { ONE_SECOND_MS } from "../../utils/time.js";
-import { noteClientTokenUse, serializeClientTokenUsage, type ClientTokenUsage } from "./clientTokenUsageRule.js";
+import { noteClientTokenUse, pruneClientTokenUsage, serializeClientTokenUsage, type ClientTokenUsage } from "./clientTokenUsageRule.js";
 import { readClientTokenUsageFile, writeClientTokenUsageFile } from "./clientTokenStore.js";
 
 export const USAGE_FLUSH_DELAY_MS = 30 * ONE_SECOND_MS;
@@ -26,14 +26,16 @@ export interface ClientTokenUsageTrackerOptions {
   flushDelayMs?: number;
 }
 
-/** True when written; a failure is logged and leaves the changes to the next flush. */
-function writeUsage(filePath: string, usage: ClientTokenUsage, liveIds: readonly string[] | null): boolean {
+/** The pruned map once written; null when anything failed, which leaves the
+ *  in-memory map and its changes to the next flush. */
+function writeUsage(filePath: string, usage: ClientTokenUsage, liveIds: () => readonly string[] | null): ClientTokenUsage | null {
   try {
-    writeClientTokenUsageFile(filePath, serializeClientTokenUsage(usage, liveIds));
-    return true;
+    const pruned = pruneClientTokenUsage(usage, liveIds());
+    writeClientTokenUsageFile(filePath, serializeClientTokenUsage(pruned));
+    return pruned;
   } catch (err) {
     log.warn("auth", "could not write client-token usage", { path: filePath, error: errorMessage(err) });
-    return false;
+    return null;
   }
 }
 
@@ -58,8 +60,14 @@ class UsageTracker implements ClientTokenUsageTracker {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     if (!this.dirty) return;
-    if (writeUsage(this.options.filePath, this.usage(), this.options.liveIds())) this.dirty = false;
-    else this.schedule();
+    const written = writeUsage(this.options.filePath, this.usage(), this.options.liveIds);
+    if (written === null) {
+      this.schedule();
+      return;
+    }
+    // Revoked ids leave memory too, not only the file.
+    this.loaded = written;
+    this.dirty = false;
   };
 
   private usage(): ClientTokenUsage {

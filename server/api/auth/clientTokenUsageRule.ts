@@ -44,11 +44,14 @@ export function parseClientTokenUsage(raw: unknown): ClientTokenUsage {
 }
 
 /** Only ids still in the store, so a revoked token's entry is dropped. `null`
- *  means the store could not be read: nothing is dropped on a guess. */
-export function serializeClientTokenUsage(usage: ClientTokenUsage, liveIds: readonly string[] | null): string {
-  const isKept = (tokenId: string): boolean => liveIds === null || liveIds.includes(tokenId);
-  const lastUsed = Object.fromEntries([...usage].filter(([tokenId]) => isKept(tokenId)));
-  return `${JSON.stringify({ version: USAGE_FILE_VERSION, lastUsed }, null, 2)}\n`;
+ *  means the store was not read completely: nothing is dropped on a guess. */
+export function pruneClientTokenUsage(usage: ClientTokenUsage, liveIds: readonly string[] | null): ClientTokenUsage {
+  if (liveIds === null) return new Map(usage);
+  return new Map([...usage].filter(([tokenId]) => liveIds.includes(tokenId)));
+}
+
+export function serializeClientTokenUsage(usage: ClientTokenUsage): string {
+  return `${JSON.stringify({ version: USAGE_FILE_VERSION, lastUsed: Object.fromEntries(usage) }, null, 2)}\n`;
 }
 
 export function listClientTokens(records: readonly ClientTokenRecord[], usage: ReadonlyMap<string, string>): ClientTokenListing[] {
