@@ -34,8 +34,14 @@ order, and the per-skip warning (same order, same payload).
   `listItems` case in `test/workspace/collections/test_io.ts` with more
   records than one read batch plus every skip kind.
 
+- `imageFill.ts` drops its private copy and imports the shared helper
+  (jscpd flagged the duplicate). Only difference: a NaN limit used to
+  start zero runners and return holes; it now runs serially.
+- `@mulmoclaude/common` goes to 1.6.0 and every declared range to
+  `^1.6.0` — the publish smoke's drift gate refuses a new runtime export
+  at an already-published version.
+
 ## Out of scope
 
-- Switching `imageFill.ts` to the shared helper (separate PR).
-- Releasing: this ships through `@mulmoclaude/common` (new export) then
-  `@mulmoclaude/core`, then the launcher.
+- Publishing: `@mulmoclaude/common`, then `@mulmoclaude/core` and
+  `markdown-plugin`, then the launcher.

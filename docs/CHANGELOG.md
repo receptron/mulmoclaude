@@ -25,6 +25,15 @@ times are kept in `~/.mulmoclaude/client-tokens-usage.json`, written in batches 
 the collection ontology included. Any scoped token cannot open `/ws/pubsub` or `/ws/chat`. Without `--scope` a token is `full`, as before. `GET /api/files/*` needs no token at all, so a scope does not
 stop a file read. A server older than this one ignores a scoped token rather than granting it more.
 
+### Changed
+
+#### Large collections load faster (#3640)
+
+Reading a whole collection (queries, item lists, every view's full load) used to read its record files one at a
+time. It now reads them in parallel, a bounded number at once, in the same order and with the same checks: symlinked
+records and files outside the workspace are still refused, and each skipped file is still logged. The shared helper
+is `mapWithConcurrency` in `@mulmoclaude/common@1.6.0`; every declared `@mulmoclaude/common` range moves to `^1.6.0`.
+
 ### Security
 
 #### File writes need the bearer token (#3628)
