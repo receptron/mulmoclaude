@@ -145,7 +145,7 @@ import { startConfiguredBridges } from "./bridges/registry.js";
 import { requireSameOrigin } from "./api/csrfGuard.js";
 import { bearerAuth } from "./api/auth/bearerAuth.js";
 import { isBearerExempt } from "./api/auth/bearerExemption.js";
-import { flushClientTokenUsage, isAuthorizedBearer } from "./api/auth/principal.js";
+import { flushClientTokenUsage, isSocketAuthorizedBearer } from "./api/auth/principal.js";
 import { isViewDataPath } from "./api/auth/viewToken.js";
 import { deleteTokenFile, generateAndWriteToken, getCurrentToken } from "./api/auth/token.js";
 import { boundPortOf, deleteServerPort, publishServerPort, setBoundPort } from "./workspace/serverPort.js";
@@ -723,7 +723,7 @@ const chatService = createChatService({
   // Socket.io handshake (see #268 Phase A) needs to validate the
   // same bearer token the HTTP middleware enforces.
   tokenProvider: getCurrentToken,
-  authorizeToken: isAuthorizedBearer,
+  authorizeToken: isSocketAuthorizedBearer,
   listSessions: listSessionsForBridge,
   getSessionHistory: getSessionHistoryForBridge,
   getSessionRole: getSessionRoleForBridge,
@@ -1454,7 +1454,7 @@ process.on("SIGTERM", () => {
     // (CodeRabbit review on PR #1196). Both `createPubSub` and
     // `initNotifier` are sync, so wiring them up here costs nothing
     // and closes the window.
-    const earlyPubsub = createPubSub(httpServer, { authorizeToken: isAuthorizedBearer });
+    const earlyPubsub = createPubSub(httpServer, { authorizeToken: isSocketAuthorizedBearer });
     initNotifier({
       publish: (channel, payload) => earlyPubsub.publish(channel, payload),
     });

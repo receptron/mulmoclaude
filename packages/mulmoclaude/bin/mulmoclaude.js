@@ -91,7 +91,7 @@ if (args.includes("--help") || args.includes("-h")) {
   console.log(`
 Usage: npx mulmoclaude [options]
        npx mulmoclaude create-shortcut [--dir <path>] [--yes]
-       npx mulmoclaude token add|list|revoke [<name>]
+       npx mulmoclaude token add <name> [--scope <scope>]... | list | revoke <name>
 
 Commands:
   create-shortcut      Create a clickable MulmoClaude.app (macOS) so the

@@ -27,7 +27,7 @@ export interface ApiRequestLine {
 const RUNTIME_PLUGIN_ASSET_PATH_RE = /^\/plugins\/runtime\/[^/]+\/[^/]+\//;
 const RUNTIME_PLUGIN_OAUTH_CALLBACK_RE = /^\/plugins\/runtime\/oauth-callback\/[^/]+$/;
 
-const isReadMethod = (method: string): boolean => method === "GET" || method === "HEAD";
+export const isReadMethod = (method: string): boolean => method === "GET" || method === "HEAD";
 
 export function isBearerExempt(request: ApiRequestLine, isViewDataPath: (path: string) => boolean): boolean {
   const { method, path } = request;

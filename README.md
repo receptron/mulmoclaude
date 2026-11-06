@@ -180,7 +180,13 @@ To give each client — a bridge, an n8n workflow, a script — its own token th
 npx mulmoclaude token add n8n        # prints the token once
 npx mulmoclaude token list           # names and ids, never values
 npx mulmoclaude token revoke n8n     # a running server refuses it on the next request
+
+npx mulmoclaude token add report --scope read                                 # GET / HEAD only
+npx mulmoclaude token add tasks-sync --scope collection:tasks                 # only the tasks collection
+npx mulmoclaude token add tasks-read --scope read --scope collection:tasks    # both
 ```
+
+A token issued without `--scope` is `full`. A scoped token (`read`, `collection:<slug>`, or both) is refused (403) outside its scope — a `collection:` token reaches only `/api/collections/<slug>/…` and a collection list showing just its collections — and cannot open `/ws/pubsub` or `/ws/chat`, so a bridge needs a `full` token. `GET /api/files/*` needs no token at all, so no scope stops a file read.
 
 (`yarn token …` in a checkout.) Give the printed token to that client as `MULMOCLAUDE_AUTH_TOKEN` — and only to that client, never to the server's own environment. Client tokens survive server restarts and work on `/api/*`, `/ws/pubsub` and `/ws/chat`. They are refused (403) on settings, secrets, roles, skills, plugins, automations, direct agent runs, collection actions that start an agent, and the other host-management APIs. A revoked token is refused on the next request, and an open socket using it is closed within seconds. The page at `GET /` carries the owner token only for a direct `localhost` load, never through a tunnel or reverse proxy, but a process on the same machine can still read it ([#3627](https://github.com/receptron/mulmoclaude/issues/3627)), so these refusals stop mistakes, not a local holder set on getting around them. Only a hash of each is stored, in `~/.mulmoclaude/client-tokens.json`.
 
