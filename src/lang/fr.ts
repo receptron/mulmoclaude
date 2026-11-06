@@ -279,6 +279,7 @@ const frMessages = {
       notifications: "Web Push",
       skills: "Skills",
       roles: "Rôles",
+      clientTokens: "Jetons d'API",
       quit: "Quitter",
     },
     groups: {
@@ -344,6 +345,28 @@ const frMessages = {
       statusOff: "Capture automatique DÉSACTIVÉE",
       loadError: "Échec du chargement des paramètres",
       saveError: "Échec de l'enregistrement",
+    },
+    clientTokensTab: {
+      description:
+        "Jetons nommés pour les passerelles, les workflows n8n et les scripts. En révoquer un ici bloque ce client dès sa prochaine requête, sans redémarrage et sans toucher aux autres.",
+      issueHint: "Les jetons sont émis depuis un terminal, pour que leur valeur ne passe jamais par cette page :",
+      // Message function: the `<` and `>` would otherwise reach the message compiler.
+      issueCommand: () => "npx mulmoclaude token add <name>",
+      loading: "Chargement…",
+      empty: "Aucun jeton émis.",
+      columnName: "Nom",
+      columnScopes: "Portées",
+      columnCreated: "Créé le",
+      columnLastUsed: "Dernière utilisation",
+      neverUsed: "Jamais",
+      revokeLabel: "Révoquer",
+      confirmBody:
+        "Révoquer « {name} » ? Un client qui l'utilise est refusé dès sa prochaine requête, et une connexion ouverte est fermée en quelques secondes.",
+      confirmLabel: "Révoquer",
+      revoking: "Révocation…",
+      lastUsedNote: "La dernière utilisation est enregistrée à la minute près.",
+      loadError: "Impossible de charger les jetons",
+      revokeError: "Impossible de révoquer le jeton",
     },
     quitTab: {
       description:

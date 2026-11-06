@@ -283,6 +283,7 @@ const koMessages = {
       notifications: "Web Push",
       skills: "스킬",
       roles: "역할",
+      clientTokens: "API 토큰",
       quit: "종료",
     },
     groups: {
@@ -346,6 +347,27 @@ const koMessages = {
       statusOff: "자동 수집 꺼짐",
       loadError: "설정을 불러오지 못했습니다",
       saveError: "저장에 실패했습니다",
+    },
+    clientTokensTab: {
+      description:
+        "브리지, n8n 워크플로, 스크립트용 이름 붙은 토큰입니다. 여기서 폐기하면 해당 클라이언트는 다음 요청부터 거부되며, 재시작이 필요 없고 다른 토큰에는 영향이 없습니다.",
+      issueHint: "토큰 값이 이 화면을 거치지 않도록 발급은 터미널에서 합니다:",
+      // Message function: the `<` and `>` would otherwise reach the message compiler.
+      issueCommand: () => "npx mulmoclaude token add <name>",
+      loading: "불러오는 중…",
+      empty: "발급된 토큰이 없습니다.",
+      columnName: "이름",
+      columnScopes: "허용 범위",
+      columnCreated: "생성 시각",
+      columnLastUsed: "마지막 사용",
+      neverUsed: "사용 안 함",
+      revokeLabel: "폐기",
+      confirmBody: '"{name}"을(를) 폐기할까요? 사용 중인 클라이언트는 다음 요청부터 거부되고, 열린 연결은 몇 초 안에 닫힙니다.',
+      confirmLabel: "폐기",
+      revoking: "폐기 중…",
+      lastUsedNote: "마지막 사용 시각은 분 단위로 기록됩니다.",
+      loadError: "토큰 목록을 불러오지 못했습니다",
+      revokeError: "토큰을 폐기하지 못했습니다",
     },
     quitTab: {
       description:

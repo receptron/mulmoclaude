@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Added
+
+#### Client tokens in Settings (#3637)
+
+**Settings → API tokens** lists the client tokens issued with `mulmoclaude token add`: their scopes, when each was
+created and when it was last used, to the minute. A token can be revoked from there, with the same effect as
+`mulmoclaude token revoke`. Issuing stays on the CLI, so a token's value never passes through the browser. Last-used
+times are kept in `~/.mulmoclaude/client-tokens-usage.json`, written in batches rather than on every request.
+
 ### Security
 
 #### File writes need the bearer token (#3628)

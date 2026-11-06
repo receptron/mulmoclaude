@@ -282,6 +282,7 @@ const jaMessages = {
       notifications: "Web Push",
       skills: "スキル",
       roles: "ロール",
+      clientTokens: "API トークン",
       quit: "終了",
     },
     groups: {
@@ -346,6 +347,27 @@ const jaMessages = {
       statusOff: "自動取得は OFF",
       loadError: "設定の読み込みに失敗しました",
       saveError: "保存に失敗しました",
+    },
+    clientTokensTab: {
+      description:
+        "ブリッジ・n8n・スクリプト用の名前付きトークンです。ここで失効させると、そのトークンを使う相手は次のリクエストから使えなくなります。再起動は不要で、ほかのトークンには影響しません。",
+      issueHint: "トークンの値がこの画面を通らないよう、発行は端末から行います:",
+      // Message function: the `<` and `>` would otherwise reach the message compiler.
+      issueCommand: () => "npx mulmoclaude token add <name>",
+      loading: "読み込み中…",
+      empty: "発行済みのトークンはありません。",
+      columnName: "名前",
+      columnScopes: "許可範囲",
+      columnCreated: "作成日時",
+      columnLastUsed: "最終利用",
+      neverUsed: "未使用",
+      revokeLabel: "失効",
+      confirmBody: "「{name}」を失効させますか？使っている相手は次のリクエストから拒否され、開いている接続も数秒以内に切れます。",
+      confirmLabel: "失効させる",
+      revoking: "失効中…",
+      lastUsedNote: "最終利用日時は分単位で記録しています。",
+      loadError: "トークンの一覧を読み込めませんでした",
+      revokeError: "トークンを失効できませんでした",
     },
     quitTab: {
       description:

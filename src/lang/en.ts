@@ -298,6 +298,7 @@ const enMessages = {
       notifications: "Web Push",
       skills: "Skills",
       roles: "Roles",
+      clientTokens: "API tokens",
       quit: "Quit",
     },
     groups: {
@@ -365,6 +366,27 @@ const enMessages = {
       statusOff: "Auto-capture is OFF",
       loadError: "Failed to load settings",
       saveError: "Failed to save",
+    },
+    clientTokensTab: {
+      description:
+        "Named tokens for bridges, n8n workflows and scripts. Revoking one here cuts that client off from its next request, without restarting and without touching the others.",
+      issueHint: "Tokens are issued from a terminal, so their value never passes through this page:",
+      // Message function: the `<` and `>` would otherwise reach the message compiler.
+      issueCommand: () => "npx mulmoclaude token add <name>",
+      loading: "Loading…",
+      empty: "No client tokens issued.",
+      columnName: "Name",
+      columnScopes: "Scopes",
+      columnCreated: "Created",
+      columnLastUsed: "Last used",
+      neverUsed: "Never",
+      revokeLabel: "Revoke",
+      confirmBody: 'Revoke "{name}"? A client using it is refused from its next request, and an open connection is closed within seconds.',
+      confirmLabel: "Revoke",
+      revoking: "Revoking…",
+      lastUsedNote: "Last used is recorded to the minute.",
+      loadError: "Failed to load client tokens",
+      revokeError: "Failed to revoke the token",
     },
     quitTab: {
       description:

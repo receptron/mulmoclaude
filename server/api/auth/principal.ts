@@ -4,10 +4,13 @@
 
 import { getCurrentToken } from "./token.js";
 import { resolvePrincipal, type ClientTokenRecord, type Principal } from "./clientTokenRule.js";
-import { clientTokensPath, createClientTokenSource } from "./clientTokenStore.js";
+import { clientTokenUsagePath, clientTokensPath, createClientTokenSource } from "./clientTokenStore.js";
+import { createClientTokenUsageTracker, type ClientTokenUsageTracker } from "./clientTokenUsage.js";
+import { listClientTokens, type ClientTokenListing } from "./clientTokenUsageRule.js";
 
 // Keyed by path because the path follows `homedir()`, which a test moves.
 const sources = new Map<string, () => readonly ClientTokenRecord[]>();
+const usageTrackers = new Map<string, ClientTokenUsageTracker>();
 
 function storedClientTokens(): readonly ClientTokenRecord[] {
   const filePath = clientTokensPath();
@@ -16,9 +19,23 @@ function storedClientTokens(): readonly ClientTokenRecord[] {
   return source();
 }
 
-export function resolveTokenPrincipal(provided: unknown): Principal | null {
-  return resolvePrincipal(provided, getCurrentToken(), storedClientTokens);
+function usageTracker(): ClientTokenUsageTracker {
+  const filePath = clientTokenUsagePath();
+  const tracker = usageTrackers.get(filePath) ?? createClientTokenUsageTracker({ filePath, liveIds: () => storedClientTokens().map((record) => record.id) });
+  usageTrackers.set(filePath, tracker);
+  return tracker;
 }
+
+export function resolveTokenPrincipal(provided: unknown): Principal | null {
+  const principal = resolvePrincipal(provided, getCurrentToken(), storedClientTokens);
+  if (principal?.kind === "client") usageTracker().note(principal.id);
+  return principal;
+}
+
+/** What Settings shows: never a token's value or hash. */
+export const listStoredClientTokens = (): ClientTokenListing[] => listClientTokens(storedClientTokens(), usageTracker().snapshot());
+
+export const flushClientTokenUsage = (): void => usageTracker().flush();
 
 export const isAuthorizedBearer = (provided: unknown): boolean => resolveTokenPrincipal(provided) !== null;
 

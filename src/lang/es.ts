@@ -284,6 +284,7 @@ const esMessages = {
       notifications: "Web Push",
       skills: "Skills",
       roles: "Roles",
+      clientTokens: "Tokens de API",
       quit: "Salir",
     },
     groups: {
@@ -348,6 +349,27 @@ const esMessages = {
       statusOff: "Captura automática DESACTIVADA",
       loadError: "Error al cargar los ajustes",
       saveError: "Error al guardar",
+    },
+    clientTokensTab: {
+      description:
+        "Tokens con nombre para puentes, flujos de n8n y scripts. Al revocar uno aquí, ese cliente queda bloqueado desde su siguiente petición, sin reiniciar y sin afectar a los demás.",
+      issueHint: "Los tokens se emiten desde una terminal, para que su valor nunca pase por esta página:",
+      // Message function: the `<` and `>` would otherwise reach the message compiler.
+      issueCommand: () => "npx mulmoclaude token add <name>",
+      loading: "Cargando…",
+      empty: "No hay tokens emitidos.",
+      columnName: "Nombre",
+      columnScopes: "Alcance",
+      columnCreated: "Creado",
+      columnLastUsed: "Último uso",
+      neverUsed: "Nunca",
+      revokeLabel: "Revocar",
+      confirmBody: "¿Revocar «{name}»? Un cliente que lo use será rechazado desde su siguiente petición, y una conexión abierta se cerrará en segundos.",
+      confirmLabel: "Revocar",
+      revoking: "Revocando…",
+      lastUsedNote: "El último uso se registra con precisión de minutos.",
+      loadError: "No se pudieron cargar los tokens",
+      revokeError: "No se pudo revocar el token",
     },
     quitTab: {
       description:

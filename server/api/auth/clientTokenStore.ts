@@ -10,7 +10,8 @@ import { log } from "../../system/logger/index.js";
 import { errorMessage } from "../../utils/errors.js";
 import { isErrorWithCode } from "../../utils/types.js";
 import { ONE_SECOND_MS } from "../../utils/time.js";
-import { parseClientTokenStore, serializeClientTokenStore, type ClientTokenRecord } from "./clientTokenRule.js";
+import { parseClientTokenStore, revokeClientToken, serializeClientTokenStore, type ClientTokenRecord } from "./clientTokenRule.js";
+import { parseClientTokenUsage, type ClientTokenUsage } from "./clientTokenUsageRule.js";
 
 const STORE_FILE_MODE = 0o600;
 const STORE_DIR_MODE = 0o700;
@@ -19,6 +20,12 @@ const STORE_MAX_BYTES = 1024 * 1024;
 
 export function clientTokensPath(home: string = homedir()): string {
   return path.join(home, ".mulmoclaude", "client-tokens.json");
+}
+
+/** Last-used times (#3637). A file of its own, so recording a use never
+ *  rewrites the store the server watches and the CLI locks. */
+export function clientTokenUsagePath(home: string = homedir()): string {
+  return path.join(home, ".mulmoclaude", "client-tokens-usage.json");
 }
 
 const isMissing = (err: unknown): boolean => isErrorWithCode(err) && err.code === "ENOENT";
@@ -89,7 +96,9 @@ function readLockState(lockPath: string, nowMs: number): LockState | null {
   }
 }
 
-const busyError = (lockPath: string): Error => new Error(`${lockPath}: another token command is running; retry once it finishes`);
+export class ClientTokenLockBusyError extends Error {}
+
+const busyError = (lockPath: string): Error => new ClientTokenLockBusyError(`${lockPath}: another token command is running; retry once it finishes`);
 
 function openLock(lockPath: string): number {
   const handle = openSync(lockPath, "wx", STORE_FILE_MODE);
@@ -137,6 +146,32 @@ export function withClientTokenLock<T>(filePath: string, run: () => T, nowMs: nu
   } finally {
     releaseLock(lockPath, handle);
   }
+}
+
+/** `token revoke` for the Settings page: same lock, same rule. False when no
+ *  token has that name; throws `ClientTokenLockBusyError` while a CLI command runs. */
+export function revokeStoredClientToken(filePath: string, name: string): boolean {
+  return withClientTokenLock(filePath, () => {
+    const remaining = revokeClientToken(readClientTokenFile(filePath).records, name);
+    if (remaining === null) return false;
+    writeClientTokenFile(filePath, remaining);
+    return true;
+  });
+}
+
+/** Missing or unreadable reads as empty, logged: losing these times costs only the times. */
+export function readClientTokenUsageFile(filePath: string): ClientTokenUsage {
+  try {
+    return parseClientTokenUsage(JSON.parse(readBoundedFile(filePath)));
+  } catch (err) {
+    if (!isMissing(err)) log.warn("auth", "client-token usage file unreadable; last-used times start over", { path: filePath, error: errorMessage(err) });
+    return new Map();
+  }
+}
+
+export function writeClientTokenUsageFile(filePath: string, text: string): void {
+  mkdirSync(path.dirname(filePath), { recursive: true, mode: STORE_DIR_MODE });
+  writeFileAtomicSync(filePath, text, { mode: STORE_FILE_MODE });
 }
 
 const MISSING_KEY = "missing";

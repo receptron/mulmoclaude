@@ -155,7 +155,8 @@ Recommended: ≥ 32 characters of random data (shorter values trigger a startup 
 `npx mulmoclaude token add <name>` prints a token for one client (a bridge, n8n, a script); `token list` shows them and
 `token revoke <name>` cuts one off at once, without a restart and without touching the others. These tokens work on the
 API and both sockets, but are refused on settings, secrets and other host-management endpoints. Only a hash is stored,
-in `~/.mulmoclaude/client-tokens.json`.
+in `~/.mulmoclaude/client-tokens.json`. **Settings → API tokens** lists them with when each was last used, and revokes
+one without a terminal.
 
 ## Roles, skills, and collections
 
