@@ -10,6 +10,7 @@ import { resolveDevWorkspacePath } from './scripts/lib/devWorkspace'
 import { createProxyTargetFollower } from './scripts/lib/proxyTargetFollower'
 import { assertProxyablePort, describeRejection, parsePublishedPort, resolveProxyTarget, resolveServerPort, serverOrigins } from './scripts/lib/devServerPort'
 import { parseEnvFile } from './server/utils/launch-env.mjs'
+import { decideOwnerTokenHandoff, isLoopbackAddress } from './server/api/auth/ownerTokenHandoff'
 
 // `.env` as the launcher's parser sees it — the same `dotenv.parse` the server's
 // own loader uses. Read once, here, because BOTH things the dev client takes out
@@ -201,22 +202,12 @@ function readDevToken(): string {
   }
 }
 
-// True for an IPv4/IPv6 loopback peer. Node reports an IPv4 peer on a
-// dual-stack socket as `::ffff:127.0.0.1`, so the mapped form is unwrapped
-// before comparing — matching only the bare literals would classify a real
-// loopback client as remote.
-function isLoopbackAddress(address: string | undefined): boolean {
-  if (!address) return false
-  const bare = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address
-  return bare === '::1' || bare === '127.0.0.1' || bare.startsWith('127.')
-}
-
-// Carries "did this request arrive on the loopback interface?" from the
-// connect middleware (which can see the socket) down to
-// `transformIndexHtml` (which cannot — `IndexHtmlTransformContext` has no
-// `req`). AsyncLocalStorage rather than a module-level variable because
-// concurrent requests would otherwise read each other's value.
-const requestFromLoopback = new AsyncLocalStorage<boolean>()
+// Carries "may this page load receive the token?" from the connect
+// middleware (which can see the request) down to `transformIndexHtml` (which
+// cannot — `IndexHtmlTransformContext` has no `req`). AsyncLocalStorage rather
+// than a module-level variable because concurrent requests would otherwise
+// read each other's value.
+const requestMayReceiveToken = new AsyncLocalStorage<boolean>()
 
 // Every path this dev server forwards to Express. Kept in sync with
 // `server.proxy` below — a prefix added there without being added here is
@@ -236,7 +227,13 @@ function startsWithProxiedPrefix(url: string | undefined): boolean {
   return PROXIED_BACKEND_PREFIXES.some((prefix) => url?.startsWith(prefix) ?? false)
 }
 
-function mulmoclaudeAuthTokenPlugin(): Plugin {
+// Only a navigation is worth a warning; every module and asset request of a
+// refused page would otherwise log the same line.
+const isPageLoad = (accept: string | undefined): boolean => accept?.includes('text/html') ?? false
+
+// Exported for `test/config/test_viteAuthTokenPlugin.ts` alone (see
+// PROXIED_BACKEND_PREFIXES on why client code cannot import this module).
+export function mulmoclaudeAuthTokenPlugin(): Plugin {
   return {
     name: 'mulmoclaude-auth-token',
     // **Dev only.** In production the built index.html keeps the
@@ -266,7 +263,16 @@ function mulmoclaudeAuthTokenPlugin(): Plugin {
           res.end(JSON.stringify({ error: 'Forbidden: backend access is loopback-only' }))
           return
         }
-        requestFromLoopback.run(fromLoopback, next)
+        const handoff = decideOwnerTokenHandoff({
+          remoteAddress: req.socket.remoteAddress,
+          target: req.url,
+          headers: req.headers,
+          rawHeaders: req.rawHeaders
+        })
+        if (!handoff.ok && isPageLoad(req.headers.accept)) {
+          server.config.logger.warn(`[auth] index.html served without the token: not a direct localhost load (${handoff.reason})`)
+        }
+        requestMayReceiveToken.run(handoff.ok, next)
       })
 
       // WebSocket handshakes never reach the middleware above — Node routes
@@ -285,18 +291,13 @@ function mulmoclaudeAuthTokenPlugin(): Plugin {
       })
     },
     transformIndexHtml(html) {
-      // The session token is a bearer credential for the whole API, so it
-      // is only ever handed to a caller on this machine. A non-loopback
-      // requester gets the empty string, which the Vue boot code already
-      // treats as "no auth" (every API call then 401s) — the same path as
-      // a missing token file.
-      //
-      // This matters because `/api` is PROXIED to Express: without the
-      // check, opting into `MULMOCLAUDE_DEV_LAN` would hand a full-API
-      // credential to anyone who can load the page, and Express would see
-      // every proxied call as loopback-sourced and trust it.
-      const fromLoopback = requestFromLoopback.getStore() ?? false
-      return html.replace(TOKEN_PLACEHOLDER, fromLoopback ? readDevToken() : '')
+      // The session token is a bearer credential for the whole API, so only
+      // a direct localhost load gets it (`decideOwnerTokenHandoff`: a LAN
+      // peer under `MULMOCLAUDE_DEV_LAN`, or a tunnel to this port, does
+      // not). Anyone else gets the empty string, which the Vue boot code
+      // treats as "no auth" — the same path as a missing token file.
+      const mayReceiveToken = requestMayReceiveToken.getStore() ?? false
+      return html.replace(TOKEN_PLACEHOLDER, mayReceiveToken ? readDevToken() : '')
     },
   }
 }
