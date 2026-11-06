@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { isAuthorizedToken, tokenEquals } from "@mulmoclaude/common/token-guard";
 import { isRecord, isUnknownArray } from "../../utils/types.js";
+import { FULL_SCOPE, isClientTokenScope, isValidScopeSet, type ClientTokenScope } from "./clientTokenScope.js";
 
 export const CLIENT_TOKEN_PREFIX = "mct_";
 export const CLIENT_TOKEN_ID_BYTES = 8;
@@ -16,9 +17,6 @@ const CLIENT_TOKEN_RE = /^mct_([0-9a-f]{16})_[0-9a-f]{64}$/;
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 const CLIENT_TOKEN_NAME_RE = /^[A-Za-z0-9][\w.-]{0,63}$/;
 const STORE_VERSION = 1;
-
-export const CLIENT_TOKEN_SCOPES = ["full"] as const;
-export type ClientTokenScope = (typeof CLIENT_TOKEN_SCOPES)[number];
 
 export interface ClientTokenRecord {
   id: string;
@@ -29,8 +27,6 @@ export interface ClientTokenRecord {
 }
 
 export type Principal = { kind: "owner" } | { kind: "client"; id: string; name: string; scopes: ClientTokenScope[] };
-
-const isScope = (value: unknown): value is ClientTokenScope => CLIENT_TOKEN_SCOPES.some((scope) => scope === value);
 
 export const isClientTokenName = (name: string): boolean => CLIENT_TOKEN_NAME_RE.test(name);
 
@@ -50,7 +46,7 @@ function toRecord(value: unknown): ClientTokenRecord | null {
   if (typeof name !== "string" || !isClientTokenName(name)) return null;
   if (typeof sha256 !== "string" || !SHA256_HEX_RE.test(sha256)) return null;
   if (typeof createdAt !== "string") return null;
-  if (!isUnknownArray(scopes) || scopes.length === 0 || !scopes.every(isScope)) return null;
+  if (!isUnknownArray(scopes) || !scopes.every(isClientTokenScope) || !isValidScopeSet(scopes)) return null;
   return { id, name, sha256, createdAt, scopes: [...scopes] };
 }
 
@@ -91,20 +87,25 @@ export function resolvePrincipal(provided: unknown, ownerToken: string | null, c
 }
 
 export type AddClientTokenResult =
-  { ok: true; records: ClientTokenRecord[]; token: string; record: ClientTokenRecord } | { ok: false; reason: "invalid-name" | "duplicate-name" };
+  | { ok: true; records: ClientTokenRecord[]; token: string; record: ClientTokenRecord }
+  | { ok: false; reason: "invalid-name" | "duplicate-name" | "invalid-scopes" };
 
 export interface AddClientTokenParams {
   name: string;
   nowIso: string;
   randomHex: (bytes: number) => string;
+  /** Defaults to `full`. */
+  scopes?: readonly ClientTokenScope[];
 }
 
 export function addClientToken(records: readonly ClientTokenRecord[], params: AddClientTokenParams): AddClientTokenResult {
   if (!isClientTokenName(params.name)) return { ok: false, reason: "invalid-name" };
   if (records.some((record) => record.name === params.name)) return { ok: false, reason: "duplicate-name" };
+  const scopes = [...new Set<ClientTokenScope>(params.scopes ?? [FULL_SCOPE])];
+  if (!isValidScopeSet(scopes)) return { ok: false, reason: "invalid-scopes" };
   const tokenId = params.randomHex(CLIENT_TOKEN_ID_BYTES);
   const token = formatClientToken(tokenId, params.randomHex(CLIENT_TOKEN_SECRET_BYTES));
-  const record: ClientTokenRecord = { id: tokenId, name: params.name, sha256: hashClientToken(token), createdAt: params.nowIso, scopes: ["full"] };
+  const record: ClientTokenRecord = { id: tokenId, name: params.name, sha256: hashClientToken(token), createdAt: params.nowIso, scopes };
   return { ok: true, records: [...records, record], token, record };
 }
 

@@ -63,7 +63,7 @@ import {
 import { clampImageMaxEdge, clampLimit, clampOffset, normalizeFields, normalizeMutate } from "@mulmoclaude/core/remote-view";
 import { resolveThumbnail } from "../../utils/files/thumbnail-store.js";
 import { badRequest, notFound, conflict, forbidden, methodNotAllowed, serverError, serviceUnavailable, type ApiResponse } from "../../utils/httpError.js";
-import { isClientTokenRequest } from "../auth/principal.js";
+import { isClientTokenRequest, isCollectionVisibleToRequest } from "../auth/principal.js";
 import { startsAgentRun } from "../auth/clientTokenAccess.js";
 import { requestBodyRecord } from "../../utils/requestBody.js";
 import { ONE_MINUTE_MS } from "../../utils/time.js";
@@ -269,16 +269,25 @@ async function toClientSummary(collection: LoadedCollection): Promise<Collection
   return { ...summary, icon, iconSources: [spec.source.collection] };
 }
 
-router.get(API_ROUTES.collections.list, async (_req: Request, res: ApiResponse<CollectionsListResponse>) => {
-  try {
-    const collections = await discoverCollections();
-    const summaries = await Promise.all(collections.map(toClientSummary));
-    res.json({ collections: summaries });
-  } catch (err) {
-    log.warn("collections", "list failed", { error: errorMessage(err) });
-    serverError(res, errorMessage(err));
-  }
-});
+export interface CollectionsListDeps {
+  discover: () => Promise<LoadedCollection[]>;
+  summarize: (collection: LoadedCollection) => Promise<CollectionSummary>;
+}
+
+/** A scoped client token (#3636) sees only its own collections. */
+export function createCollectionsListHandler(deps: CollectionsListDeps = { discover: () => discoverCollections(), summarize: toClientSummary }) {
+  return async (req: Request, res: ApiResponse<CollectionsListResponse>): Promise<void> => {
+    try {
+      const collections = (await deps.discover()).filter((collection) => isCollectionVisibleToRequest(req, collection.slug));
+      res.json({ collections: await Promise.all(collections.map(deps.summarize)) });
+    } catch (err) {
+      log.warn("collections", "list failed", { error: errorMessage(err) });
+      serverError(res, errorMessage(err));
+    }
+  };
+}
+
+router.get(API_ROUTES.collections.list, createCollectionsListHandler());
 
 // Raw workspace-ontology entries (buildWorkspaceOntology — derived on
 // demand, never stored); the /collections Map tab builds its graph from

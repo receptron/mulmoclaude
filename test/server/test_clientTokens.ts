@@ -26,8 +26,11 @@ import {
   withClientTokenLock,
   writeClientTokenFile,
 } from "../../server/api/auth/clientTokenStore.js";
-import { runClientTokenCommand, type ClientTokenCommandDeps } from "../../server/api/auth/clientTokenCommands.js";
-import { isAuthorizedBearer, isClientTokenRequest, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
+import { parseScopeFlags, runClientTokenCommand, type ClientTokenCommandDeps } from "../../server/api/auth/clientTokenCommands.js";
+import type { ClientTokenScope } from "../../server/api/auth/clientTokenScope.js";
+import { createCollectionsListHandler } from "../../server/api/routes/collections.js";
+import type { CollectionSummary, LoadedCollection } from "../../server/workspace/collections/index.js";
+import { isSocketAuthorizedBearer, isClientTokenRequest, isCollectionVisibleToRequest, resolveTokenPrincipal } from "../../server/api/auth/principal.js";
 import { startsAgentRun, isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
 import { bearerAuth } from "../../server/api/auth/bearerAuth.js";
 import { API_ROUTES } from "../../src/config/apiRoutes.js";
@@ -73,6 +76,22 @@ describe("addClientToken", () => {
     const { records } = issue([], "bridge");
     assert.deepEqual(addClientToken(records, { name: "bridge", nowIso: NOW, randomHex: realRandomHex }), { ok: false, reason: "duplicate-name" });
     assert.deepEqual(addClientToken(records, { name: "a b", nowIso: NOW, randomHex: realRandomHex }), { ok: false, reason: "invalid-name" });
+  });
+
+  it("stores the requested scopes once each", () => {
+    const result = addClientToken([], { name: "n8n", nowIso: NOW, randomHex: realRandomHex, scopes: ["read", "collection:tasks", "read"] });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.ok ? result.record.scopes : null, ["read", "collection:tasks"]);
+  });
+
+  const refusedScopeSets: ClientTokenScope[][] = [[], ["full", "read"], ["collection:tasks", "full"]];
+  refusedScopeSets.forEach((scopes) => {
+    it(`refuses the scope set ${JSON.stringify(scopes)}`, () => {
+      assert.deepEqual(addClientToken([], { name: "n8n", nowIso: NOW, randomHex: realRandomHex, scopes }), {
+        ok: false,
+        reason: "invalid-scopes",
+      });
+    });
   });
 });
 
@@ -166,6 +185,13 @@ describe("parseClientTokenStore", () => {
       tokens: [valid, { ...valid, sha256: "short" }, { ...valid, scopes: ["admin"] }, { ...valid, scopes: [] }, { ...valid, name: "a b" }, null, "x"],
     };
     assert.deepEqual(parseClientTokenStore(raw), { records, droppedCount: 6 });
+  });
+
+  it("keeps scoped records and drops ones a server cannot honour", () => {
+    const [valid] = issue([], "bridge").records;
+    const scoped = { ...valid, scopes: ["read", "collection:tasks"] };
+    const unhonourable = [["full", "read"], ["collection:"], ["collection:../x"], ["Read"], [7]].map((scopes) => ({ ...valid, scopes }));
+    assert.deepEqual(parseClientTokenStore({ version: 1, tokens: [scoped, ...unhonourable] }), { records: [scoped], droppedCount: unhonourable.length });
   });
 
   [null, [], {}, { version: 2, tokens: [] }, { version: 1 }, { version: 1, tokens: {} }].forEach((raw) => {
@@ -331,6 +357,27 @@ function commandHarness(storePath: string): { deps: ClientTokenCommandDeps; out:
   };
 }
 
+describe("parseScopeFlags", () => {
+  it("reads --scope pairs, and none at all as no scopes", () => {
+    assert.deepEqual(parseScopeFlags([]), []);
+    assert.deepEqual(parseScopeFlags(["--scope", "read", "--scope", "collection:a-b_1"]), ["read", "collection:a-b_1"]);
+  });
+
+  [
+    ["--scope"],
+    ["read"],
+    ["--scope", "read", "extra"],
+    ["--scope", "write"],
+    ["--scope", "collection:"],
+    ["--scope", "collection:a/b"],
+    ["-s", "read"],
+  ].forEach((flags) => {
+    it(`refuses ${JSON.stringify(flags)}`, () => {
+      assert.equal(parseScopeFlags(flags), null);
+    });
+  });
+});
+
 describe("runClientTokenCommand", () => {
   const paths = { storePath: "" };
   beforeEach(() => {
@@ -372,7 +419,29 @@ describe("runClientTokenCommand", () => {
     assert.equal(readFileSync(paths.storePath, "utf8"), before);
   });
 
-  [[], ["add"], ["revoke"], ["list", "x"], ["add", "a", "b"], ["remove", "a"], ["add", "a b"]].forEach((args) => {
+  it("add --scope stores those scopes and list shows them", () => {
+    const add = commandHarness(paths.storePath);
+    assert.equal(runClientTokenCommand(["add", "n8n", "--scope", "read", "--scope", "collection:tasks"], add.deps), 0);
+    assert.deepEqual(readClientTokenFile(paths.storePath).records[0]?.scopes, ["read", "collection:tasks"]);
+    const list = commandHarness(paths.storePath);
+    runClientTokenCommand(["list"], list.deps);
+    assert.match(list.out[0] ?? "", /\tread,collection:tasks$/);
+  });
+
+  [
+    [],
+    ["add"],
+    ["revoke"],
+    ["list", "x"],
+    ["add", "a", "b"],
+    ["remove", "a"],
+    ["add", "a b"],
+    ["add", "a", "--scope"],
+    ["add", "a", "--scope", "admin"],
+    ["add", "a", "--scopes", "read"],
+    ["add", "a", "--scope", "full", "--scope", "read"],
+    ["revoke", "a", "--scope", "read"],
+  ].forEach((args) => {
     it(`refuses ${JSON.stringify(args)} with usage, writing nothing`, () => {
       const { deps, err } = commandHarness(paths.storePath);
       assert.equal(runClientTokenCommand(args, deps), 2);
@@ -399,7 +468,7 @@ describe("runClientTokenCommand", () => {
   });
 });
 
-describe("isAuthorizedBearer — the host's shared check", () => {
+describe("isSocketAuthorizedBearer — the host's shared check", () => {
   const state = { restoreHome: (): void => undefined, owner: "" };
   beforeEach(async () => {
     const home = makeTempDir("mulmo-client-token-home-");
@@ -413,8 +482,8 @@ describe("isAuthorizedBearer — the host's shared check", () => {
   });
 
   it("accepts the owner token with no store at all", () => {
-    assert.equal(isAuthorizedBearer(state.owner), true);
-    assert.equal(isAuthorizedBearer("wrong"), false);
+    assert.equal(isSocketAuthorizedBearer(state.owner), true);
+    assert.equal(isSocketAuthorizedBearer("wrong"), false);
   });
 
   it("accepts a token issued by the CLI and refuses it right after revoke", () => {
@@ -422,10 +491,10 @@ describe("isAuthorizedBearer — the host's shared check", () => {
     runClientTokenCommand(["add", "bridge"], add.deps);
     const token = add.out.find((line) => line.startsWith("mct_")) ?? "";
     assert.deepEqual(resolveTokenPrincipal(token), { kind: "client", id: clientTokenId(token), name: "bridge", scopes: ["full"] });
-    assert.equal(isAuthorizedBearer(state.owner), true);
+    assert.equal(isSocketAuthorizedBearer(token), true);
     runClientTokenCommand(["revoke", "bridge"], commandHarness(clientTokensPath()).deps);
-    assert.equal(isAuthorizedBearer(token), false);
-    assert.equal(isAuthorizedBearer(state.owner), true);
+    assert.equal(isSocketAuthorizedBearer(token), false);
+    assert.equal(isSocketAuthorizedBearer(state.owner), true);
   });
 
   it("refuses a client token before the owner token exists", () => {
@@ -433,7 +502,15 @@ describe("isAuthorizedBearer — the host's shared check", () => {
     runClientTokenCommand(["add", "bridge"], add.deps);
     const token = add.out.find((line) => line.startsWith("mct_")) ?? "";
     __resetForTests();
-    assert.equal(isAuthorizedBearer(token), false);
+    assert.equal(isSocketAuthorizedBearer(token), false);
+  });
+
+  it("refuses a scoped client token that the HTTP rule accepts", () => {
+    const add = commandHarness(clientTokensPath());
+    runClientTokenCommand(["add", "reader", "--scope", "read"], add.deps);
+    const token = add.out.find((line) => line.startsWith("mct_")) ?? "";
+    assert.equal(resolveTokenPrincipal(token)?.kind, "client");
+    assert.equal(isSocketAuthorizedBearer(token), false);
   });
 });
 
@@ -574,7 +651,7 @@ describe("bearerAuth — client tokens", () => {
     __resetForTests();
   });
 
-  function callMiddleware(token: string, apiPath: string): { nextCalled: boolean; statusCode: number } {
+  function callMiddleware(token: string, apiPath: string, method = "GET"): { nextCalled: boolean; statusCode: number } {
     const outcome = { nextCalled: false, statusCode: 200 };
     const res = {
       status(code: number) {
@@ -589,7 +666,7 @@ describe("bearerAuth — client tokens", () => {
       outcome.nextCalled = true;
     };
     // Only the fields the middleware reads.
-    bearerAuth({ headers: { authorization: `Bearer ${token}` }, path: apiPath, method: "GET" } as unknown as Request, res as unknown as Response, next);
+    bearerAuth({ headers: { authorization: `Bearer ${token}` }, path: apiPath, method } as unknown as Request, res as unknown as Response, next);
     return outcome;
   }
 
@@ -619,6 +696,68 @@ describe("bearerAuth — client tokens", () => {
 
   it("refuses an unknown token with 401 everywhere", () => {
     assert.deepEqual(callMiddleware("mct_nope", "/collections"), { nextCalled: false, statusCode: 401 });
+  });
+
+  function issueScoped(name: string, scopes: string[]): string {
+    const add = commandHarness(clientTokensPath());
+    runClientTokenCommand(["add", name, ...scopes.flatMap((scope) => ["--scope", scope])], add.deps);
+    return add.out.find((line) => line.startsWith("mct_")) ?? "";
+  }
+
+  const PASSED = { nextCalled: true, statusCode: 200 };
+  const FORBIDDEN = { nextCalled: false, statusCode: 403 };
+
+  it("a read token passes GET and HEAD and is refused on writes", () => {
+    const reader = issueScoped("reader", ["read"]);
+    assert.deepEqual(callMiddleware(reader, "/collections/todo", "GET"), PASSED);
+    assert.deepEqual(callMiddleware(reader, "/collections/todo", "HEAD"), PASSED);
+    ["POST", "PUT", "PATCH", "DELETE"].forEach((method) => assert.deepEqual(callMiddleware(reader, "/collections/todo/items", method), FORBIDDEN));
+  });
+
+  it("a collection token reaches only its collection, and the owner-only refusal still comes first", () => {
+    const tasks = issueScoped("tasks", ["collection:tasks"]);
+    assert.deepEqual(callMiddleware(tasks, "/collections/tasks/items", "POST"), PASSED);
+    assert.deepEqual(callMiddleware(tasks, "/collections"), PASSED);
+    assert.deepEqual(callMiddleware(tasks, "/collections/notes"), FORBIDDEN);
+    assert.deepEqual(callMiddleware(tasks, "/collections/ontology"), FORBIDDEN);
+    assert.deepEqual(callMiddleware(tasks, "/transports/discord/chat", "POST"), FORBIDDEN);
+    assert.deepEqual(callMiddleware(tasks, "/config"), FORBIDDEN);
+  });
+
+  it("the collection list shows a scoped token only its collections", () => {
+    const tasks = issueScoped("tasks", ["read", "collection:tasks"]);
+    const res = { status: () => res, json: () => res };
+    const scopedReq = { headers: { authorization: `Bearer ${tasks}` }, path: "/collections", method: "GET" };
+    bearerAuth(scopedReq as unknown as Request, res as unknown as Response, () => undefined);
+    assert.deepEqual([isCollectionVisibleToRequest(scopedReq, "tasks"), isCollectionVisibleToRequest(scopedReq, "notes")], [true, false]);
+    const fullReq = { headers: { authorization: `Bearer ${state.client}` }, path: "/collections", method: "GET" };
+    bearerAuth(fullReq as unknown as Request, res as unknown as Response, () => undefined);
+    assert.equal(isCollectionVisibleToRequest(fullReq, "notes"), true);
+  });
+
+  it("the list route returns a scoped token only its collections, and a full token all of them", async () => {
+    const tasks = issueScoped("tasks", ["read", "collection:tasks"]);
+    const listFor = async (token: string): Promise<unknown> => {
+      const req = { headers: { authorization: `Bearer ${token}` }, path: "/collections", method: "GET" };
+      const outcome: { body: unknown } = { body: undefined };
+      const res = {
+        status: () => res,
+        json: (payload: unknown) => {
+          outcome.body = payload;
+          return res;
+        },
+      };
+      bearerAuth(req as unknown as Request, res as unknown as Response, () => undefined);
+      const handler = createCollectionsListHandler({
+        discover: async () => ["notes", "tasks"].map((slug) => ({ slug }) as unknown as LoadedCollection),
+        summarize: async (collection) => ({ slug: collection.slug }) as unknown as CollectionSummary,
+      });
+      await handler(req as unknown as Request, res as unknown as Response);
+      return outcome.body;
+    };
+    assert.deepEqual(await listFor(tasks), { collections: [{ slug: "tasks" }] });
+    assert.deepEqual(await listFor(state.client), { collections: [{ slug: "notes" }, { slug: "tasks" }] });
+    assert.deepEqual(await listFor(state.owner), { collections: [{ slug: "notes" }, { slug: "tasks" }] });
   });
 });
 
