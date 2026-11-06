@@ -36,22 +36,41 @@ function writeUsage(filePath: string, usage: ClientTokenUsage, liveIds: readonly
   }
 }
 
+class UsageTracker implements ClientTokenUsageTracker {
+  private loaded: ClientTokenUsage | null = null;
+  private dirty = false;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  constructor(private readonly options: Required<ClientTokenUsageTrackerOptions>) {}
+
+  note = (tokenId: string): void => {
+    if (!noteClientTokenUse(this.usage(), tokenId, this.options.now())) return;
+    this.dirty = true;
+    this.schedule();
+  };
+
+  snapshot = (): ReadonlyMap<string, string> => new Map(this.usage());
+
+  // A failed write stays dirty and tries again later, so an idle client's last
+  // use is not left to a graceful shutdown that may never come.
+  flush = (): void => {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    if (!this.dirty) return;
+    if (writeUsage(this.options.filePath, this.usage(), this.options.liveIds())) this.dirty = false;
+    else this.schedule();
+  };
+
+  private usage(): ClientTokenUsage {
+    this.loaded ??= readClientTokenUsageFile(this.options.filePath);
+    return this.loaded;
+  }
+
+  private schedule(): void {
+    this.timer ??= setTimeout(this.flush, this.options.flushDelayMs).unref();
+  }
+}
+
 export function createClientTokenUsageTracker(options: ClientTokenUsageTrackerOptions): ClientTokenUsageTracker {
-  const { filePath, liveIds, now = Date.now, flushDelayMs = USAGE_FLUSH_DELAY_MS } = options;
-  const state: { usage: ClientTokenUsage | null; dirty: boolean; timer: ReturnType<typeof setTimeout> | null } = { usage: null, dirty: false, timer: null };
-  const usage = (): ClientTokenUsage => {
-    state.usage ??= readClientTokenUsageFile(filePath);
-    return state.usage;
-  };
-  const flush = (): void => {
-    if (state.timer !== null) clearTimeout(state.timer);
-    state.timer = null;
-    if (state.dirty && writeUsage(filePath, usage(), liveIds())) state.dirty = false;
-  };
-  const note = (tokenId: string): void => {
-    if (!noteClientTokenUse(usage(), tokenId, now())) return;
-    state.dirty = true;
-    state.timer ??= setTimeout(flush, flushDelayMs).unref();
-  };
-  return { note, snapshot: () => new Map(usage()), flush };
+  return new UsageTracker({ now: Date.now, flushDelayMs: USAGE_FLUSH_DELAY_MS, ...options });
 }

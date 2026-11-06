@@ -385,6 +385,8 @@ const enMessages = {
       confirmLabel: "Revoke",
       revoking: "Revoking…",
       lastUsedNote: "Last used is recorded to the minute.",
+      unreadableEntries:
+        "client-tokens.json has {count} entries this server cannot read. They authorize nothing, and this page will not revoke while they are there, because rewriting the file would drop them. `mulmoclaude token revoke` still works and removes them.",
       loadError: "Failed to load client tokens",
       revokeError: "Failed to revoke the token",
     },

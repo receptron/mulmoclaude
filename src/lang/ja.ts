@@ -366,6 +366,8 @@ const jaMessages = {
       confirmLabel: "失効させる",
       revoking: "失効中…",
       lastUsedNote: "最終利用日時は分単位で記録しています。",
+      unreadableEntries:
+        "client-tokens.json に、このサーバーが読めない記録が {count} 件あります。これらは何も許可しません。ファイルを書き直すと消えてしまうため、残っている間はこの画面から失効できません。`mulmoclaude token revoke` は使え、その際にこれらは取り除かれます。",
       loadError: "トークンの一覧を読み込めませんでした",
       revokeError: "トークンを失効できませんでした",
     },

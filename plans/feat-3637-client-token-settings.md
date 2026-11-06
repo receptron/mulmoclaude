@@ -12,7 +12,9 @@ never sees a token's value.
   the server re-read it on every flush and contend with the CLI for its lock.
 - Recorded where the principal is resolved, so HTTP and both sockets count. An
   open socket counts as in use (its periodic re-check resolves the token).
-- A flush keeps only ids still in the store, so a revoked token's entry goes.
+- A flush keeps only ids still in the store, so a revoked token's entry goes —
+  except when the store reads as empty, which an unreadable store also does.
+- A failed write stays dirty and is retried on the next flush delay.
 - An unreadable usage file is treated as empty: the timestamps are advisory, and
   losing them must never refuse a request.
 
@@ -20,9 +22,13 @@ never sees a token's value.
 
 - `GET /api/config/client-tokens` → `{ tokens: [{ name, id, createdAt, scopes, lastUsedAt | null }] }`.
   No value, no hash.
-- `DELETE /api/config/client-tokens/:name` → `{ revoked: name }`; 404 when no
-  such token; 409 while a CLI token command holds the lock. Same lock and same
+- `DELETE /api/config/client-tokens/:name?id=<id>` → `{ revoked: name }`; 404
+  when no such token; 409 while a CLI token command holds the lock, when the
+  name now belongs to another id, or when the store holds entries this server
+  cannot read (a rewrite would drop them). Same lock and same
   `revokeClientToken` as `mulmoclaude token revoke`.
+- The listing reads the store fresh and fails on an unreadable one, so the page
+  never shows "no tokens" for a broken file; it also reports unreadable entries.
 
 ## UI
 

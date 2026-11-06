@@ -36,7 +36,7 @@
                 class="rounded bg-red-700 px-2 py-1 text-xs font-medium text-white hover:bg-red-800 disabled:opacity-50"
                 :disabled="revokingName !== null"
                 data-testid="settings-client-token-confirm-btn"
-                @click="revoke(token.name)"
+                @click="revoke(token)"
               >
                 {{ revokingName === token.name ? t("settingsModal.clientTokensTab.revoking") : t("settingsModal.clientTokensTab.confirmLabel") }}
               </button>
@@ -69,7 +69,11 @@
       {{ t("settingsModal.clientTokensTab.confirmBody", { name: confirmingName }) }}
     </p>
     <p class="text-xs text-gray-500">{{ t("settingsModal.clientTokensTab.lastUsedNote") }}</p>
+    <p v-if="unreadableEntryCount > 0" class="text-sm text-amber-800" role="status" data-testid="settings-client-tokens-unreadable">
+      {{ t("settingsModal.clientTokensTab.unreadableEntries", { count: unreadableEntryCount }) }}
+    </p>
     <p v-if="loadError" class="text-sm text-red-700" role="alert" data-testid="settings-client-tokens-error">{{ loadError }}</p>
+    <p v-if="revokeError" class="text-sm text-red-700" role="alert" data-testid="settings-client-tokens-revoke-error">{{ revokeError }}</p>
   </div>
 </template>
 
@@ -91,8 +95,10 @@ interface ClientTokenRow {
 const { t } = useI18n();
 
 const tokens = ref<ClientTokenRow[]>([]);
+const unreadableEntryCount = ref(0);
 const loading = ref(true);
 const loadError = ref("");
+const revokeError = ref("");
 const confirmingName = ref<string | null>(null);
 const revokingName = ref<string | null>(null);
 
@@ -102,7 +108,7 @@ function formatIso(iso: string): string {
 }
 
 async function load(): Promise<void> {
-  const response = await apiGet<{ tokens: ClientTokenRow[] }>(API_ROUTES.config.clientTokens);
+  const response = await apiGet<{ tokens: ClientTokenRow[]; unreadableEntryCount: number }>(API_ROUTES.config.clientTokens);
   loading.value = false;
   if (!response.ok) {
     loadError.value = response.error || t("settingsModal.clientTokensTab.loadError");
@@ -110,19 +116,23 @@ async function load(): Promise<void> {
   }
   loadError.value = "";
   tokens.value = response.data.tokens;
+  unreadableEntryCount.value = response.data.unreadableEntryCount;
 }
 
-async function revoke(name: string): Promise<void> {
+// Revoking stays disabled until the reload lands, so an older list can never
+// arrive after a newer one and bring a revoked row back.
+async function revoke(token: ClientTokenRow): Promise<void> {
   if (revokingName.value !== null) return;
-  revokingName.value = name;
-  const response = await apiDelete<{ revoked: string }>(API_ROUTES.config.clientToken.replace(":name", encodeURIComponent(name)));
-  revokingName.value = null;
+  revokingName.value = token.name;
+  // The id pins the row the user confirmed: a token re-issued under the same
+  // name since the list loaded is refused rather than revoked.
+  const response = await apiDelete<{ revoked: string }>(API_ROUTES.config.clientToken.replace(":name", encodeURIComponent(token.name)), undefined, {
+    query: { id: token.id },
+  });
   confirmingName.value = null;
-  if (!response.ok) {
-    loadError.value = response.error || t("settingsModal.clientTokensTab.revokeError");
-    return;
-  }
+  revokeError.value = response.ok ? "" : response.error || t("settingsModal.clientTokensTab.revokeError");
   await load();
+  revokingName.value = null;
 }
 
 onMounted(load);

@@ -366,6 +366,8 @@ const koMessages = {
       confirmLabel: "폐기",
       revoking: "폐기 중…",
       lastUsedNote: "마지막 사용 시각은 분 단위로 기록됩니다.",
+      unreadableEntries:
+        "client-tokens.json에 이 서버가 읽을 수 없는 항목이 {count}개 있습니다. 이 항목은 아무 권한도 주지 않으며, 파일을 다시 쓰면 사라지므로 남아 있는 동안에는 이 화면에서 폐기할 수 없습니다. `mulmoclaude token revoke`는 계속 사용할 수 있고, 그때 이 항목들이 제거됩니다.",
       loadError: "토큰 목록을 불러오지 못했습니다",
       revokeError: "토큰을 폐기하지 못했습니다",
     },

@@ -357,6 +357,8 @@ const zhMessages = {
       confirmLabel: "吊销",
       revoking: "吊销中…",
       lastUsedNote: "最近使用时间精确到分钟。",
+      unreadableEntries:
+        "client-tokens.json 中有 {count} 条本服务器无法读取的记录。它们不授予任何权限；由于重写文件会删除它们，存在这些记录时本页面不会执行吊销。`mulmoclaude token revoke` 仍可使用，并会移除它们。",
       loadError: "无法加载令牌列表",
       revokeError: "无法吊销该令牌",
     },

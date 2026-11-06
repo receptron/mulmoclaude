@@ -363,6 +363,8 @@ const ptBRMessages = {
       confirmLabel: "Revogar",
       revoking: "Revogando…",
       lastUsedNote: "O último uso é registrado com precisão de minutos.",
+      unreadableEntries:
+        "client-tokens.json tem {count} entradas que este servidor não consegue ler. Elas não autorizam nada, e esta página não revoga enquanto existirem, porque reescrever o arquivo as apagaria. `mulmoclaude token revoke` continua funcionando e as remove.",
       loadError: "Não foi possível carregar os tokens",
       revokeError: "Não foi possível revogar o token",
     },

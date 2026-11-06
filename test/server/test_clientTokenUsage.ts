@@ -22,6 +22,7 @@ import {
   clientTokenUsagePath,
   clientTokensPath,
   readClientTokenFile,
+  REVOKE_OUTCOMES,
   revokeStoredClientToken,
   writeClientTokenFile,
 } from "../../server/api/auth/clientTokenStore.js";
@@ -38,6 +39,8 @@ const NOW = "2026-11-06T00:00:00.000Z";
 const ID_A = "a".repeat(16);
 const ID_B = "b".repeat(16);
 const START_MS = Date.parse("2026-11-06T10:20:30.400Z");
+const RETRY_TEST_DELAY_MS = 20;
+const RETRY_TEST_WAIT_FACTOR = 10;
 const realRandomHex = (bytes: number): string => randomBytes(bytes).toString("hex");
 
 function issue(records: readonly ClientTokenRecord[], name: string): { records: ClientTokenRecord[]; token: string } {
@@ -68,6 +71,11 @@ describe("usage rule", () => {
     ]);
     const parsed = parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, [ID_A])));
     assert.deepEqual([...parsed], [[ID_A, "2026-11-06T10:20:00.000Z"]]);
+  });
+
+  it("drops nothing when the store reads as empty, since that may be an unreadable store", () => {
+    const usage: ClientTokenUsage = new Map([[ID_A, "2026-11-06T10:20:00.000Z"]]);
+    assert.equal(parseClientTokenUsage(JSON.parse(serializeClientTokenUsage(usage, []))).get(ID_A), "2026-11-06T10:20:00.000Z");
   });
 
   [null, 7, "x", [], {}, { version: 2, lastUsed: {} }, { version: 1 }, { version: 1, lastUsed: [] }].forEach((raw) => {
@@ -160,6 +168,16 @@ describe("usage tracker", () => {
     usage.flush();
     assert.equal(parseClientTokenUsage(JSON.parse(readFileSync(paths.file, "utf8"))).get(ID_A), "2026-11-06T10:20:00.000Z");
   });
+
+  it("retries a failed write on its own, without another use", async () => {
+    mkdirSync(paths.file, { recursive: true });
+    const usage = createClientTokenUsageTracker({ filePath: paths.file, liveIds: () => [ID_A], now: () => START_MS, flushDelayMs: RETRY_TEST_DELAY_MS });
+    usage.note(ID_A);
+    usage.flush();
+    rmSync(paths.file, { recursive: true });
+    await new Promise((resolve) => setTimeout(resolve, RETRY_TEST_DELAY_MS * RETRY_TEST_WAIT_FACTOR));
+    assert.equal(parseClientTokenUsage(JSON.parse(readFileSync(paths.file, "utf8"))).get(ID_A), "2026-11-06T10:20:00.000Z");
+  });
 });
 
 describe("revokeStoredClientToken", () => {
@@ -168,22 +186,45 @@ describe("revokeStoredClientToken", () => {
     paths.store = path.join(makeTempDir("mulmo-client-token-revoke-"), ".mulmoclaude", "client-tokens.json");
   });
 
-  it("removes only that token and reports an unknown name", () => {
+  function storeTwo(): ClientTokenRecord[] {
     const { records } = issue(issue([], "one").records, "two");
     writeClientTokenFile(paths.store, records);
-    assert.equal(revokeStoredClientToken(paths.store, "one"), true);
+    return records;
+  }
+
+  it("removes only the token the page listed, and reports an unknown name", () => {
+    const [one] = storeTwo();
+    const target = { name: "one", id: one?.id ?? "" };
+    assert.equal(revokeStoredClientToken(paths.store, target), REVOKE_OUTCOMES.revoked);
     assert.deepEqual(
       readClientTokenFile(paths.store).records.map((record) => record.name),
       ["two"],
     );
-    assert.equal(revokeStoredClientToken(paths.store, "one"), false);
+    assert.equal(revokeStoredClientToken(paths.store, target), REVOKE_OUTCOMES.notFound);
+  });
+
+  it("refuses a name that now belongs to a re-issued token, changing nothing", () => {
+    storeTwo();
+    const before = readFileSync(paths.store, "utf8");
+    assert.equal(revokeStoredClientToken(paths.store, { name: "one", id: ID_A }), REVOKE_OUTCOMES.changed);
+    assert.equal(readFileSync(paths.store, "utf8"), before);
+  });
+
+  it("refuses to rewrite a store holding entries this server cannot read", () => {
+    const [one] = storeTwo();
+    const raw = JSON.parse(readFileSync(paths.store, "utf8"));
+    raw.tokens.push({ ...raw.tokens[1], name: "future", scopes: ["a-scope-from-a-newer-version"] });
+    writeFileSync(paths.store, JSON.stringify(raw));
+    const before = readFileSync(paths.store, "utf8");
+    assert.equal(revokeStoredClientToken(paths.store, { name: "one", id: one?.id ?? "" }), REVOKE_OUTCOMES.unreadableEntries);
+    assert.equal(readFileSync(paths.store, "utf8"), before);
   });
 
   it("refuses while a token command holds the lock, changing nothing", () => {
-    writeClientTokenFile(paths.store, issue([], "one").records);
+    const [one] = storeTwo();
     const before = readFileSync(paths.store, "utf8");
     writeFileSync(`${paths.store}.lock`, `${process.pid}\n`);
-    assert.throws(() => revokeStoredClientToken(paths.store, "one"), ClientTokenLockBusyError);
+    assert.throws(() => revokeStoredClientToken(paths.store, { name: "one", id: one?.id ?? "" }), ClientTokenLockBusyError);
     assert.equal(readFileSync(paths.store, "utf8"), before);
   });
 });
@@ -207,58 +248,86 @@ interface RouteLayer {
   route?: { path: string; methods: Record<string, boolean>; stack: { handle: (req: Request, res: Response) => void }[] };
 }
 
-function callRoute(deps: ClientTokensDeps, method: "get" | "delete", routePath: string, params: Record<string, string> = {}) {
+function callRoute(
+  deps: ClientTokensDeps,
+  method: "get" | "delete",
+  routePath: string,
+  request: { params?: Record<string, string>; query?: Record<string, string> } = {},
+) {
   const router = createClientTokensRouter(deps) as unknown as { stack: RouteLayer[] };
   const layer = router.stack.find((candidate) => candidate.route?.path === routePath && candidate.route.methods[method] === true);
   const handle = layer?.route?.stack[0]?.handle;
   if (handle === undefined) throw new Error(`no ${method} ${routePath}`);
   const { res, outcome } = fakeRes();
-  handle({ params } as unknown as Request, res as unknown as Response);
+  handle({ params: request.params ?? {}, query: request.query ?? {} } as unknown as Request, res as unknown as Response);
   return outcome;
 }
 
 describe("client tokens routes", () => {
-  const listing = [{ name: "n8n", id: ID_A, createdAt: NOW, scopes: ["full" as const], lastUsedAt: null }];
-  const deps = (revoke: ClientTokensDeps["revoke"]): ClientTokensDeps => ({ list: () => listing, revoke });
+  const listing = { tokens: [{ name: "n8n", id: ID_A, createdAt: NOW, scopes: ["full" as const], lastUsedAt: null }], unreadableEntryCount: 0 };
+  const deps = (revoke: ClientTokensDeps["revoke"], list: ClientTokensDeps["list"] = () => listing): ClientTokensDeps => ({ list, revoke });
+  const revokeN8n = (revoke: ClientTokensDeps["revoke"]) =>
+    callRoute(deps(revoke), "delete", API_ROUTES.config.clientToken, { params: { name: "n8n" }, query: { id: ID_A } });
 
-  it("lists the tokens", () => {
+  it("lists the tokens, and reports an unreadable store as an error rather than an empty list", () => {
     assert.deepEqual(
       callRoute(
-        deps(() => true),
+        deps(() => REVOKE_OUTCOMES.revoked),
         "get",
         API_ROUTES.config.clientTokens,
       ),
-      { status: 200, body: { tokens: listing } },
+      { status: 200, body: listing },
+    );
+    const unreadable = (): typeof listing => {
+      throw new Error("client-tokens.json: not a version 1 client-token store");
+    };
+    assert.equal(
+      callRoute(
+        deps(() => REVOKE_OUTCOMES.revoked, unreadable),
+        "get",
+        API_ROUTES.config.clientTokens,
+      ).status,
+      500,
     );
   });
 
-  it("revokes by name, 404s an unknown one, 409s a held lock and 500s anything else", () => {
-    assert.deepEqual(
-      callRoute(
-        deps(() => true),
-        "delete",
-        API_ROUTES.config.clientToken,
-        { name: "n8n" },
-      ),
-      { status: 200, body: { revoked: "n8n" } },
+  it("maps each revoke outcome to its status", () => {
+    const seen: { name: string; id: string }[] = [];
+    const revoked = revokeN8n((target) => {
+      seen.push(target);
+      return REVOKE_OUTCOMES.revoked;
+    });
+    assert.deepEqual([revoked, seen], [{ status: 200, body: { revoked: "n8n" } }, [{ name: "n8n", id: ID_A }]]);
+    assert.equal(revokeN8n(() => REVOKE_OUTCOMES.notFound).status, 404);
+    assert.equal(revokeN8n(() => REVOKE_OUTCOMES.changed).status, 409);
+    assert.equal(revokeN8n(() => REVOKE_OUTCOMES.unreadableEntries).status, 409);
+  });
+
+  it("409s a held lock and 500s anything else", () => {
+    assert.equal(
+      revokeN8n(() => {
+        throw new ClientTokenLockBusyError("busy");
+      }).status,
+      409,
     );
     assert.equal(
-      callRoute(
-        deps(() => false),
-        "delete",
-        API_ROUTES.config.clientToken,
-        { name: "nope" },
-      ).status,
-      404,
+      revokeN8n(() => {
+        throw new Error("disk full");
+      }).status,
+      500,
     );
-    const busy = (): boolean => {
-      throw new ClientTokenLockBusyError("busy");
+  });
+
+  it("refuses a revoke without the listed id", () => {
+    const called: string[] = [];
+    const revoke: ClientTokensDeps["revoke"] = (target) => {
+      called.push(target.name);
+      return REVOKE_OUTCOMES.revoked;
     };
-    assert.equal(callRoute(deps(busy), "delete", API_ROUTES.config.clientToken, { name: "n8n" }).status, 409);
-    const broken = (): boolean => {
-      throw new Error("disk full");
-    };
-    assert.equal(callRoute(deps(broken), "delete", API_ROUTES.config.clientToken, { name: "n8n" }).status, 500);
+    [{}, { id: "" }].forEach((query) => {
+      assert.equal(callRoute(deps(revoke), "delete", API_ROUTES.config.clientToken, { params: { name: "n8n" }, query }).status, 400);
+    });
+    assert.deepEqual(called, []);
   });
 });
 
@@ -279,12 +348,21 @@ describe("client tokens through the host", () => {
   });
 
   it("a client token's use shows up as its last use; the owner's does not", () => {
-    assert.equal(listStoredClientTokens()[0]?.lastUsedAt, null);
+    assert.equal(listStoredClientTokens().tokens[0]?.lastUsedAt, null);
     resolveTokenPrincipal(state.owner);
-    assert.equal(listStoredClientTokens()[0]?.lastUsedAt, null);
+    assert.equal(listStoredClientTokens().tokens[0]?.lastUsedAt, null);
     resolveTokenPrincipal(state.client);
-    assert.notEqual(listStoredClientTokens()[0]?.lastUsedAt, null);
+    assert.notEqual(listStoredClientTokens().tokens[0]?.lastUsedAt, null);
     assert.equal(clientTokenUsagePath().startsWith(path.dirname(clientTokensPath())), true);
+  });
+
+  it("lists a broken store as an error, and counts entries it cannot read", () => {
+    const raw = JSON.parse(readFileSync(clientTokensPath(), "utf8"));
+    raw.tokens.push({ ...raw.tokens[0], name: "future", scopes: ["a-scope-from-a-newer-version"] });
+    writeFileSync(clientTokensPath(), JSON.stringify(raw));
+    assert.deepEqual([listStoredClientTokens().tokens.length, listStoredClientTokens().unreadableEntryCount], [1, 1]);
+    writeFileSync(clientTokensPath(), "{broken");
+    assert.throws(() => listStoredClientTokens(), /client-tokens\.json/);
   });
 
   it("refuses the listing and the revoke to a client token", () => {

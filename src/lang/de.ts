@@ -367,6 +367,8 @@ const deMessages = {
       confirmLabel: "Widerrufen",
       revoking: "Wird widerrufen…",
       lastUsedNote: "Die letzte Verwendung wird minutengenau erfasst.",
+      unreadableEntries:
+        "client-tokens.json enthält {count} Einträge, die dieser Server nicht lesen kann. Sie berechtigen zu nichts, und diese Seite widerruft nicht, solange sie vorhanden sind, weil ein Neuschreiben der Datei sie entfernen würde. `mulmoclaude token revoke` funktioniert weiterhin und entfernt sie.",
       loadError: "Tokens konnten nicht geladen werden",
       revokeError: "Token konnte nicht widerrufen werden",
     },

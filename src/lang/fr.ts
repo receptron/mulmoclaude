@@ -365,6 +365,8 @@ const frMessages = {
       confirmLabel: "Révoquer",
       revoking: "Révocation…",
       lastUsedNote: "La dernière utilisation est enregistrée à la minute près.",
+      unreadableEntries:
+        "client-tokens.json contient {count} entrées que ce serveur ne sait pas lire. Elles n'autorisent rien, et cette page ne révoque pas tant qu'elles sont là, car réécrire le fichier les supprimerait. `mulmoclaude token revoke` fonctionne toujours et les retire.",
       loadError: "Impossible de charger les jetons",
       revokeError: "Impossible de révoquer le jeton",
     },

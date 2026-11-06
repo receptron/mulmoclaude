@@ -148,14 +148,27 @@ export function withClientTokenLock<T>(filePath: string, run: () => T, nowMs: nu
   }
 }
 
-/** `token revoke` for the Settings page: same lock, same rule. False when no
- *  token has that name; throws `ClientTokenLockBusyError` while a CLI command runs. */
-export function revokeStoredClientToken(filePath: string, name: string): boolean {
+export const REVOKE_OUTCOMES = {
+  revoked: "revoked",
+  notFound: "not-found",
+  /** The name now belongs to a different token than the one the page listed. */
+  changed: "changed",
+  /** A rewrite would drop entries this server cannot read, e.g. ones a newer version wrote. */
+  unreadableEntries: "unreadable-entries",
+} as const;
+export type RevokeOutcome = (typeof REVOKE_OUTCOMES)[keyof typeof REVOKE_OUTCOMES];
+
+/** `token revoke` for the Settings page: same lock, same rule, but only the token
+ *  the page showed. Throws `ClientTokenLockBusyError` while a CLI command runs. */
+export function revokeStoredClientToken(filePath: string, target: { name: string; id: string }): RevokeOutcome {
   return withClientTokenLock(filePath, () => {
-    const remaining = revokeClientToken(readClientTokenFile(filePath).records, name);
-    if (remaining === null) return false;
-    writeClientTokenFile(filePath, remaining);
-    return true;
+    const { records, droppedCount } = readClientTokenFile(filePath);
+    const record = records.find((candidate) => candidate.name === target.name);
+    if (record === undefined) return REVOKE_OUTCOMES.notFound;
+    if (record.id !== target.id) return REVOKE_OUTCOMES.changed;
+    if (droppedCount > 0) return REVOKE_OUTCOMES.unreadableEntries;
+    writeClientTokenFile(filePath, revokeClientToken(records, target.name) ?? records);
+    return REVOKE_OUTCOMES.revoked;
   });
 }
 

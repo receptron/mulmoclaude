@@ -368,6 +368,8 @@ const esMessages = {
       confirmLabel: "Revocar",
       revoking: "Revocando…",
       lastUsedNote: "El último uso se registra con precisión de minutos.",
+      unreadableEntries:
+        "client-tokens.json tiene {count} entradas que este servidor no puede leer. No autorizan nada, y esta página no revocará mientras sigan ahí, porque reescribir el archivo las eliminaría. `mulmoclaude token revoke` sigue funcionando y las elimina.",
       loadError: "No se pudieron cargar los tokens",
       revokeError: "No se pudo revocar el token",
     },

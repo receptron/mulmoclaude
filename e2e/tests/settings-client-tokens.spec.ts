@@ -19,18 +19,19 @@ const INITIAL: TokenRow[] = [
 ];
 
 /** Stateful mock: DELETE removes the row, so the reload after a revoke shows it gone. */
-async function mockClientTokens(page: Page, initial: TokenRow[]): Promise<{ revoked: string[] }> {
+async function mockClientTokens(page: Page, initial: TokenRow[], unreadableEntryCount = 0): Promise<{ revoked: string[] }> {
   const state = { rows: [...initial], revoked: [] as string[] };
   await page.route(
     (url) => url.pathname === "/api/config/client-tokens",
-    (route) => route.fulfill({ json: { tokens: state.rows } }),
+    (route) => route.fulfill({ json: { tokens: state.rows, unreadableEntryCount } }),
   );
   await page.route(
     (url) => url.pathname.startsWith("/api/config/client-tokens/"),
     async (route) => {
-      const name = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1) ?? "");
+      const url = new URL(route.request().url());
+      const name = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
       state.rows = state.rows.filter((row) => row.name !== name);
-      state.revoked.push(`${route.request().method()} ${name}`);
+      state.revoked.push(`${route.request().method()} ${name} id=${url.searchParams.get("id")}`);
       await route.fulfill({ json: { revoked: name } });
     },
   );
@@ -74,7 +75,7 @@ test.describe("Settings → API tokens", () => {
     await n8n.getByTestId("settings-client-token-confirm-btn").click();
     await expect(page.getByTestId("settings-client-token-n8n")).toHaveCount(0);
     await expect(page.getByTestId("settings-client-token-discord")).toBeVisible();
-    expect(state.revoked).toEqual(["DELETE n8n"]);
+    expect(state.revoked).toEqual([`DELETE n8n id=${"a".repeat(16)}`]);
   });
 
   test("with no tokens, says so and names the command that issues one", async ({ page }) => {
@@ -82,6 +83,26 @@ test.describe("Settings → API tokens", () => {
     await openTab(page);
     await expect(page.getByTestId("settings-client-tokens-empty")).toBeVisible();
     await expect(page.getByTestId("settings-client-tokens-tab")).toContainText("npx mulmoclaude token add <name>");
+  });
+
+  test("says when the store has entries this server cannot read", async ({ page }) => {
+    await mockClientTokens(page, INITIAL, 2);
+    await openTab(page);
+    await expect(page.getByTestId("settings-client-tokens-unreadable")).toContainText("2");
+  });
+
+  test("a refused revoke is shown and the list is reloaded", async ({ page }) => {
+    await mockClientTokens(page, INITIAL);
+    await page.route(
+      (url) => url.pathname.startsWith("/api/config/client-tokens/"),
+      (route) => route.fulfill({ status: 409, json: { error: "that name now belongs to a different token; reload the list" } }),
+    );
+    await openTab(page);
+    const n8n = page.getByTestId("settings-client-token-n8n");
+    await n8n.getByTestId("settings-client-token-revoke-btn").click();
+    await n8n.getByTestId("settings-client-token-confirm-btn").click();
+    await expect(page.getByTestId("settings-client-tokens-revoke-error")).toContainText("different token");
+    await expect(page.getByTestId("settings-client-token-n8n")).toBeVisible();
   });
 
   test("a failed load is shown, not an empty list", async ({ page }) => {
