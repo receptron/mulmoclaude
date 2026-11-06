@@ -8,7 +8,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -93,6 +93,28 @@ describe("listItems file-disclosure defense", () => {
     const fresh = path.join(workdir, "data", "fresh", "items");
     const items = await listItems(fresh, { workspaceRoot: workdir });
     assert.deepEqual(items, []);
+  });
+
+  it("keeps readdir order and skips bad entries across more records than one read batch", async () => {
+    const RECORD_COUNT = 300;
+    Array.from({ length: RECORD_COUNT }, (_, index) => `rec-${index}`).forEach((recordId) => {
+      writeFileSync(path.join(dataDir, `${recordId}.json`), JSON.stringify({ id: recordId }));
+    });
+    writeFileSync(path.join(dataDir, "broken.json"), "{not json");
+    writeFileSync(path.join(dataDir, "list.json"), "[1, 2]");
+    writeFileSync(path.join(dataDir, ".hidden.json"), JSON.stringify({ id: "hidden" }));
+    writeFileSync(path.join(dataDir, "notes.txt"), JSON.stringify({ id: "notes" }));
+    symlinkSync(outsideFile, path.join(dataDir, "leaked.json"));
+    mkdirSync(path.join(dataDir, "dir.json"));
+
+    const expectedIds = readdirSync(dataDir)
+      .filter((name) => name.startsWith("rec-"))
+      .map((name) => name.replace(/\.json$/, ""));
+    const items = await listItems(dataDir, { workspaceRoot: workdir });
+    assert.deepEqual(
+      items.map((item) => item.id),
+      expectedIds,
+    );
   });
 });
 
