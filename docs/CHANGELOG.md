@@ -52,7 +52,7 @@ this machine. A load through a tunnel or reverse proxy — a public `Host`, or a
 the token to anyone who can reach that address. The web UI therefore does not work through such a proxy; use the remote
 host for a phone. The dev server applies the same rule. A process on the same machine can still read the token.
 
-Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@6.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@6.0.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.11.0] - 2026-11-06
 
