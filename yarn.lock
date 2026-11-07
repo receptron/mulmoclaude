@@ -1426,17 +1426,17 @@
   dependencies:
     jspdf "^4.0.0"
 
-"@gui-chat-plugin/shapescript@^8.2.2":
-  version "8.2.2"
-  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/shapescript/-/shapescript-8.2.2.tgz#8ea909c107f0e16f52c441f6908327af36911607"
-  integrity sha512-NeicNoDipPUqh8BeLaL7d+ORRGxO1WXVzvUA/Em0Itmn6Zp0iU2USosHTrRhbcXpnC9LxHUqssVzEYZ2TTnCRw==
+"@gui-chat-plugin/shapescript@^8.2.3":
+  version "8.2.3"
+  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/shapescript/-/shapescript-8.2.3.tgz#ebcbf36b2efbdd36f34b804d0a71ec1bab5e22cc"
+  integrity sha512-fX8CFpsZ7iS8V7LAtRiZkc+J/2bwcmT4oendWS+9QQndGQ1MXBrx4tsC/0LsQMDBd8YFUkryk8jkzWvYQGNruw==
   dependencies:
     "@gui-chat-plugin/common" "^0.1.0"
-    "@types/three" "^0.186.0"
+    "@types/three" "^0.187.0"
     manifold-3d "^3.5.4"
-    three "^0.186.0"
+    three "^0.187.0"
     three-bvh-csg "^0.0.18"
-    three-mesh-bvh "0.9.15"
+    three-mesh-bvh "0.9.18"
 
 "@gui-chat-plugin/spreadsheet@^5.0.1":
   version "5.0.1"
@@ -3124,10 +3124,10 @@
   resolved "https://registry.yarnpkg.com/@types/stats.js/-/stats.js-0.17.4.tgz#1933e5ff153a23c7664487833198d685c22e791e"
   integrity sha512-jIBvWWShCvlBqBNIZt0KAshWpvSjhkwkEu4ZUcASoAvhmrgAUI2t1dXrjSL4xXVLB4FznPrIsX3nKXFl/Dt4vA==
 
-"@types/three@^0.186.0":
-  version "0.186.0"
-  resolved "https://registry.yarnpkg.com/@types/three/-/three-0.186.0.tgz#fc936323d7eeb885052fd5de352e3772f488ea99"
-  integrity sha512-mxYSBpDC+D0pLfSP6sW4WZTcT+nrtmZcimMqnVmy36Hte3XpeYSrvgg4TRdaM1GemGog1AWzI5qL2VoIfMXbJQ==
+"@types/three@^0.187.0":
+  version "0.187.0"
+  resolved "https://registry.yarnpkg.com/@types/three/-/three-0.187.0.tgz#a585f892b15a328bb95204eedb2df23f96a467be"
+  integrity sha512-v+vKNarUtk4n2QRZ4+CN5ygMM0ARUjXjIQl0R/unMUfmStFeVqGbgqarbrpoGTXRZoulSH16ePrVJVxPJEbMUA==
   dependencies:
     "@dimforge/rapier3d-compat" "~0.12.0"
     "@tweenjs/tween.js" "~23.1.3"
@@ -9949,15 +9949,15 @@ three-bvh-csg@^0.0.18:
   resolved "https://registry.yarnpkg.com/three-bvh-csg/-/three-bvh-csg-0.0.18.tgz#c2801788f35c3d830800194cf414dcdbd2a84924"
   integrity sha512-M3GCZMmGFgASGuDf+YMamM83nVlD/vdwzVHcYbFxgW+g1S7/nKPiuY00YVHOMbjmJPh8mLevGZL65ItHUuGt2w==
 
-three-mesh-bvh@0.9.15:
-  version "0.9.15"
-  resolved "https://registry.yarnpkg.com/three-mesh-bvh/-/three-mesh-bvh-0.9.15.tgz#0e070be254527155b4cc9285277cddaf531d8ef1"
-  integrity sha512-9xdEDkCzFoT8VPFH9DznwFSdbaIEjMvM106Iqq7TJurrIheUKDcdW4prfJTCxryih4XS/UxWs0H3K4MLMRFyOQ==
+three-mesh-bvh@0.9.18:
+  version "0.9.18"
+  resolved "https://registry.yarnpkg.com/three-mesh-bvh/-/three-mesh-bvh-0.9.18.tgz#a72087f7a6b5f5b965d365981de8799858978f81"
+  integrity sha512-S76hOBnsSG4jsuEyCu98K63klONG4NwJANabPY1LUD5l7oUgu2xtKC0IwnX/XyPzo4YZ1D7ZU+gHVA479UdQmA==
 
-three@^0.186.0:
-  version "0.186.1"
-  resolved "https://registry.yarnpkg.com/three/-/three-0.186.1.tgz#6d50f70c2c437f844179bbb56d6f5b774e1ca38a"
-  integrity sha512-blFeqb49wRCSGUGj7gtpfnSGHy2lwDk94RhUmS1c/hTby70kvChbWpkJ4Pm1390LqzzvTmzgXKHPEafJwCb8jA==
+three@^0.187.0:
+  version "0.187.0"
+  resolved "https://registry.yarnpkg.com/three/-/three-0.187.0.tgz#face29ee2de9bcc31a1b573a76f224e35e0b2894"
+  integrity sha512-Qiu7R+Cmh8CstZsY1uJOSWnVlfo7ZtNLV7mF8Jltk3LB3AtDu9cRZlcnRKkAk8Y4z6KKw35z7Y7Urd7jWY8etA==
 
 tiny-inflate@^1.0.0, tiny-inflate@^1.0.3:
   version "1.0.3"
