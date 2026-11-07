@@ -1,6 +1,6 @@
 {
   "name": "mulmoclaude",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "MulmoClaude — GUI-chat with Claude Code + long-term memory. One command to start.",
   "type": "module",
   "bin": {

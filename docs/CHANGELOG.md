@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+## [2.12.0] - 2026-11-07
+
+**Client tokens can be narrowed to reads or to some collections and are listed in Settings; file writes need the bearer
+token, and the owner token is no longer handed out through a tunnel; large collections load faster.**
+
+Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@6.0.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+
 ### Added
 
 #### Client tokens in Settings (#3637)
@@ -34,6 +41,24 @@ time. It now reads them in parallel, a bounded number at once, in the same order
 records and files outside the workspace are still refused, and each skipped file is still logged. The shared helper
 is `mapWithConcurrency` in `@mulmoclaude/common@1.6.0`; every declared `@mulmoclaude/common` range moves to `^1.6.0`.
 
+#### ShapeScript 8.2.3 (#3643)
+
+`@gui-chat-plugin/shapescript` moves to `^8.2.3`, which brings `three` 0.187.
+
+### Fixed
+
+#### `npx mulmoclaude` waits for a slow server instead of giving up silently (#3623, PR #3634)
+
+The launcher used to poll the server for a fixed window and then stop without a word, so a boot that outlasted it
+(typically Windows with the Docker sandbox building its image) showed no ready banner and opened no browser. It now
+waits for as long as the server process lives, and after a while prints one notice naming the URL to open by hand.
+
+#### Session-history rows are proper buttons (#3629, PR #3632)
+
+A session row's open, bookmark and menu controls are now sibling buttons instead of controls nested inside a
+`role="button"` card, so each is reachable by keyboard and announced correctly; the bookmark icon reports its state.
+Clicking anywhere on the card still opens the session.
+
 ### Security
 
 #### File writes need the bearer token (#3628)
@@ -52,7 +77,6 @@ this machine. A load through a tunnel or reverse proxy — a public `Host`, or a
 the token to anyone who can reach that address. The web UI therefore does not work through such a proxy; use the remote
 host for a phone. The dev server applies the same rule. A process on the same machine can still read the token.
 
-Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@6.0.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.11.0] - 2026-11-06
 
