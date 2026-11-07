@@ -119,7 +119,7 @@ describe("usage tracker", () => {
     assert.throws(() => statSync(paths.file));
   });
 
-  it("flushes the uses, owner-only, and drops revoked ids", () => {
+  it("flushes the uses and drops revoked ids", () => {
     const live = [ID_A];
     const usage = tracker(live);
     usage.note(ID_A);
@@ -127,6 +127,13 @@ describe("usage tracker", () => {
     usage.flush();
     const written = parseClientTokenUsage(JSON.parse(readFileSync(paths.file, "utf8")));
     assert.deepEqual([...written], [[ID_A, "2026-11-06T10:20:00.000Z"]]);
+  });
+
+  // Windows keeps no POSIX mode bits: a writable file reads back as 0o666.
+  it("writes the usage file owner-only", { skip: process.platform === "win32" }, () => {
+    const usage = tracker();
+    usage.note(ID_A);
+    usage.flush();
     assert.equal(statSync(paths.file).mode & 0o777, 0o600);
   });
 
