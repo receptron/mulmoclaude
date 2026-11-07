@@ -8,7 +8,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -36,6 +36,7 @@ import type { CollectionSchema } from "../../../server/workspace/collections/typ
 // field is only a placeholder — the staging-dir factory is what's exercised.
 // `configureCollectionHost` is a no-op if called again with the same object,
 // which keeps re-runs idempotent.
+const warnings: { message: string; data: unknown }[] = [];
 const TEST_HOST_PATHS = {
   userSkillsDir: () => "/dev/null/.claude/skills",
   projectSkillsDir: (root: string) => path.join(root, ".claude", "skills"),
@@ -46,7 +47,7 @@ const TEST_HOST_PATHS = {
 };
 configureCollectionHost({
   workspaceRoot: "/tmp/__test_io_placeholder__",
-  log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+  log: { info: () => {}, warn: (_prefix: string, message: string, data?: unknown) => warnings.push({ message, data }), error: () => {}, debug: () => {} },
   paths: TEST_HOST_PATHS,
   isPresetSlug: () => false,
 });
@@ -93,6 +94,42 @@ describe("listItems file-disclosure defense", () => {
     const fresh = path.join(workdir, "data", "fresh", "items");
     const items = await listItems(fresh, { workspaceRoot: workdir });
     assert.deepEqual(items, []);
+  });
+
+  it("keeps readdir order, and warns per skipped file in readdir order, across more records than one read batch", async () => {
+    const RECORD_COUNT = 300;
+    const BAD_EVERY = 7;
+    const badWriters: ((filePath: string) => void)[] = [
+      (filePath) => writeFileSync(filePath, "{not json"),
+      (filePath) => writeFileSync(filePath, "[1, 2]"),
+      (filePath) => writeFileSync(filePath, "null"),
+      (filePath) => writeFileSync(filePath, "42"),
+      (filePath) => writeFileSync(filePath, ""),
+      (filePath) => symlinkSync(outsideFile, filePath),
+      (filePath) => mkdirSync(filePath),
+    ];
+    Array.from({ length: RECORD_COUNT }, (_, index) => index).forEach((index) => {
+      writeFileSync(path.join(dataDir, `rec-${index}.json`), JSON.stringify({ id: `rec-${index}` }));
+      if (index % BAD_EVERY !== 0) return;
+      const writeBad = badWriters[(index / BAD_EVERY) % badWriters.length];
+      writeBad?.(path.join(dataDir, `bad-${index}.json`));
+    });
+    writeFileSync(path.join(dataDir, ".hidden.json"), JSON.stringify({ id: "hidden" }));
+    writeFileSync(path.join(dataDir, "notes.txt"), JSON.stringify({ id: "notes" }));
+
+    const names = readdirSync(dataDir);
+    const expectedIds = names.filter((name) => name.startsWith("rec-")).map((name) => name.replace(/\.json$/, ""));
+    const expectedSkips = names.filter((name) => name.startsWith("bad-")).map((name) => path.join(dataDir, name));
+    warnings.length = 0;
+    const items = await listItems(dataDir, { workspaceRoot: workdir });
+    assert.deepEqual(
+      items.map((item) => item.id),
+      expectedIds,
+    );
+    assert.deepEqual(
+      warnings,
+      expectedSkips.map((skippedPath) => ({ message: "skipping record (missing, symlink, or unreadable)", data: { path: skippedPath } })),
+    );
   });
 });
 

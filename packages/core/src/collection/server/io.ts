@@ -10,7 +10,10 @@ import { writeFileAtomic } from "../../files/atomic.js";
 import { newItemId } from "../core/itemId";
 import { isContainedInRoot, itemFilePath, safeRecordId } from "./paths";
 import type { CollectionItem, CollectionSchema } from "../core/schema";
-import { isErrorWithCode, isRecord } from "@mulmoclaude/common";
+import { isErrorWithCode, isRecord, mapWithConcurrency } from "@mulmoclaude/common";
+
+// Caps the lstat + readFile pairs, and so the file handles, one listing holds open.
+const LIST_READ_CONCURRENCY = 64;
 
 export interface IoOptions {
   /** Override the workspace root for containment checks. Default:
@@ -84,19 +87,17 @@ export async function listItems(dataDir: string, opts: IoOptions = {}): Promise<
     if (isErrorWithCode(err) && err.code === "ENOENT") return [];
     throw err;
   }
-  const results: CollectionItem[] = [];
-  for (const name of entries) {
-    if (!name.endsWith(".json")) continue;
-    if (name.startsWith(".")) continue;
-    const filePath = path.join(dataDir, name);
-    const record = await tryReadRecord(filePath);
-    if (record === null) {
-      log.warn("collections", "skipping record (missing, symlink, or unreadable)", { path: filePath });
-      continue;
-    }
-    results.push(record);
-  }
-  return results;
+  const filePaths = entries.filter(isRecordFileName).map((name) => path.join(dataDir, name));
+  const records = await mapWithConcurrency(filePaths, LIST_READ_CONCURRENCY, tryReadRecord);
+  return records.filter((record, index): record is CollectionItem => {
+    if (record !== null) return true;
+    log.warn("collections", "skipping record (missing, symlink, or unreadable)", { path: filePaths[index] });
+    return false;
+  });
+}
+
+function isRecordFileName(name: string): boolean {
+  return name.endsWith(".json") && !name.startsWith(".");
 }
 
 /** Read one record by id. Returns null when the file is missing,

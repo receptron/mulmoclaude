@@ -37,7 +37,7 @@
     "lint": "eslint src test"
   },
   "peerDependencies": {
-    "@mulmoclaude/common": "^1.5.0",
+    "@mulmoclaude/common": "^1.6.0",
     "@mulmoclaude/core": "^6.0.0",
     "express": "^5.2.1",
     "gui-chat-protocol": "^2.3.0",
@@ -59,7 +59,7 @@
     }
   },
   "devDependencies": {
-    "@mulmoclaude/common": "^1.5.0",
+    "@mulmoclaude/common": "^1.6.0",
     "@mulmoclaude/core": "^6.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^5.0.6",

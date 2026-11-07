@@ -25,6 +25,15 @@ times are kept in `~/.mulmoclaude/client-tokens-usage.json`, written in batches 
 the collection ontology included. Any scoped token cannot open `/ws/pubsub` or `/ws/chat`. Without `--scope` a token is `full`, as before. `GET /api/files/*` needs no token at all, so a scope does not
 stop a file read. A server older than this one ignores a scoped token rather than granting it more.
 
+### Changed
+
+#### Large collections load faster (#3640)
+
+Reading a whole collection (queries, item lists, every view's full load) used to read its record files one at a
+time. It now reads them in parallel, a bounded number at once, in the same order and with the same checks: symlinked
+records and files outside the workspace are still refused, and each skipped file is still logged. The shared helper
+is `mapWithConcurrency` in `@mulmoclaude/common@1.6.0`; every declared `@mulmoclaude/common` range moves to `^1.6.0`.
+
 ### Security
 
 #### File writes need the bearer token (#3628)
@@ -42,6 +51,8 @@ this machine. A load through a tunnel or reverse proxy — a public `Host`, or a
 `Via`-style header — gets a page without it, so putting MulmoClaude behind ngrok, cloudflared or similar no longer gives
 the token to anyone who can reach that address. The web UI therefore does not work through such a proxy; use the remote
 host for a phone. The dev server applies the same rule. A process on the same machine can still read the token.
+
+Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@6.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ## [2.11.0] - 2026-11-06
 

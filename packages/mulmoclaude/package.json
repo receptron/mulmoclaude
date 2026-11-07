@@ -40,7 +40,7 @@
     "@mulmoclaude/accounting-plugin": "^5.0.0",
     "@mulmoclaude/chart-plugin": "^5.0.0",
     "@mulmoclaude/collection-plugin": "^6.0.0",
-    "@mulmoclaude/common": "^1.5.0",
+    "@mulmoclaude/common": "^1.6.0",
     "@mulmoclaude/core": "^6.0.0",
     "@mulmoclaude/form-plugin": "^2.2.0",
     "@mulmoclaude/google-plugin": "^5.0.0",
