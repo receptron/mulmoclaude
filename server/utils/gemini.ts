@@ -8,7 +8,8 @@ export { isGeminiAvailable } from "../system/env.js";
 export function getGeminiClient(): GoogleGenAI {
   const apiKey = geminiApiKey();
   if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
-  return new GoogleGenAI({ apiKey });
+  // @google/genai 3 defaults to v1; the preview image model and imageConfig were served on v1beta.
+  return new GoogleGenAI({ apiKey, apiVersion: "v1beta" });
 }
 
 // --- Image generation -----------------------------------------------

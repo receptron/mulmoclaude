@@ -32,9 +32,9 @@
     "@vitejs/plugin-vue": "^6.0.10",
     "gui-chat-protocol": "^2.1.0",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5",
+    "vite": "^8.3.6",
     "vite-plugin-dts": "^5.1.2",
-    "vue": "^3.5.43",
+    "vue": "^3.5.45",
     "vue-tsc": "^3.3.14",
     "zod": "^4.6.7"
   },
