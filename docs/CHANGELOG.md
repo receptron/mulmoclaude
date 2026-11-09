@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+**Node.js 22 is no longer supported.** MulmoClaude now requires Node.js 24.15+ or 26+ (`engines`, the launcher preflight and CI all moved together). firebase 13, which the next release adopts, requires Node.js 24.12 or later.
+
 `firebase` 13 (was 12). `@mulmoclaude/core` 7.0.0 requires it, and the seven plugins that peer on core take a major bump to accept core 7.
 
 Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`, `@mulmoclaude/collection-plugin@7.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.0`, `@mulmoclaude/html-plugin@7.0.0`, `@mulmoclaude/markdown-plugin@7.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@7.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
@@ -17,7 +19,7 @@ Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`,
 **Client tokens can be narrowed to reads or to some collections and are listed in Settings; file writes need the bearer
 token, and the owner token is no longer handed out through a tunnel; large collections load faster.**
 
-Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`, `@mulmoclaude/collection-plugin@7.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@6.0.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.0`, `@mulmoclaude/html-plugin@7.0.0`, `@mulmoclaude/markdown-plugin@7.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@7.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@6.0.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ### Added
 
@@ -87,7 +89,7 @@ host for a phone. The dev server applies the same rule. A process on the same ma
 **Each bridge or script can hold its own named token, revocable on its own; host environment variables can reach the
 Docker sandbox by name; custom views get a collection's enum choices; and a session's role icon toggles its bookmark.**
 
-Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`, `@mulmoclaude/collection-plugin@7.0.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@6.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.0`, `@mulmoclaude/html-plugin@7.0.0`, `@mulmoclaude/markdown-plugin@7.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@7.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+Ships `@mulmoclaude/accounting-plugin@5.0.0`, `@mulmoclaude/chart-plugin@5.0.0`, `@mulmoclaude/collection-plugin@6.0.0`, `@mulmoclaude/common@1.5.0`, `@mulmoclaude/core@6.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@5.0.0`, `@mulmoclaude/html-plugin@6.0.0`, `@mulmoclaude/markdown-plugin@6.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@6.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
 ### Added
 
@@ -108,7 +110,7 @@ A custom view (`views/*.html`) now finds every top-level `enum` field of its col
 `window.__MC_VIEW.fields` (`{ status: { type: "enum", values: [...] } }`), so a dropdown, filter or kanban column can
 follow `schema.json` instead of a hard-coded list. It is always present (`{}` when there are none), and existing views
 are unaffected. `ref` choices are not covered yet. Ships in `@mulmoclaude/core@6.0.0` and
-`@mulmoclaude/collection-plugin@7.0.0`.
+`@mulmoclaude/collection-plugin@6.0.0`.
 
 #### Clicking a session's role icon toggles its bookmark (#1685, PR #3624)
 

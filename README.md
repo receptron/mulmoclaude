@@ -61,7 +61,7 @@ Re-run the command after upgrading: the shortcut carries its own copy of the lau
 
 ### Prerequisites
 
-- **Node.js 22.22.2+ / 24.15+ / 26+** — runtime
+- **Node.js 24.15+ / 26+** — runtime
 - **[Claude Code CLI](https://claude.ai/code)** — installed and authenticated. Run `claude` once to complete OAuth
 - **ffmpeg** — required for movie generation. Skip if you don't generate videos
   - macOS: `brew install ffmpeg`

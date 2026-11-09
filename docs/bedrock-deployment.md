@@ -14,7 +14,7 @@ MulmoClaude のエージェントは Claude Code CLI (`claude` コマンド) を
 
 - AWS アカウント（Bedrock が有効化されているリージョン）
 - Bedrock コンソールで **Anthropic モデルへのアクセスが許可済み**
-- Node.js 22 以上（24 推奨）
+- Node.js 24.15 以降 / 26 以降
 - Docker（推奨。MulmoClaude のサンドボックスを使う場合）
 - AWS 認証情報を取得できる方法（IAM ロール / IAM ユーザのアクセスキー / SSO）
 
