@@ -20,7 +20,7 @@ description: MulmoClaude を動かすのに必要なもの（Node.js と Claude 
 
 | 必要なもの | 何に使うか | 必須？ |
 |---|---|---|
-| **Node.js 22.19 以上** | MulmoClaude を動かす土台 | 必須 |
+| **Node.js 24.15 以上** | MulmoClaude を動かす土台 | 必須 |
 | **Claude Code** | MulmoClaude の頭脳。ログイン済みであること | 必須 |
 | Docker Desktop | Claude の作業を安全な箱（サンドボックス）の中で行う | 任意（おすすめ） |
 | ffmpeg | 動画を作るときだけ | 任意 |

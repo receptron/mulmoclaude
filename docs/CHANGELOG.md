@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+**Node.js 22 is no longer supported.** MulmoClaude now requires Node.js 24.15+ or 26+ (`engines`, the launcher preflight and CI all moved together). firebase 13, which the next release adopts, requires Node.js 24.12 or later.
+
 ## [2.12.0] - 2026-11-07
 
 **Client tokens can be narrowed to reads or to some collections and are listed in Settings; file writes need the bearer

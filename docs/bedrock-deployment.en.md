@@ -14,7 +14,7 @@ This guide covers deploying MulmoClaude in enterprise environments (on-prem, cus
 
 - AWS account in a region where Bedrock is available
 - **Anthropic model access granted** in the Bedrock console
-- Node.js 22+ (24 recommended)
+- Node.js 24.15+ / 26+
 - Docker (recommended, if you want MulmoClaude's sandbox)
 - A way to obtain AWS credentials (IAM role / IAM user access keys / SSO)
 

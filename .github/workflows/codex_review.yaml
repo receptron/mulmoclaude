@@ -83,10 +83,10 @@ jobs:
           # dropping them is safe (zizmor artipacked).
           persist-credentials: false
 
-      - name: Use Node.js 22.x
+      - name: Use Node.js 24.x
         uses: actions/setup-node@v7
         with:
-          node-version: 22.x
+          node-version: 24.x
 
       - name: Cache global npm tarballs
         uses: actions/cache@v6

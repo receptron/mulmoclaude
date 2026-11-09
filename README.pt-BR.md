@@ -43,7 +43,7 @@ O lançador inicia o servidor e abre [http://localhost:3001](http://localhost:30
 
 ### Pré-requisitos
 
-- **Node.js 22.22.2+ / 24.15+ / 26+** — runtime
+- **Node.js 24.15+ / 26+** — runtime
 - **[Claude Code CLI](https://claude.ai/code)** — instalado e autenticado. Execute `claude` uma vez para concluir o OAuth
 - **ffmpeg** — necessário para geração de vídeo. Pode ser ignorado se você não gerar vídeos
   - macOS: `brew install ffmpeg`

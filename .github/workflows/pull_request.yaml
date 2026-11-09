@@ -83,7 +83,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [22.x, 24.x]
+        node-version: [24.x, 26.x]
         os: [ubuntu-latest, macos-latest]
     steps:
     - uses: actions/checkout@v7
@@ -256,14 +256,14 @@ jobs:
     - uses: actions/checkout@v7
       with:
         persist-credentials: false  # no git push; zizmor artipacked
-    - name: Use Node.js 22.x
+    - name: Use Node.js 24.x
       uses: actions/setup-node@v7
       with:
-        node-version: 22.x
+        node-version: 24.x
         cache: 'yarn'
     - run: yarn install --frozen-lockfile --network-timeout 120000
     # Same packages/dist cache as lint_test — shares the cache key
-    # across both jobs on ubuntu-latest + node 22.x, so whichever
+    # across both jobs on ubuntu-latest + node 24.x, so whichever
     # finishes building first warms the cache for the other.
     - name: Cache packages/dist
       id: pkg-dist-cache
@@ -274,7 +274,7 @@ jobs:
           packages/bridges/*/dist
           packages/plugins/*/dist
           packages/services/*/dist
-        key: pkg-dist-${{ runner.os }}-22.x-${{ hashFiles('packages/*/src/**', 'packages/*/tsconfig.json', 'packages/*/package.json', 'packages/bridges/*/src/**', 'packages/bridges/*/tsconfig.json', 'packages/bridges/*/package.json', 'packages/plugins/*/src/**', 'packages/plugins/*/tsconfig.json', 'packages/plugins/*/package.json', 'packages/services/*/src/**', 'packages/services/*/tsconfig.json', 'packages/services/*/package.json', 'build-config/tsconfig.packages.json', 'yarn.lock', 'package.json') }}
+        key: pkg-dist-${{ runner.os }}-24.x-${{ hashFiles('packages/*/src/**', 'packages/*/tsconfig.json', 'packages/*/package.json', 'packages/bridges/*/src/**', 'packages/bridges/*/tsconfig.json', 'packages/bridges/*/package.json', 'packages/plugins/*/src/**', 'packages/plugins/*/tsconfig.json', 'packages/plugins/*/package.json', 'packages/services/*/src/**', 'packages/services/*/tsconfig.json', 'packages/services/*/package.json', 'build-config/tsconfig.packages.json', 'yarn.lock', 'package.json') }}
     - name: Build internal packages
       if: steps.pkg-dist-cache.outputs.cache-hit != 'true'
       run: yarn build:packages
