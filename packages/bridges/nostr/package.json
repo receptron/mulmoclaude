@@ -25,8 +25,8 @@
     "@mulmobridge/client": "^1.5.0",
     "@mulmobridge/protocol": "^1.1.0",
     "@mulmoclaude/common": "^1.5.0",
-    "dotenv": "^18.0.9",
-    "nostr-tools": "^2.25.5"
+    "dotenv": "^18.0.10",
+    "nostr-tools": "^2.26.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
