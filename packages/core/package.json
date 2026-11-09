@@ -236,7 +236,7 @@
     "@mulmoclaude/markdown-utils": "^3.0.2",
     "dompurify": "^3.4.17",
     "fast-xml-parser": "^5.12.0",
-    "google-auth-library": "^11.3.3",
+    "google-auth-library": "^11.3.4",
     "iconv-lite": "^0.7.3",
     "js-yaml": "^5.5.0",
     "zod": "^4.6.7"
@@ -265,7 +265,7 @@
     "gui-chat-protocol": "^2.3.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vite": "^8.3.6",
+    "vite": "^8.3.7",
     "vite-plugin-dts": "^5.1.2",
     "vue": "^3.5.45",
     "vue-i18n": "^11.4.18"
