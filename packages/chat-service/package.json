@@ -28,7 +28,7 @@
   "author": "Receptron Team",
   "dependencies": {
     "@mulmobridge/protocol": "^1.1.0",
-    "@mulmoclaude/common": "^1.5.0"
+    "@mulmoclaude/common": "^1.6.0"
   },
   "peerDependencies": {
     "express": "^5.0.0",

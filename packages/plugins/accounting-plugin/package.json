@@ -37,8 +37,8 @@
     "lint": "eslint src test"
   },
   "peerDependencies": {
-    "@mulmoclaude/common": "^1.5.0",
-    "@mulmoclaude/core": "^6.0.0",
+    "@mulmoclaude/common": "^1.6.0",
+    "@mulmoclaude/core": "^6.0.1",
     "express": "^5.2.1",
     "gui-chat-protocol": "^2.3.0",
     "vue": "^3.5.0",
@@ -59,8 +59,8 @@
     }
   },
   "devDependencies": {
-    "@mulmoclaude/common": "^1.5.0",
-    "@mulmoclaude/core": "^6.0.0",
+    "@mulmoclaude/common": "^1.6.0",
+    "@mulmoclaude/core": "^6.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",

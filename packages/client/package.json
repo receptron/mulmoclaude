@@ -46,7 +46,7 @@
   "author": "Receptron Team",
   "dependencies": {
     "@mulmobridge/protocol": "^1.1.0",
-    "@mulmoclaude/common": "^1.5.0",
+    "@mulmoclaude/common": "^1.6.0",
     "socket.io-client": "^4.8.4"
   },
   "devDependencies": {

@@ -82,6 +82,8 @@ The launcher writes `~/Library/Logs/MulmoClaude/launcher.log`. The bundle carrie
 
 The npm package ships with the pre-built client (Vite) and the server source — TypeScript, executed directly via `tsx`. No cloning, no build step for end users: `npx` downloads the package and starts the Express server.
 
+Open the web UI on the same machine (`localhost`). The page hands the browser its API token only on a direct local load, so it does not work through a tunnel or reverse proxy (ngrok, cloudflared, …); use the remote host for a phone.
+
 Your data lives in `~/mulmoclaude/` (created on first run): conversations, memory, calendar, contacts, wiki, collections, scheduled tasks, generated artifacts. Plain files; the workspace IS the database.
 
 ## Sandbox (recommended)
