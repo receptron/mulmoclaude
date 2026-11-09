@@ -265,7 +265,7 @@
     "gui-chat-protocol": "^2.3.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5",
+    "vite": "^8.3.6",
     "vite-plugin-dts": "^5.1.2",
     "vue": "^3.5.45",
     "vue-i18n": "^11.4.18"
