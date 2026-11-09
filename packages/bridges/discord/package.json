@@ -25,7 +25,7 @@
     "@mulmobridge/client": "^1.5.0",
     "@mulmobridge/protocol": "^1.1.0",
     "@mulmoclaude/common": "^1.6.0",
-    "discord.js": "^14.27.0",
+    "discord.js": "^14.28.1",
     "dotenv": "^18.0.10"
   },
   "devDependencies": {

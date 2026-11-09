@@ -101,7 +101,7 @@
     "@codemirror/lint": "^6.9.7",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
-    "@google/genai": "^2.31.0",
+    "@google/genai": "^3.0.0",
     "@gui-chat-plugin/browse": "^2.1.0",
     "@gui-chat-plugin/camera": "^2.1.0",
     "@gui-chat-plugin/google-map": "^2.1.0",
