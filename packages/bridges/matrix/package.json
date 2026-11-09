@@ -29,7 +29,6 @@
     "matrix-js-sdk": "^45.0.0"
   },
   "devDependencies": {
-    "@types/matrix-js-sdk": "^11.1.0",
     "@types/node": "^26.6.5",
     "typescript": "^6.0.3"
   },
