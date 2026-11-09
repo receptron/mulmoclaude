@@ -28,17 +28,15 @@ describe("parseNodeVersion", () => {
 
 describe("isNodeVersionSupported", () => {
   it("accepts each major's floor and anything above it", () => {
-    ["v22.22.2", "v22.22.10", "v22.23.0", "v24.15.0", "v24.16.1", "v26.0.0", "v27.3.1", "v30.0.0"].forEach((raw) =>
-      assert.ok(isNodeVersionSupported(raw), raw),
-    );
+    ["v24.15.0", "v24.16.1", "v26.0.0", "v27.3.1", "v30.0.0"].forEach((raw) => assert.ok(isNodeVersionSupported(raw), raw));
   });
 
   it("rejects below a major's floor, down to the patch", () => {
-    ["v22.22.1", "v22.21.9", "v22.19.0", "v24.14.9", "v24.0.0"].forEach((raw) => assert.ok(!isNodeVersionSupported(raw), raw));
+    ["v24.14.9", "v24.0.0"].forEach((raw) => assert.ok(!isNodeVersionSupported(raw), raw));
   });
 
   it("rejects a major with no floor of its own, and anything older than the oldest", () => {
-    ["v23.11.0", "v25.9.0", "v20.19.0", "v18.20.0", "v21.7.3"].forEach((raw) => assert.ok(!isNodeVersionSupported(raw), raw));
+    ["v22.22.2", "v23.11.0", "v25.9.0", "v20.19.0", "v18.20.0", "v21.7.3"].forEach((raw) => assert.ok(!isNodeVersionSupported(raw), raw));
   });
 
   it("treats an unparseable version as unsupported", () => {
@@ -55,8 +53,8 @@ describe("REQUIRED_NODE", () => {
   });
 
   it("formats as an engines range and as a readable list", () => {
-    assert.equal(formatEnginesRange(), "^22.22.2 || ^24.15.0 || >=26.0.0");
-    assert.equal(formatRequiredNode(), "22.22.2 / 24.15.0 / 26.0.0");
+    assert.equal(formatEnginesRange(), "^24.15.0 || >=26.0.0");
+    assert.equal(formatRequiredNode(), "24.15.0 / 26.0.0");
   });
 });
 
@@ -86,7 +84,7 @@ describe("runPreflight", () => {
   it("reports the node version first, since nothing else can be trusted without it", () => {
     const failure = runPreflight({ nodeVersion: "v18.0.0", commandAvailable: () => false });
     assert.equal(failure?.key, "nodeTooOld");
-    assert.deepEqual(failure?.values, { required: "22.22.2 / 24.15.0 / 26.0.0", found: "v18.0.0" });
+    assert.deepEqual(failure?.values, { required: "24.15.0 / 26.0.0", found: "v18.0.0" });
   });
 
   it("reports npx before claude — npx is what actually gets spawned", () => {

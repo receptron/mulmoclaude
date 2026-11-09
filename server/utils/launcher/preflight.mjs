@@ -12,7 +12,6 @@ import { execFileSync } from "node:child_process";
 // One floor per supported major; the last also admits every later major,
 // and a major with no floor of its own (23, 25) is unsupported.
 export const REQUIRED_NODE = [
-  { major: 22, minor: 22, patch: 2 },
   { major: 24, minor: 15, patch: 0 },
   { major: 26, minor: 0, patch: 0 },
 ];

@@ -20,7 +20,7 @@ description: What MulmoClaude needs (Node.js and Claude Code), how to launch it,
 
 | Requirement | What it is for | Required? |
 |---|---|---|
-| **Node.js 22.19 or later** | Runs MulmoClaude | Yes |
+| **Node.js 24.15 or later** | Runs MulmoClaude | Yes |
 | **Claude Code** | MulmoClaude's brain — must be installed and signed in | Yes |
 | Docker Desktop | Runs Claude's work inside a safe box (the sandbox) | Optional (recommended) |
 | ffmpeg | Only for making videos | Optional |

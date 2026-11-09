@@ -649,8 +649,8 @@ When to add E2E coverage is documented in [CLAUDE.md](../CLAUDE.md#when-to-add-e
 
 Two jobs gate every PR:
 
-- **`lint_test`** — matrix: Node 22.x & 24.x × {ubuntu, windows, macOS}. Runs `typecheck`, `typecheck:server`, `lint`, `build`, `test:coverage`.
-- **`e2e`** — Ubuntu / Node 22.x. Runs `playwright install chromium` then `test:e2e`. Failed runs upload `test-results/` as an artifact for 7 days.
+- **`lint_test`** — matrix: Node 24.x & 26.x × {ubuntu, windows, macOS}. Runs `typecheck`, `typecheck:server`, `lint`, `build`, `test:coverage`.
+- **`e2e`** — Ubuntu / Node 24.x. Runs `playwright install chromium` then `test:e2e`. Failed runs upload `test-results/` as an artifact for 7 days.
 
 Cross-platform compatibility is a hard requirement — use `node:path` joins, `node:url` for file URL conversions, no shell-specific syntax in scripts.
 
