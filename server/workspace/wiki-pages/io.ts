@@ -19,8 +19,8 @@
 // site wired up means PR 2 is purely an internal change.
 
 import path from "node:path";
-import { mkdir, realpath } from "node:fs/promises";
-import { readTextSafe } from "../../utils/files/safe.js";
+import { realpath } from "node:fs/promises";
+import { readTextSafe, resolveWriteWithinRoot } from "../../utils/files/safe.js";
 import { writeNewFileExclusive } from "../../utils/files/upload-io.js";
 import { writeFileVerifiedInScope } from "@mulmoclaude/core/files";
 import { mergeFrontmatter, parseFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
@@ -125,37 +125,38 @@ export async function writeWikiPage(slug: string, content: string, meta: WikiWri
   }
 }
 
-// Re-anchor the absolute path against the workspace root before the
-// write. `wikiPagePath` already enforces containment via `isSafeSlug`
-// + `path.join`, but CodeQL's `js/path-injection` analysis doesn't
-// trace through those — the explicit `relative` + `startsWith` check
-// is a sanitizer the analyzer recognizes, and it throws on any escape
-// so the route handler maps the throw to a 5xx via its catch.
-function reanchoredPagePath(root: string, absPath: string): string {
+// `wikiPagePath` already enforces containment via `isSafeSlug` +
+// `path.join`, but CodeQL's `js/path-injection` analysis doesn't trace
+// through those — the explicit `relative` + `startsWith` check is a
+// sanitizer the analyzer recognizes.
+function pagePathFromRoot(root: string, absPath: string): string {
   const relFromRoot = path.relative(root, absPath);
   if (relFromRoot.startsWith("..") || path.isAbsolute(relFromRoot)) {
     throw new Error(`wiki-pages: refusing to write outside workspace root: ${JSON.stringify(absPath)}`);
   }
-  return path.join(root, relFromRoot);
+  return relFromRoot;
 }
 
 // Both modes prove the written file sits inside the workspace before
 // any byte lands, so a wiki folder that is (or is swapped for) a link
-// out is refused rather than written through (#3573). Exclusive mode
-// creates with `O_EXCL`: on a concurrent create only one call wins and
-// the other throws `EEXIST`, which the route maps to HTTP 409. The
-// overwrite stages under a random name, so two simultaneous saves of
-// one page can't share a staging file.
+// out is refused rather than written through (#3573). Missing folders
+// are created only under ancestors that resolve inside the workspace,
+// so a linked-out `data/wiki` gets no `pages` folder made outside.
+// Exclusive mode creates with `O_EXCL`: on a concurrent create only
+// one call wins and the other throws `EEXIST`, which the route maps to
+// HTTP 409. The overwrite stages under a random name, so two
+// simultaneous saves of one page can't share a staging file.
 async function writePageFile(absPath: string, finalContent: string, opts: WikiPageWriteOptions): Promise<void> {
   const root = opts.workspaceRoot ?? defaultWorkspacePath;
-  const safeAbsPath = reanchoredPagePath(root, absPath);
+  const relFromRoot = pagePathFromRoot(root, absPath);
   const workspaceReal = await realpath(root);
+  const target = await resolveWriteWithinRoot(workspaceReal, relFromRoot);
+  if (target === null) throw new Error(`wiki-pages: refusing to write: a folder of ${JSON.stringify(relFromRoot)} leads outside the workspace`);
   if (opts.exclusive) {
-    await writeNewFileExclusive(workspaceReal, safeAbsPath, finalContent);
+    await writeNewFileExclusive(workspaceReal, target, finalContent);
     return;
   }
-  await mkdir(path.dirname(safeAbsPath), { recursive: true });
-  await writeFileVerifiedInScope({ trustedReal: workspaceReal, scopeWithinTrusted: "" }, path.dirname(safeAbsPath), path.basename(safeAbsPath), finalContent);
+  await writeFileVerifiedInScope({ trustedReal: workspaceReal, scopeWithinTrusted: "" }, path.dirname(target), path.basename(target), finalContent);
 }
 
 /** True iff the diff between `oldContent` and `newContent` is

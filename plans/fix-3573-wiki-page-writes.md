@@ -23,7 +23,9 @@ workspace, and a workspace reached through a link, keep working.
 - The overwrite moves to `writeFileVerifiedInScope` (`@mulmoclaude/core/files`, no core change), scoped to the
   workspace realpath. Its staging file is verified to sit inside the workspace before any byte is written, and its name
   is random, as `uniqueTmp: true` made it before.
-- The parent folders are still created when missing, as `writeFileAtomic` did.
+- Missing parent folders are still created, but through `resolveWriteWithinRoot`, which realpath-checks every existing
+  ancestor first. A `data/wiki` linked out to a place without `pages/` gets no folder made there (both modes; the
+  create used to `mkdir -p` through the link before refusing).
 - Both modes share one helper (`writePageFile`) and the existing path re-anchoring that CodeQL recognises.
 
 ## Behaviour changes

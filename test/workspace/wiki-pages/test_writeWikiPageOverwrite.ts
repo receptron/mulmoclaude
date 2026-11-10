@@ -84,6 +84,16 @@ describe("writeWikiPage overwrite", () => {
     assert.deepEqual(readdirSync(path.join(outside, "pages")), ["page.md"]);
   });
 
+  it("creates no folder outside when the wiki folder links out to a place without pages/", skipWithoutSymlinks, async () => {
+    const bare = path.join(base, "bare");
+    mkdirSync(bare);
+    renameSync(wiki, `${wiki}.parked`);
+    symlinkSync(bare, wiki);
+    await assert.rejects(save("page"));
+    await assert.rejects(writeWikiPage("fresh", "# saved\n", { editor: "user" }, { workspaceRoot: workspace, exclusive: true }));
+    assert.deepEqual(readdirSync(bare), []);
+  });
+
   it("refuses a page that is itself a link out, leaving the target as it was", skipWithoutSymlinks, async () => {
     rmSync(path.join(pages, "page.md"));
     symlinkSync(path.join(outside, "page.md"), path.join(pages, "page.md"));
