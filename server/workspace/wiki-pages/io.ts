@@ -19,10 +19,10 @@
 // site wired up means PR 2 is purely an internal change.
 
 import path from "node:path";
-import { realpath } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import { readTextSafe } from "../../utils/files/safe.js";
-import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { writeNewFileExclusive } from "../../utils/files/upload-io.js";
+import { writeFileVerifiedInScope } from "@mulmoclaude/core/files";
 import { mergeFrontmatter, parseFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
 import { isSafeSlug } from "@mulmoclaude/core/wiki";
 import { wikiSlugFromAbsPath } from "@mulmoclaude/core/wiki/paths";
@@ -90,12 +90,8 @@ export async function readWikiPage(slug: string, opts: WikiPageWriteOptions = {}
  *  with its own `---\n...\n---` envelope (we re-parse and merge
  *  so the resulting file always has a single canonical envelope).
  *
- *  `uniqueTmp: true` matches what the generic `/api/files/content`
- *  PUT used pre-consolidation — without it two simultaneous writes
- *  to the same page collide on the shared `.tmp` staging file
- *  (the file-content PUT and the wiki-backlinks driver are
- *  independent and may target the same page in the same
- *  millisecond).
+ *  A wiki folder that leads out of the workspace is refused (see
+ *  `writePageFile`).
  *
  *  The (old, new) pair still flows into `appendSnapshot` — the
  *  no-op stub today, real history pipeline in #763 PR 2. */
@@ -106,29 +102,7 @@ export async function writeWikiPage(slug: string, content: string, meta: WikiWri
   // (the file doesn't exist on the first successful write).
   const oldContent = opts.exclusive ? null : await readTextSafe(absPath);
   const finalContent = stampFrontmatter(oldContent, content, meta, opts);
-  if (opts.exclusive) {
-    // Re-anchor the absolute path against the workspace root before
-    // handing it to the create. `wikiPagePath` already
-    // enforces containment via `isSafeSlug` + `path.join`, but
-    // CodeQL's `js/path-injection` analysis doesn't trace through
-    // those — the explicit `relative` + `startsWith` containment
-    // check below is a sanitizer the analyzer recognizes, and it
-    // throws (rather than silently passing) on any escape so the
-    // route handler maps the throw to a 5xx via its catch.
-    const root = opts.workspaceRoot ?? defaultWorkspacePath;
-    const relFromRoot = path.relative(root, absPath);
-    if (relFromRoot.startsWith("..") || path.isAbsolute(relFromRoot)) {
-      throw new Error(`wiki-pages: refusing to write outside workspace root: ${JSON.stringify(absPath)}`);
-    }
-    const safeAbsPath = path.join(root, relFromRoot);
-    // `O_EXCL`: atomic create-or-fail. On a concurrent create race
-    // only one call wins; the other throws `EEXIST`, which the route
-    // handler maps to HTTP 409. The new file is also proven to sit
-    // inside the workspace before any byte is written (#3573).
-    await writeNewFileExclusive(await realpath(root), safeAbsPath, finalContent);
-  } else {
-    await writeFileAtomic(absPath, finalContent, { uniqueTmp: true });
-  }
+  await writePageFile(absPath, finalContent, opts);
   // Snapshot trigger: only fire when the *body* changed (or the
   // user-supplied meta did) — auto-stamping `updated` on every
   // save would otherwise flood the snapshot store with no-op
@@ -149,6 +123,39 @@ export async function writeWikiPage(slug: string, content: string, meta: WikiWri
       logBackgroundError("wiki-snapshot")(err);
     }
   }
+}
+
+// Re-anchor the absolute path against the workspace root before the
+// write. `wikiPagePath` already enforces containment via `isSafeSlug`
+// + `path.join`, but CodeQL's `js/path-injection` analysis doesn't
+// trace through those — the explicit `relative` + `startsWith` check
+// is a sanitizer the analyzer recognizes, and it throws on any escape
+// so the route handler maps the throw to a 5xx via its catch.
+function reanchoredPagePath(root: string, absPath: string): string {
+  const relFromRoot = path.relative(root, absPath);
+  if (relFromRoot.startsWith("..") || path.isAbsolute(relFromRoot)) {
+    throw new Error(`wiki-pages: refusing to write outside workspace root: ${JSON.stringify(absPath)}`);
+  }
+  return path.join(root, relFromRoot);
+}
+
+// Both modes prove the written file sits inside the workspace before
+// any byte lands, so a wiki folder that is (or is swapped for) a link
+// out is refused rather than written through (#3573). Exclusive mode
+// creates with `O_EXCL`: on a concurrent create only one call wins and
+// the other throws `EEXIST`, which the route maps to HTTP 409. The
+// overwrite stages under a random name, so two simultaneous saves of
+// one page can't share a staging file.
+async function writePageFile(absPath: string, finalContent: string, opts: WikiPageWriteOptions): Promise<void> {
+  const root = opts.workspaceRoot ?? defaultWorkspacePath;
+  const safeAbsPath = reanchoredPagePath(root, absPath);
+  const workspaceReal = await realpath(root);
+  if (opts.exclusive) {
+    await writeNewFileExclusive(workspaceReal, safeAbsPath, finalContent);
+    return;
+  }
+  await mkdir(path.dirname(safeAbsPath), { recursive: true });
+  await writeFileVerifiedInScope({ trustedReal: workspaceReal, scopeWithinTrusted: "" }, path.dirname(safeAbsPath), path.basename(safeAbsPath), finalContent);
 }
 
 /** True iff the diff between `oldContent` and `newContent` is
