@@ -42,6 +42,13 @@ workspace, and a workspace reached through a link, keep working.
   differences were the overwrites of a valid slug, as intended.
 - `test/workspace/wiki-pages/test_writeWikiPageOverwrite.ts` fails on `main` for both link-out cases.
 
+## What stays best-effort
+
+- **an empty folder made outside on a race.** A wiki folder swapped for a link out between the ancestor check and
+  `mkdir -p` (in `resolveWriteWithinRoot`) gets the missing `pages/` made in the link's target; the write is refused
+  after that and no bytes land. Node has no `mkdirat`, so this is the same class as the stray empty staging file in
+  `plans/fix-3573-verified-open.md`. Without a race (a folder already linked out) nothing is made outside.
+
 ## Not in this PR
 
 - The history snapshot write (`appendSnapshot`, `snapshot.ts`) checks `data/wiki/.history` with `lstat` and then writes
