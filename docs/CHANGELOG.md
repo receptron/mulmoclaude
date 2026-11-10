@@ -24,6 +24,13 @@ the computer wrote the page there. The save now checks that the file it writes s
 folder that leads outside makes the save fail with an error instead, as creating a new page already did. A link to a
 folder inside the workspace keeps working.
 
+#### Wiki edit history stays inside the workspace (#3573)
+
+Recording, listing, reading and pruning a wiki page's edit history followed `data/wiki` or `data/wiki/.history` when
+either was a symlink to a folder elsewhere on the computer: a save wrote its history there, the history view showed
+files from there, and pruning old entries could delete files there. History that leads outside the workspace is now
+refused when recording and shown as empty when reading. A link to a folder inside the workspace keeps working.
+
 ## [2.12.0] - 2026-11-07
 
 **Client tokens can be narrowed to reads or to some collections and are listed in Settings; file writes need the bearer
