@@ -2,12 +2,12 @@
 // `Authorization: Bearer <token>` header doesn't match the current
 // server token.
 //
-// This is the local-process isolation layer. `csrfGuard.ts` handles
-// cross-origin browser attacks (layered on top, both must pass). This
-// middleware handles the case a sibling process on the same machine
-// (malicious program, another user, confused script) tries to hit
-// `/api/*`: without the startup-regenerated token, every request is
-// 401'd.
+// `csrfGuard.ts` handles cross-origin browser attacks (layered on top,
+// both must pass). This middleware 401s a caller that bypasses browser
+// CORS without the startup-regenerated token. It is not a boundary
+// against a process on the same machine: a direct localhost `GET /`
+// hands out the owner token (`./ownerTokenHandoff.ts`), and local code
+// is outside the threat model (#3627).
 //
 // Design choices:
 // - **Exemptions** for requests the browser makes without a header

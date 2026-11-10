@@ -302,7 +302,7 @@ Pre-#284 workspaces (with `chat/`, `summaries/`, `memory.md` at the workspace ro
 
 ## Auth (bearer token on `/api/*`)
 
-Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on top of the CSRF origin check (`server/api/csrfGuard.ts`): **both** must pass. The origin check stops cross-origin browser attacks; the bearer check stops sibling processes on the same machine that bypass browser CORS entirely.
+Every HTTP call to `/api/*` requires `Authorization: Bearer <token>`. Layered on top of the CSRF origin check (`server/api/csrfGuard.ts`): **both** must pass. The origin check stops cross-origin browser attacks; the bearer check refuses callers that bypass browser CORS without the token. It is not a boundary against a process on the same machine, which can read the owner token from a direct localhost `GET /` (see *Named client tokens* below); local code is outside the threat model (#3627).
 
 **`/ws/pubsub` (#3433)**: the socket.io handshake presents the same token as `auth.token` (`usePubSub.ts` reads it through `getAuthToken()`), and a server middleware refuses a handshake without it with the same generic `unauthorized`. socket.io does not retry a refused handshake — the client socket is destroyed, so `socket.active` is false — so the SPA reconnects it explicitly, and only once it holds a token the server has not refused (next paragraph).
 

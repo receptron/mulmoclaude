@@ -340,8 +340,8 @@ app.use((req, res, next) => {
 // Bearer token auth: every `/api/*` request must carry
 // `Authorization: Bearer <token>` matching the per-startup token.
 // Layered *on top of* CSRF guard so we catch both cross-origin
-// browser attacks (origin check) and local sibling processes that
-// bypass browser CORS (bearer check). See #272 and
+// browser attacks (origin check) and callers that bypass browser
+// CORS without the token (bearer check). See #272 and
 // plans/done/feat-bearer-token-auth.md. The requests a browser makes
 // without a header are exempt — see `isBearerExempt`.
 app.use("/api", (req, res, next) => {
