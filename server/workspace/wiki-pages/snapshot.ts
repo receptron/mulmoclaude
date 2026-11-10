@@ -19,7 +19,8 @@
 
 import path from "node:path";
 import { promises as fsp, constants as fsConstants, type Dirent } from "node:fs";
-import { writeFileAtomic } from "../../utils/files/atomic.js";
+import { resolveWriteWithinRoot } from "../../utils/files/safe.js";
+import { realpathIfPresent, resolveExistingWithinRoot, writeFileVerifiedInScope } from "@mulmoclaude/core/files";
 import { ONE_DAY_MS } from "../../utils/time.js";
 import { mergeFrontmatter, parseFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
 import { shortId } from "../../utils/id.js";
@@ -43,8 +44,29 @@ export interface SnapshotPathOptions {
  *  when the dir doesn't exist yet; callers that read should tolerate
  *  ENOENT (treat as "no history yet"). */
 export function historyDir(slug: string, opts: SnapshotPathOptions = {}): string {
-  const root = opts.workspaceRoot ?? defaultWorkspacePath;
-  return path.join(root, WORKSPACE_DIRS.wikiHistory, slug);
+  return path.join(workspaceRootOf(opts), WORKSPACE_DIRS.wikiHistory, slug);
+}
+
+function workspaceRootOf(opts: SnapshotPathOptions): string {
+  return opts.workspaceRoot ?? defaultWorkspacePath;
+}
+
+// The explicit `relative` + `startsWith` check is a sanitizer CodeQL's `js/path-injection` recognizes.
+function historyRelPath(slug: string, opts: SnapshotPathOptions): string {
+  const rel = path.relative(workspaceRootOf(opts), historyDir(slug, opts));
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(`refusing to use a history dir outside the workspace root: ${JSON.stringify(slug)}`);
+  }
+  return rel;
+}
+
+/** The slug's history dir as a realpath, or null when it is missing, is itself a link, or a folder above it leads
+ *  out of the workspace. Every read and the GC go through this, so none of them reach a folder outside. */
+async function historyDirForRead(slug: string, opts: SnapshotPathOptions): Promise<string | null> {
+  if (!(await historyDirIsSafe(historyDir(slug, opts)))) return null;
+  const workspaceReal = await realpathIfPresent(workspaceRootOf(opts));
+  if (workspaceReal === null) return null;
+  return resolveExistingWithinRoot(workspaceReal, historyRelPath(slug, opts));
 }
 
 /** Snapshot summary as surfaced by `listSnapshots` and the history
@@ -157,9 +179,8 @@ async function historyDirIsSafe(dir: string): Promise<boolean> {
     const stat = await fsp.lstat(dir);
     return stat.isDirectory();
   } catch (err) {
-    // Missing dir is fine — appendSnapshot's writeFileAtomic will
-    // mkdir-p it on first write. Any other error means we shouldn't
-    // touch this path.
+    // Missing dir is fine — writeSnapshotFile makes it on first
+    // write. Any other error means we shouldn't touch this path.
     return isErrnoCode(err, "ENOENT");
   }
 }
@@ -196,13 +217,22 @@ export async function appendSnapshot(
   const merged = mergeFrontmatter(parsed.meta, buildSnapshotMetaPatch(meta, isoTs));
   const snapshotContent = serializeWithFrontmatter(merged, parsed.body);
 
+  await writeSnapshotFile(slug, fileName, snapshotContent, opts);
+  await gcSnapshots(slug, now, opts);
+  return stamp;
+}
+
+// Missing folders are made only after every existing one is checked to stay inside the workspace, and the file
+// itself is verified to sit inside before any byte is written.
+async function writeSnapshotFile(slug: string, fileName: string, content: string, opts: SnapshotPathOptions): Promise<void> {
   const dir = historyDir(slug, opts);
   if (!(await historyDirIsSafe(dir))) {
     throw new Error(`refusing to write snapshot: history dir is a symlink or non-directory (${dir})`);
   }
-  await writeFileAtomic(path.join(dir, fileName), snapshotContent);
-  await gcSnapshots(slug, now, opts);
-  return stamp;
+  const workspaceReal = await fsp.realpath(workspaceRootOf(opts));
+  const target = await resolveWriteWithinRoot(workspaceReal, path.join(historyRelPath(slug, opts), fileName));
+  if (target === null) throw new Error(`refusing to write snapshot: a folder of ${dir} leads outside the workspace`);
+  await writeFileVerifiedInScope({ trustedReal: workspaceReal, scopeWithinTrusted: "" }, path.dirname(target), path.basename(target), content);
 }
 
 /** Walk `historyDir(slug)` and unlink every snapshot that fails
@@ -212,7 +242,8 @@ export async function appendSnapshot(
  *  Tolerant of stray files whose names don't match the expected
  *  pattern; they are left alone. */
 export async function gcSnapshots(slug: string, now: Date, opts: SnapshotPathOptions = {}): Promise<void> {
-  const dir = historyDir(slug, opts);
+  const dir = await historyDirForRead(slug, opts);
+  if (dir === null) return;
   const entries = await readSnapshotEntries(dir);
   if (entries.length === 0) return;
 
@@ -260,10 +291,6 @@ function compareSnapshotsNewestFirst(left: SnapshotEntry, right: SnapshotEntry):
 }
 
 async function readSnapshotEntries(dir: string): Promise<SnapshotEntry[]> {
-  // Defence in depth: refuse to read if the directory itself is a
-  // symlink (codex review iter-3 / iter-4 #917). See historyDirIsSafe.
-  if (!(await historyDirIsSafe(dir))) return [];
-
   let dirents: Dirent[];
   try {
     dirents = await fsp.readdir(dir, { withFileTypes: true });
@@ -331,7 +358,8 @@ function entryEditor(meta: Record<string, unknown>): WikiPageEditor {
  *  meta (ts, editor, reason, sessionId) to render a list view; the
  *  body is omitted — call `readSnapshot` for full content. */
 export async function listSnapshots(slug: string, opts: SnapshotPathOptions = {}): Promise<SnapshotSummary[]> {
-  const dir = historyDir(slug, opts);
+  const dir = await historyDirForRead(slug, opts);
+  if (dir === null) return [];
   const entries = await readSnapshotEntries(dir);
   entries.sort(compareSnapshotsNewestFirst);
 
@@ -358,7 +386,8 @@ export async function listSnapshots(slug: string, opts: SnapshotPathOptions = {}
  *  or the stamp is malformed. */
 export async function readSnapshot(slug: string, stamp: string, opts: SnapshotPathOptions = {}): Promise<SnapshotContent | null> {
   if (!isSafeStamp(stamp)) return null;
-  const dir = historyDir(slug, opts);
+  const dir = await historyDirForRead(slug, opts);
+  if (dir === null) return null;
   const entries = await readSnapshotEntries(dir);
   const match = entries.find((entry) => entry.stamp === stamp);
   if (!match) return null;
