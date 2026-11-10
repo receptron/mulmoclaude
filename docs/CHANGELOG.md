@@ -14,6 +14,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`, `@mulmoclaude/collection-plugin@7.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.0`, `@mulmoclaude/html-plugin@7.0.0`, `@mulmoclaude/markdown-plugin@7.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@7.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
 
+### Fixed
+
+#### Wiki pages are saved only inside the workspace (#3573)
+
+Saving a wiki page — from the editor, the file explorer, a restore from history, or the session backlinks — wrote
+wherever `data/wiki` or `data/wiki/pages` pointed, so replacing either folder with a symlink to a folder elsewhere on
+the computer wrote the page there. The save now checks that the file it writes sits inside the workspace, so a wiki
+folder that leads outside makes the save fail with an error instead, as creating a new page already did. A link to a
+folder inside the workspace keeps working.
+
 ## [2.12.0] - 2026-11-07
 
 **Client tokens can be narrowed to reads or to some collections and are listed in Settings; file writes need the bearer
