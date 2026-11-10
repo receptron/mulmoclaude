@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/chart-plugin",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "description": "ECharts visualization plugin (presentChart) — shared gui-chat-protocol plugin for MulmoClaude and MulmoTerminal. Server-side write goes through the generic files.artifacts runtime capability.",
   "type": "module",
   "main": "./dist/index.js",
@@ -35,27 +35,27 @@
     "test": "echo 'no in-package tests; presentChart logic is covered by host integration tests'"
   },
   "peerDependencies": {
-    "@mulmoclaude/core": "^6.0.1",
+    "@mulmoclaude/core": "^7.0.0",
     "echarts": "^6.0.0",
     "gui-chat-protocol": "^2.3.0",
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@mulmoclaude/core": "^6.0.1",
+    "@mulmoclaude/core": "^7.0.0",
     "@tailwindcss/vite": "^4.3.5",
     "@types/node": "^26.6.5",
-    "@typescript-eslint/eslint-plugin": "^8.72.1",
-    "@typescript-eslint/parser": "^8.72.1",
+    "@typescript-eslint/eslint-plugin": "^8.72.2",
+    "@typescript-eslint/parser": "^8.72.2",
     "@vitejs/plugin-vue": "^6.0.10",
     "echarts": "^6.1.0",
     "eslint": "^10.14.0",
-    "eslint-plugin-vue": "^10.12.0",
+    "eslint-plugin-vue": "^10.12.1",
     "globals": "^17.14.0",
     "gui-chat-protocol": "^2.3.0",
     "tailwindcss": "^4.3.5",
     "typescript": "~6.0.2",
-    "vite": "^8.3.6",
+    "vite": "^8.3.7",
     "vue": "^3.5.45",
     "vue-eslint-parser": "^10.4.2",
     "vue-tsc": "^3.3.14"

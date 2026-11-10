@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 **Node.js 22 is no longer supported.** MulmoClaude now requires Node.js 24.15+ or 26+ (`engines`, the launcher preflight and CI all moved together). firebase 13, which the next release adopts, requires Node.js 24.12 or later.
 
+`firebase` 13 (was 12). `@mulmoclaude/core` 7.0.0 requires it, and the seven plugins that peer on core take a major bump to accept core 7.
+
+Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`, `@mulmoclaude/collection-plugin@7.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.0.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.0`, `@mulmoclaude/html-plugin@7.0.0`, `@mulmoclaude/markdown-plugin@7.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@7.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+
 ### Fixed
 
 #### Wiki pages are saved only inside the workspace (#3573)
