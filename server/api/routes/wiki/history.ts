@@ -15,12 +15,11 @@ import { Router, type Request, type Response } from "express";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { TOOL_NAMES } from "../../../../src/config/toolNames.js";
-import { hasMeaningfulChange, writeWikiPage } from "../../../workspace/wiki-pages/io.js";
+import { hasMeaningfulChange, readWikiPage, writeWikiPage } from "../../../workspace/wiki-pages/io.js";
 import { WORKSPACE_DIRS } from "../../../workspace/paths.js";
 import { isSafeStamp, listSnapshots, readSnapshot, stripSnapshotMeta, type SnapshotContent } from "../../../workspace/wiki-pages/snapshot.js";
 import { mergeFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
 import { badRequest, notFound } from "../../../utils/httpError.js";
-import { readTextOrNull } from "../../../utils/files/safe.js";
 import { workspacePath } from "../../../workspace/workspace.js";
 import { pushToolResult } from "../../../events/session-store/index.js";
 import { log } from "../../../system/logger/index.js";
@@ -208,8 +207,7 @@ async function handleInternalSnapshot(req: Request<object, unknown, InternalSnap
     return;
   }
 
-  const pagePath = path.join(workspacePath, WORKSPACE_DIRS.wikiPages, `${slug}.md`);
-  const content = await readTextOrNull(pagePath);
+  const content = await readWikiPage(slug, { workspaceRoot: workspacePath });
   if (content === null) {
     notFound(res, "wiki page not found on disk");
     return;
