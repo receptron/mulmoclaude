@@ -50,8 +50,7 @@
                 @keydown.space.prevent.self="onKeyActivate($event, row)"
               >
                 <td class="py-1 px-1">
-                  <span v-if="!isEarningsRow(row)" class="font-mono text-[10px] text-gray-400 mr-2">{{ row.accountCode }}</span
-                  >{{ rowName(row) }}
+                  <span v-if="!isEarningsRow(row)" class="font-mono text-[10px] text-gray-400 mr-2">{{ row.accountCode }}</span>{{ rowName(row) }}
                 </td>
                 <td class="py-1 px-1 text-right font-mono">{{ formatAmount(row.balance) }}</td>
               </tr>

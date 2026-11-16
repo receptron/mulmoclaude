@@ -309,8 +309,7 @@ async function performRestore(): Promise<void> {
                 line.kind === DIFF_LINE_KIND.del && 'text-red-600',
                 line.kind === DIFF_LINE_KIND.context && 'text-gray-300',
               ]"
-              >{{ markerFor(line.kind) }}</span
-            >{{ line.text }}
+              >{{ markerFor(line.kind) }}</span>{{ line.text }}
           </div>
           <div v-if="hunkIdx === hunks.length - 1 && hunk.hiddenAfter > 0" class="text-gray-400 italic px-2 py-1 border-y border-gray-100 bg-gray-50">
             {{ t("pluginWiki.history.hiddenLines", { count: hunk.hiddenAfter }) }}
