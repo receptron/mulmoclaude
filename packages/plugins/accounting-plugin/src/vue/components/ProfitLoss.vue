@@ -26,8 +26,7 @@
               @keydown.space.prevent.self="onKeyActivate($event, row.accountCode)"
             >
               <td class="py-1 px-1">
-                <span class="font-mono text-[10px] text-gray-400 mr-2">{{ row.accountCode }}</span
-                >{{ row.accountName }}
+                <span class="font-mono text-[10px] text-gray-400 mr-2">{{ row.accountCode }}</span>{{ row.accountName }}
               </td>
               <td class="py-1 px-1 text-right font-mono">{{ formatAmount(row.amount) }}</td>
             </tr>
@@ -57,8 +56,7 @@
               @keydown.space.prevent.self="onKeyActivate($event, row.accountCode)"
             >
               <td class="py-1 px-1">
-                <span class="font-mono text-[10px] text-gray-400 mr-2">{{ row.accountCode }}</span
-                >{{ row.accountName }}
+                <span class="font-mono text-[10px] text-gray-400 mr-2">{{ row.accountCode }}</span>{{ row.accountName }}
               </td>
               <td class="py-1 px-1 text-right font-mono">{{ formatAmount(row.amount) }}</td>
             </tr>
