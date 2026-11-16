@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { collectLintIssues, loadWikiGraph, readWikiIndex, readWikiLog, readWikiPage, resolvePagePath } from "../../src/wiki/server/engine.ts";
@@ -75,6 +75,16 @@ describe("wiki read engine confinement", () => {
     symlinkSync(elsewhere, wiki);
     assert.equal((await readWikiPage(workspace, "inside")).content, "inside\n");
     assert.equal(readWikiLog(workspace), "inside log\n");
+  });
+
+  it("reads a link inside the workspace whose spelling differs only in letter case", async (context) => {
+    if (process.platform === "win32" || !existsSync(workspace.toUpperCase())) {
+      context.skip("needs POSIX symlinks on a case-insensitive disk");
+      return;
+    }
+    renameSync(path.join(wiki, "pages"), path.join(workspace, "elsewhere"));
+    symlinkSync(path.join(base, "WS", "elsewhere"), path.join(wiki, "pages"));
+    assert.equal((await readWikiPage(workspace, "inside")).content, "inside\n");
   });
 
   it("shows nothing from a wiki folder linked out", skipWithoutSymlinks, async () => {

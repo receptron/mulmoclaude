@@ -4,7 +4,6 @@
 
 import { realpathSync } from "node:fs";
 import path from "node:path";
-import { resolveWithinRoot } from "../../files/safe.js";
 import { wikiDirs } from "./paths.js";
 
 export interface WikiReadLocations {
@@ -15,11 +14,15 @@ export interface WikiReadLocations {
   logReal: string | null;
 }
 
+const isWithin = (rootReal: string, candidateReal: string): boolean => candidateReal === rootReal || candidateReal.startsWith(rootReal + path.sep);
+
 export function wikiReadLocations(workspace: string): WikiReadLocations {
   const dirs = wikiDirs(workspace);
   const workspaceReal = realpathOrNull(workspace);
-  const insideWorkspace = (absPath: string): string | null =>
-    workspaceReal === null ? null : resolveWithinRoot(workspaceReal, path.relative(workspace, absPath));
+  const insideWorkspace = (absPath: string): string | null => {
+    const candidateReal = workspaceReal === null ? null : realpathOrNull(path.resolve(workspaceReal, path.relative(workspace, absPath)));
+    return workspaceReal !== null && candidateReal !== null && isWithin(workspaceReal, candidateReal) ? candidateReal : null;
+  };
   return {
     pagesDir: dirs.pagesDir,
     pagesReal: insideWorkspace(dirs.pagesDir),
@@ -28,9 +31,11 @@ export function wikiReadLocations(workspace: string): WikiReadLocations {
   };
 }
 
+// The native realpath, because the JS one keeps the letter case a link was written with: on a case-insensitive disk a
+// link inside the workspace spelled `repo/…` under a workspace spelled `Repo` would otherwise look like it leads out.
 function realpathOrNull(absPath: string): string | null {
   try {
-    return realpathSync(absPath);
+    return realpathSync.native(absPath);
   } catch {
     return null;
   }
