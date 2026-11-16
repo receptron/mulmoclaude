@@ -30,18 +30,12 @@ import { getCurrentToken } from "../../api/auth/token.js";
 import { errorMessage } from "../../utils/errors.js";
 import { makeUuid } from "../../utils/id.js";
 import { isRecord } from "../../utils/types.js";
+import { pluginResultText, type PluginResultEnvelope } from "../pluginResultText.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 import { WORKSPACE_DIRS } from "../../workspace/paths.js";
 import type { AgentEvent } from "../stream.js";
 import type { AgentInput, LLMBackend } from "./types.js";
-
-interface PluginEnvelope {
-  data?: unknown;
-  message?: unknown;
-  instructions?: unknown;
-  [key: string]: unknown;
-}
 
 export interface FakeToolCall {
   toolName: string;
@@ -244,7 +238,7 @@ async function dispatchToPlugin(call: FakeToolCall, port: number, chatSessionId:
       return JSON.stringify({ error: `plugin ${call.toolName} returned ${response.status}: ${errBody.slice(0, 200)}` });
     }
     const parsed: unknown = await response.json();
-    const envelope: PluginEnvelope = isRecord(parsed) ? parsed : {};
+    const envelope: PluginResultEnvelope = isRecord(parsed) ? parsed : {};
     if (envelope.data !== undefined) {
       // Query key is `session`, not `chatSessionId` — matches the
       // `getSessionQuery(req)` reader and what the MCP bridge's
@@ -267,10 +261,7 @@ async function dispatchToPlugin(call: FakeToolCall, port: number, chatSessionId:
         });
       }
     }
-    const text: string[] = [];
-    if (typeof envelope.message === "string") text.push(envelope.message);
-    if (typeof envelope.instructions === "string") text.push(envelope.instructions);
-    return text.length > 0 ? text.join("\n") : "Done";
+    return pluginResultText(envelope);
   } catch (err) {
     // Don't tear down the chat turn on plugin-dispatch failure —
     // surface the error in the tool_result so the test sees it.

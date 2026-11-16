@@ -8,6 +8,7 @@ import type { ToolDefinition } from "gui-chat-protocol";
 import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 import { resolveActiveTools } from "./resolveActiveTools.js";
 import { findDispatchableMcpTool } from "./dispatchableMcpTool.js";
+import { pluginResultText, type PluginResultEnvelope } from "./pluginResultText.js";
 import { TOOL_ENDPOINTS, PLUGIN_DEFS, MCP_PLUGIN_NAMES } from "./plugin-names.js";
 import { loadRuntimePlugins } from "../plugins/runtime-loader.js";
 import { loadDevPlugins, parseDevPluginsEnv } from "../plugins/dev-loader.js";
@@ -77,13 +78,9 @@ interface ToolDef {
 // `handleToolCall` is type-checked rather than relying on
 // object-shape coincidence — the bridge always re-asserts them
 // from its own state.
-interface PluginResultEnvelope {
-  data?: unknown;
-  message?: unknown;
-  instructions?: unknown;
+interface BridgeResultEnvelope extends PluginResultEnvelope {
   toolName?: unknown;
   uuid?: unknown;
-  [key: string]: unknown;
 }
 
 // Combine `description` (one-liner) and `prompt` (detailed usage
@@ -558,14 +555,14 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
   // and the timeout-policy comment on `postJson`.
   const res = await postJson(tool.endpoint, args, { timeoutMs: PLUGIN_BRIDGE_TIMEOUT_MS });
   const rawResult: unknown = (await res.json()) ?? {};
-  const result: PluginResultEnvelope = isRecord(rawResult) ? rawResult : {};
+  const result: BridgeResultEnvelope = isRecord(rawResult) ? rawResult : {};
 
   // Push visual ToolResult to the frontend via the session — but
   // only when the handler set `data`, which is the protocol's
   // render-eligibility signal. Narrate-only actions (e.g.
   // accounting `getReport`, `getBooks`, plugin validation-error
   // branches) deliberately omit `data` and behave like a plain
-  // MCP tool call: the LLM gets `message` / `instructions` via
+  // MCP tool call: the LLM gets the result via
   // the return value below, and nothing lands in the session's
   // `toolResults` or its on-disk JSONL log. (`jsonData` is
   // orthogonal — the LLM-readable copy — and does NOT gate
@@ -582,8 +579,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
     });
   }
 
-  const parts = [result.message, result.instructions].filter(Boolean);
-  return parts.length > 0 ? parts.join("\n") : "Done";
+  return pluginResultText(result);
 }
 
 // Milliseconds from this process starting to the module being set up — the
