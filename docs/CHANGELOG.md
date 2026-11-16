@@ -16,6 +16,13 @@ Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`,
 
 ### Fixed
 
+#### The wiki view shows only what is inside the workspace (#3573)
+
+The wiki view, graph and lint report read `data/wiki/index.md`, `log.md` and the pages wherever `data/wiki`,
+`data/wiki/pages` or those files pointed, so replacing any of them with a symlink to something elsewhere on the computer
+showed its `.md` files in the wiki. Anything that leads out of the workspace now reads as missing. A link to a folder or
+file inside the workspace keeps working.
+
 #### Wiki pages are saved only inside the workspace (#3573)
 
 Saving a wiki page — from the editor, the file explorer, a restore from history, or the session backlinks — wrote

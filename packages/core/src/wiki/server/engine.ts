@@ -18,7 +18,7 @@ import { type WikiGraph, buildWikiGraph } from "../graph.js";
 import { readTextSafe, readTextSafeSync } from "./fs.js";
 import { getPageIndex } from "./pageIndex.js";
 import { parseFrontmatterTags } from "./frontmatter.js";
-import { wikiDirs } from "./paths.js";
+import { type WikiReadLocations, wikiReadLocations } from "./locations.js";
 
 // Below this length the fuzzy `includes` step is skipped — CJK /
 // emoji-only / very-short page names slugify down to a short noise
@@ -26,8 +26,12 @@ import { wikiDirs } from "./paths.js";
 // fallback still handles the legitimate non-ASCII case (#1194).
 const MIN_FUZZY_SLUG_LEN = 6;
 
-function readFileOrEmpty(absPath: string): string {
-  return readTextSafeSync(absPath) ?? "";
+function readFileOrEmpty(absPath: string | null): string {
+  return absPath === null ? "" : (readTextSafeSync(absPath) ?? "");
+}
+
+async function pageSlugs(locations: WikiReadLocations): Promise<Map<string, string>> {
+  return locations.pagesReal === null ? new Map() : (await getPageIndex(locations.pagesReal)).slugs;
 }
 
 /** Walk every indexed slug for an `includes`-style match. Returns the
@@ -59,7 +63,7 @@ export function pickFuzzyMatch(slug: string, slugs: ReadonlyMap<string, string>)
 /** File matching an index.md entry whose title equals `target` — the
  *  last resort for a link written as the display title rather than
  *  the page's own name. */
-function fileByIndexTitle(indexFile: string, target: string, slugs: ReadonlyMap<string, string>): string | undefined {
+function fileByIndexTitle(indexFile: string | null, target: string, slugs: ReadonlyMap<string, string>): string | undefined {
   const entries = parseIndexEntries(readFileOrEmpty(indexFile));
   const trimmed = target.trim();
   const titleMatch = entries.find((entry) => entry.title === trimmed);
@@ -71,31 +75,35 @@ function fileByIndexTitle(indexFile: string, target: string, slugs: ReadonlyMap<
  *  the `[[target|display]]` form; `parseWikiLink` strips the display
  *  half so the lookup uses just the target. */
 export async function resolvePagePath(workspace: string, pageName: string): Promise<string | null> {
-  const { pagesDir, indexFile } = wikiDirs(workspace);
-  const { slugs } = await getPageIndex(pagesDir);
+  const locations = wikiReadLocations(workspace);
+  const fileName = await resolvePageFile(locations, pageName);
+  return fileName === null ? null : path.join(locations.pagesDir, fileName);
+}
+
+async function resolvePageFile(locations: WikiReadLocations, pageName: string): Promise<string | null> {
+  const slugs = await pageSlugs(locations);
   if (slugs.size === 0) return null;
 
   const { target } = parseWikiLink(pageName);
   const matched = matchWikiSlug(target, slugs);
   const matchedFile = matched === null ? undefined : slugs.get(matched);
-  if (matchedFile) return path.join(pagesDir, matchedFile);
+  if (matchedFile) return matchedFile;
 
   const fuzzy = pickFuzzyMatch(wikiSlugify(target), slugs);
-  if (fuzzy) return path.join(pagesDir, fuzzy);
+  if (fuzzy) return fuzzy;
 
-  const titleFile = fileByIndexTitle(indexFile, target, slugs);
-  return titleFile ? path.join(pagesDir, titleFile) : null;
+  return fileByIndexTitle(locations.indexReal, target, slugs) ?? null;
 }
 
 /** Raw `index.md` content + its parsed entries. */
 export function readWikiIndex(workspace: string): { content: string; entries: WikiPageEntry[] } {
-  const content = readFileOrEmpty(wikiDirs(workspace).indexFile);
+  const content = readFileOrEmpty(wikiReadLocations(workspace).indexReal);
   return { content, entries: parseIndexEntries(content) };
 }
 
 /** Raw `log.md` content (empty string if absent). */
 export function readWikiLog(workspace: string): string {
-  return readFileOrEmpty(wikiDirs(workspace).logFile);
+  return readFileOrEmpty(wikiReadLocations(workspace).logReal);
 }
 
 export interface WikiPageRead {
@@ -112,10 +120,11 @@ export interface WikiPageRead {
 /** Resolve + read a page. Distinguishes missing (`exists: false`) from
  *  empty-but-present (`exists: true`, `content: ""`). */
 export async function readWikiPage(workspace: string, pageName: string): Promise<WikiPageRead> {
-  const filePath = await resolvePagePath(workspace, pageName);
-  const content = filePath ? readFileOrEmpty(filePath) : "";
-  const resolvedTitle = filePath ? path.basename(filePath, ".md") : pageName;
-  return { filePath, content, exists: Boolean(filePath), resolvedTitle };
+  const locations = wikiReadLocations(workspace);
+  const fileName = await resolvePageFile(locations, pageName);
+  if (fileName === null || locations.pagesReal === null) return { filePath: null, content: "", exists: false, resolvedTitle: pageName };
+  const content = readFileOrEmpty(path.join(locations.pagesReal, fileName));
+  return { filePath: path.join(locations.pagesDir, fileName), content, exists: true, resolvedTitle: path.basename(fileName, ".md") };
 }
 
 /** Page body, or "" when the file vanished between indexing and reading. */
@@ -127,10 +136,14 @@ async function readPageBody(pagesDir: string, fileName: string): Promise<string>
  *  No cache: the graph is requested explicitly and a content edit does
  *  not advance the pagesDir mtime the page index caches on. */
 export async function loadWikiGraph(workspace: string): Promise<WikiGraph> {
-  const { pagesDir, indexFile } = wikiDirs(workspace);
-  const { slugs } = await getPageIndex(pagesDir);
-  const pages = await Promise.all([...slugs.entries()].map(async ([slug, fileName]) => ({ slug, content: await readPageBody(pagesDir, fileName) })));
-  const indexEntries = parseIndexEntries(readFileOrEmpty(indexFile));
+  const locations = wikiReadLocations(workspace);
+  const { pagesReal } = locations;
+  const slugs = await pageSlugs(locations);
+  const pages =
+    pagesReal === null
+      ? []
+      : await Promise.all([...slugs.entries()].map(async ([slug, fileName]) => ({ slug, content: await readPageBody(pagesReal, fileName) })));
+  const indexEntries = parseIndexEntries(readFileOrEmpty(locations.indexReal));
   return buildWikiGraph(pages, indexEntries);
 }
 
@@ -156,15 +169,15 @@ export function frontmatterTagIndex(bodies: readonly PageBody[]): Map<string, st
 
 /** Run every lint rule over the on-disk wiki, returning issue strings. */
 export async function collectLintIssues(workspace: string): Promise<string[]> {
-  const { pagesDir, indexFile } = wikiDirs(workspace);
-  const { slugs } = await getPageIndex(pagesDir);
-  if (slugs.size === 0) {
+  const locations = wikiReadLocations(workspace);
+  const slugs = await pageSlugs(locations);
+  if (slugs.size === 0 || locations.pagesReal === null) {
     return ["- Wiki `pages/` directory does not exist yet. Start ingesting sources."];
   }
-  const pageEntries = parseIndexEntries(readFileOrEmpty(indexFile));
+  const pageEntries = parseIndexEntries(readFileOrEmpty(locations.indexReal));
   const fileSlugs = new Set(slugs.keys());
   const slugByTitle = slugByIndexTitle(pageEntries);
-  const bodies = await readPageBodies(pagesDir, [...slugs.values()]);
+  const bodies = await readPageBodies(locations.pagesReal, [...slugs.values()]);
   return [
     ...findOrphanPages(fileSlugs, new Set(pageEntries.map((entry) => entry.slug))),
     ...findMissingFiles(pageEntries, fileSlugs),
