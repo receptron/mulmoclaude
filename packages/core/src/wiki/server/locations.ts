@@ -14,7 +14,11 @@ export interface WikiReadLocations {
   logReal: string | null;
 }
 
-const isWithin = (rootReal: string, candidateReal: string): boolean => candidateReal === rootReal || candidateReal.startsWith(rootReal + path.sep);
+// `path.relative` rather than a `rootReal + sep` prefix, which a workspace at a filesystem root (`/`, `C:\`) would fail.
+export function isWithin(rootReal: string, candidateReal: string): boolean {
+  const rel = path.relative(rootReal, candidateReal);
+  return rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+}
 
 export function wikiReadLocations(workspace: string): WikiReadLocations {
   const dirs = wikiDirs(workspace);

@@ -23,6 +23,8 @@ each case.
   stay inside the workspace realpath, or `null`. It uses the native realpath: the JS one keeps the letter case a link was
   written with, so on a case-insensitive disk a link inside the workspace spelled with different case looked like it led
   out (Codex review). The shared `resolveWithinRoot` uses the JS realpath and has the same trait; it is left as is here.
+  The containment test (`isWithin`) uses `path.relative`, so a workspace at a filesystem root (`/`, `C:\`) still
+  passes (CodeRabbit / Sourcery review).
 - The engine lists and reads only through those realpaths; `null` reads as absent (no pages, empty index or log).
 - Paths handed back to callers (`resolvePagePath`, `readWikiPage().filePath`) keep the caller's spelling,
   `<workspace>/data/wiki/pages/<file>`, because hosts compare them with paths built the same way (`wikiSlugFromAbsPath`).

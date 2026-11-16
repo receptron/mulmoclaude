@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { collectLintIssues, loadWikiGraph, readWikiIndex, readWikiLog, readWikiPage, resolvePagePath } from "../../src/wiki/server/engine.ts";
 import { __resetPageIndexCache } from "../../src/wiki/server/pageIndex.ts";
+import { isWithin } from "../../src/wiki/server/locations.ts";
 
 const skipWithoutSymlinks = { skip: process.platform === "win32" ? "symlinks need POSIX" : false };
 const OUTSIDE_PAGE = "OUTSIDE PAGE\n";
@@ -104,5 +105,22 @@ describe("wiki read engine confinement", () => {
     linkOut(path.join(wiki, "log.md"), path.join(outside, "log.md"));
     assert.deepEqual(readWikiIndex(workspace), { content: "", entries: [] });
     assert.equal(readWikiLog(workspace), "");
+  });
+});
+
+describe("isWithin", () => {
+  const cases: [string, string, string, boolean][] = [
+    ["the workspace itself", "/ws", "/ws", true],
+    ["a path below it", "/ws", "/ws/data/wiki", true],
+    ["a name that starts with two dots", "/ws", "/ws/..notes", true],
+    ["a workspace at the filesystem root", "/", "/data/wiki/pages", true],
+    ["a sibling sharing the prefix", "/ws", "/ws2/data", false],
+    ["the parent", "/ws/a", "/ws", false],
+    ["the filesystem root", "/ws", "/", false],
+  ];
+  cases.forEach(([label, root, candidate, expected]) => {
+    it(`${expected ? "accepts" : "rejects"} ${label}`, { skip: process.platform === "win32" ? "POSIX paths" : false }, () => {
+      assert.equal(isWithin(root, candidate), expected);
+    });
   });
 });
