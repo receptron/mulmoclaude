@@ -1327,16 +1327,6 @@
     protobufjs "^7.5.4"
     ws "^8.18.0"
 
-"@google/genai@^3.0.0":
-  version "3.0.0"
-  resolved "https://registry.yarnpkg.com/@google/genai/-/genai-3.0.0.tgz#c232c67803ab2435ddb46d79011c80bda622f84e"
-  integrity sha512-0o2uBXPWBNUu0jWg2Id5iBtCnsd7lnxKPQfnijKvNublG/zj40CToERvz/eyfNjzzXt2kwuvxpouLUrRCZ2WUQ==
-  dependencies:
-    google-auth-library "^10.3.0"
-    p-retry "^4.6.2"
-    protobufjs "^7.6.5"
-    ws "^8.21.0"
-
 "@google/genai@^3.3.0":
   version "3.3.0"
   resolved "https://registry.yarnpkg.com/@google/genai/-/genai-3.3.0.tgz#96f58338d6383489e82be15628b9c15fad6294f4"
@@ -6370,18 +6360,6 @@ fast-xml-builder@^1.3.2:
     path-expression-matcher "^1.6.2"
     xml-naming "^0.3.0"
 
-fast-xml-parser@^5.12.0, fast-xml-parser@^5.4.2:
-  version "5.12.0"
-  resolved "https://registry.yarnpkg.com/fast-xml-parser/-/fast-xml-parser-5.12.0.tgz#f8212b65fa5f7d227e67c387e874c7857751fa64"
-  integrity sha512-/pXxRBtwxY9w8z7YbgsvIPPcPvFDsTbIkWwTQJhzNJPokj+TbN6ftmcv4j/pEQDvOCNnKGDzuk5Bo2oogIOiFg==
-  dependencies:
-    "@nodable/entities" "^3.1.0"
-    fast-xml-builder "^1.3.1"
-    is-unsafe "^2.0.3"
-    path-expression-matcher "^1.6.2"
-    strnum "^2.5.1"
-    xml-naming "^0.3.0"
-
 fast-xml-parser@^5.12.1:
   version "5.12.1"
   resolved "https://registry.yarnpkg.com/fast-xml-parser/-/fast-xml-parser-5.12.1.tgz#a0f3ebed7a1107db9456c0dd0ed233cbc00ae709"
@@ -6389,6 +6367,18 @@ fast-xml-parser@^5.12.1:
   dependencies:
     "@nodable/entities" "^3.1.0"
     fast-xml-builder "^1.3.2"
+    is-unsafe "^2.0.3"
+    path-expression-matcher "^1.6.2"
+    strnum "^2.5.1"
+    xml-naming "^0.3.0"
+
+fast-xml-parser@^5.4.2:
+  version "5.12.0"
+  resolved "https://registry.yarnpkg.com/fast-xml-parser/-/fast-xml-parser-5.12.0.tgz#f8212b65fa5f7d227e67c387e874c7857751fa64"
+  integrity sha512-/pXxRBtwxY9w8z7YbgsvIPPcPvFDsTbIkWwTQJhzNJPokj+TbN6ftmcv4j/pEQDvOCNnKGDzuk5Bo2oogIOiFg==
+  dependencies:
+    "@nodable/entities" "^3.1.0"
+    fast-xml-builder "^1.3.1"
     is-unsafe "^2.0.3"
     path-expression-matcher "^1.6.2"
     strnum "^2.5.1"
