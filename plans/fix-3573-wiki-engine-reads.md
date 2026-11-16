@@ -29,9 +29,10 @@ reproduce on the first head of this PR too. The new test covers each.
   (CodeRabbit / Sourcery review).
 - The engine lists and reads only through those realpaths; `null` reads as absent (no pages, empty index or log).
 - Every file read (`readTextSafe` / `readTextSafeSync` in `wiki/server/fs.ts`) opens with `O_NOFOLLOW | O_NONBLOCK`,
-  and reads only when the path, not followed, is a regular file with the same identity as the opened handle. A cached
-  page that became a link, or a FIFO, reads as empty (review); the identity check is what refuses the link on Windows,
-  where `O_NOFOLLOW` does not exist (Codex review).
+  then re-resolves the path: it reads only when where the path leads now is inside the workspace and is a regular file
+  with the opened handle's identity, as `openVerifiedWithinScope` does. A cached page that became a link, a FIFO, and a
+  folder swapped for a link out after the locations were resolved all read as empty (review). The check after the open
+  is what refuses a link on Windows, where `O_NOFOLLOW` does not exist (Codex review).
 - Paths handed back to callers (`resolvePagePath`, `readWikiPage().filePath`) keep the caller's spelling,
   `<workspace>/data/wiki/pages/<file>`, because hosts compare them with paths built the same way (`wikiSlugFromAbsPath`).
 
@@ -61,7 +62,10 @@ reproduce on the first head of this PR too. The new test covers each.
   from the stale index. A wrong listing, not a read outside: every read is checked as above.
 - MulmoTerminal declares `@mulmoclaude/core` `^6`, and this ships in core 7; it reaches MulmoTerminal when it moves to
   core 7.
-- The swap-after-check race on the folders stays best-effort, as in the earlier plans.
+- Listing the pages folder (`readdir`) still follows a folder swapped for a link out after its location was resolved,
+  so outside `.md` names can appear in a listing; their contents are refused by the check above.
+- A hard link inside the workspace to an outside file is read as that file. Making one needs access to the file
+  already, and a sandboxed agent cannot link across the mount; core's `openVerifiedWithinScope` treats it the same.
 
 ## Release
 
