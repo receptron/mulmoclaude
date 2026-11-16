@@ -31,6 +31,13 @@ either was a symlink to a folder elsewhere on the computer: a save wrote its his
 files from there, and pruning old entries could delete files there. History that leads outside the workspace is now
 refused when recording and shown as empty when reading. A link to a folder inside the workspace keeps working.
 
+#### A wiki page that links out of the workspace is no longer copied into its history (#3573)
+
+When the agent's write hook recorded a page's history, and when a save read the page it was about to replace, a page
+file that was a symlink to a file elsewhere on the computer — or sat under a wiki folder linked elsewhere — was read
+through the link: the hook stored that file's contents in the page's history, and a save carried its frontmatter into
+the new page. Such a page now reads as missing in both places. A link to a file inside the workspace keeps working.
+
 ## [2.12.0] - 2026-11-07
 
 **Client tokens can be narrowed to reads or to some collections and are listed in Settings; file writes need the bearer

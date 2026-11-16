@@ -7,7 +7,7 @@
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "fs";
-import { mkdtemp, rm, writeFile } from "fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 import type { Request, Response } from "express";
@@ -112,6 +112,22 @@ describe("POST /api/wiki/internal/snapshot", () => {
     await snapshotHandler(makeReq({ slug: "missing" }), res);
     assert.equal(state.status, 404);
   });
+
+  it(
+    "returns 404 and records nothing for a page that links out of the workspace",
+    { skip: process.platform === "win32" ? "symlinks need POSIX" : false },
+    async () => {
+      const slug = "links-out";
+      const outsideFile = path.join(tmpRoot, "outside-secret.md");
+      await writeFile(outsideFile, "---\nsecret: yes\n---\n\noutside body\n", "utf-8");
+      await symlink(outsideFile, path.join(pagesDir, `${slug}.md`));
+
+      const { state, res } = mockRes();
+      await snapshotHandler(makeReq({ slug }), res);
+      assert.equal(state.status, 404);
+      assert.deepEqual(await listSnapshots(slug), []);
+    },
+  );
 
   it("records a snapshot tagged editor=llm for a valid slug", async () => {
     const slug = "valid-llm-write";

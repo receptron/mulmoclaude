@@ -20,9 +20,9 @@
 
 import path from "node:path";
 import { realpath } from "node:fs/promises";
-import { readTextSafe, resolveWriteWithinRoot } from "../../utils/files/safe.js";
+import { resolveWriteWithinRoot } from "../../utils/files/safe.js";
 import { writeNewFileExclusive } from "../../utils/files/upload-io.js";
-import { writeFileVerifiedInScope } from "@mulmoclaude/core/files";
+import { openVerifiedWithinScope, realpathIfPresent, writeFileVerifiedInScope } from "@mulmoclaude/core/files";
 import { mergeFrontmatter, parseFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
 import { isSafeSlug } from "@mulmoclaude/core/wiki";
 import { wikiSlugFromAbsPath } from "@mulmoclaude/core/wiki/paths";
@@ -75,11 +75,27 @@ export function wikiPagePath(slug: string, opts: WikiPageWriteOptions = {}): str
   return path.join(root, WORKSPACE_DIRS.wikiPages, `${slug}.md`);
 }
 
-/** Read a wiki page; null if missing. Used internally to capture
- *  the pre-write content for snapshotting (PR 2). Exposed because
- *  some callers want the same null-safe reader. */
+/** Read a wiki page; null if missing, unreadable, or not a file inside the workspace (a page or wiki folder that
+ *  links out). Used to capture the pre-write content for snapshotting, and by callers that want the same reader. */
 export async function readWikiPage(slug: string, opts: WikiPageWriteOptions = {}): Promise<string | null> {
-  return readTextSafe(wikiPagePath(slug, opts));
+  return readPageFile(wikiPagePath(slug, opts), opts);
+}
+
+async function readPageFile(absPath: string, opts: WikiPageWriteOptions): Promise<string | null> {
+  const root = opts.workspaceRoot ?? defaultWorkspacePath;
+  try {
+    const workspaceReal = await realpathIfPresent(root);
+    if (workspaceReal === null) return null;
+    const handle = await openVerifiedWithinScope({ trustedReal: workspaceReal, scopeWithinTrusted: "" }, pagePathFromRoot(root, absPath));
+    if (handle === null) return null;
+    try {
+      return await handle.readFile("utf-8");
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return null;
+  }
 }
 
 /** Write a wiki page atomically and stamp it with `created` /
@@ -100,7 +116,7 @@ export async function writeWikiPage(slug: string, content: string, meta: WikiWri
   // Exclusive mode: don't read first — the `wx` flag itself is what
   // closes the TOCTOU window. `oldContent` is null by definition
   // (the file doesn't exist on the first successful write).
-  const oldContent = opts.exclusive ? null : await readTextSafe(absPath);
+  const oldContent = opts.exclusive ? null : await readPageFile(absPath, opts);
   const finalContent = stampFrontmatter(oldContent, content, meta, opts);
   await writePageFile(absPath, finalContent, opts);
   // Snapshot trigger: only fire when the *body* changed (or the
