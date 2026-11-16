@@ -128,8 +128,8 @@ export async function readWikiPage(workspace: string, pageName: string): Promise
 }
 
 /** Page body, or "" when the file vanished between indexing and reading. */
-async function readPageBody(pagesDir: string, fileName: string): Promise<string> {
-  return (await readTextSafe(path.join(pagesDir, fileName))) ?? "";
+async function readPageBody(pagesReal: string, fileName: string): Promise<string> {
+  return (await readTextSafe(path.join(pagesReal, fileName))) ?? "";
 }
 
 /** Read every page + the index and build the page→page link graph.
@@ -152,8 +152,8 @@ export interface PageBody {
   content: string;
 }
 
-async function readPageBodies(pagesDir: string, fileNames: readonly string[]): Promise<PageBody[]> {
-  return Promise.all(fileNames.map(async (fileName) => ({ fileName, content: await readPageBody(pagesDir, fileName) })));
+async function readPageBodies(pagesReal: string, fileNames: readonly string[]): Promise<PageBody[]> {
+  return Promise.all(fileNames.map(async (fileName) => ({ fileName, content: await readPageBody(pagesReal, fileName) })));
 }
 
 /** Frontmatter `tags:` per page, keyed for `findTagDrift`. Lowercased so

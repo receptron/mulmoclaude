@@ -1,9 +1,8 @@
-// Where a workspace's wiki sits on disk right now, as realpaths that stay inside the workspace. A folder or file that
-// leads out of the workspace — a link, there from the start or swapped in — counts as absent, so the read engine
-// never lists or reads anything outside it.
+// A wiki folder or file that leads out of the workspace counts as absent, so nothing outside is listed or read.
 
 import { realpathSync } from "node:fs";
 import path from "node:path";
+import { isEnoent } from "../../files/safe.js";
 import { wikiDirs } from "./paths.js";
 
 export interface WikiReadLocations {
@@ -35,11 +34,19 @@ export function wikiReadLocations(workspace: string): WikiReadLocations {
   };
 }
 
-// The native realpath, because the JS one keeps the letter case a link was written with: on a case-insensitive disk a
-// link inside the workspace spelled `repo/…` under a workspace spelled `Repo` would otherwise look like it leads out.
+// Native first: the JS realpath keeps a link's letter case, so on a case-insensitive disk an inside link looks outside.
+// The JS one is the fallback for drives where the native call throws (EISDIR on some Windows RAM disks).
 function realpathOrNull(absPath: string): string | null {
   try {
     return realpathSync.native(absPath);
+  } catch (err) {
+    return isEnoent(err) ? null : jsRealpathOrNull(absPath);
+  }
+}
+
+function jsRealpathOrNull(absPath: string): string | null {
+  try {
+    return realpathSync(absPath);
   } catch {
     return null;
   }

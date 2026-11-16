@@ -1,48 +1,54 @@
-// The wiki read engine lists and reads only what sits inside the workspace: a wiki folder, pages folder, index or
-// log that links out reads as absent (#3573).
+// The wiki read engine lists and reads only regular files inside the workspace; anything leading out reads as absent.
 
-import { afterEach, beforeEach, describe, it } from "node:test";
+import { describe, it, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { collectLintIssues, loadWikiGraph, readWikiIndex, readWikiLog, readWikiPage, resolvePagePath } from "../../src/wiki/server/engine.ts";
 import { __resetPageIndexCache } from "../../src/wiki/server/pageIndex.ts";
 import { isWithin } from "../../src/wiki/server/locations.ts";
 
-const skipWithoutSymlinks = { skip: process.platform === "win32" ? "symlinks need POSIX" : false };
+const POSIX_ONLY = process.platform === "win32" ? "symlinks and FIFOs need POSIX" : false;
 const OUTSIDE_PAGE = "OUTSIDE PAGE\n";
+// A fixed mtime set before the page index is built and again after the swap, so the index stays cached.
+const PINNED_MTIME = new Date(Date.UTC(2020, 0, 1));
 const NO_PAGES_ISSUE = "- Wiki `pages/` directory does not exist yet. Start ingesting sources.";
 
-let base = "";
-let workspace = "";
-let wiki = "";
-let outside = "";
+interface Fixture {
+  base: string;
+  workspace: string;
+  wiki: string;
+  pages: string;
+  outside: string;
+}
 
-beforeEach(() => {
+function makeFixture(context: TestContext): Fixture {
   __resetPageIndexCache();
-  base = realpathSync.native(mkdtempSync(path.join(tmpdir(), "wiki-engine-confine-")));
-  workspace = path.join(base, "ws");
-  wiki = path.join(workspace, "data", "wiki");
-  outside = path.join(base, "outside");
-  mkdirSync(path.join(wiki, "pages"), { recursive: true });
-  writeFileSync(path.join(wiki, "pages", "inside.md"), "inside\n");
+  const base = realpathSync.native(mkdtempSync(path.join(tmpdir(), "wiki-engine-confine-")));
+  const workspace = path.join(base, "ws");
+  const wiki = path.join(workspace, "data", "wiki");
+  const pages = path.join(wiki, "pages");
+  const outside = path.join(base, "outside");
+  mkdirSync(pages, { recursive: true });
+  writeFileSync(path.join(pages, "inside.md"), "inside\n");
   writeFileSync(path.join(wiki, "index.md"), "- [Inside](pages/inside.md)\n");
   writeFileSync(path.join(wiki, "log.md"), "inside log\n");
   mkdirSync(path.join(outside, "pages"), { recursive: true });
   writeFileSync(path.join(outside, "pages", "outside.md"), OUTSIDE_PAGE);
   writeFileSync(path.join(outside, "index.md"), "- [Outside](pages/outside.md)\n");
   writeFileSync(path.join(outside, "log.md"), "outside log\n");
-});
+  context.after(() => rmSync(base, { recursive: true, force: true }));
+  return { base, workspace, wiki, pages, outside };
+}
 
-afterEach(() => rmSync(base, { recursive: true, force: true }));
-
-const linkOut = (entry: string, target: string): void => {
+const linkTo = (entry: string, target: string): void => {
   renameSync(entry, `${entry}.parked`);
   symlinkSync(target, entry);
 };
 
-async function assertNothingOutsideIsShown(): Promise<void> {
+async function assertNothingOutsideIsShown(workspace: string): Promise<void> {
   assert.equal(await resolvePagePath(workspace, "outside"), null);
   assert.deepEqual(await readWikiPage(workspace, "outside"), { filePath: null, content: "", exists: false, resolvedTitle: "outside" });
   assert.deepEqual((await loadWikiGraph(workspace)).nodes, []);
@@ -50,7 +56,8 @@ async function assertNothingOutsideIsShown(): Promise<void> {
 }
 
 describe("wiki read engine confinement", () => {
-  it("reads a plain workspace", async () => {
+  it("reads a plain workspace", async (context) => {
+    const { workspace } = makeFixture(context);
     assert.equal((await readWikiPage(workspace, "inside")).content, "inside\n");
     assert.equal(readWikiLog(workspace), "inside log\n");
     assert.deepEqual(
@@ -59,7 +66,8 @@ describe("wiki read engine confinement", () => {
     );
   });
 
-  it("keeps the caller's spelling of the path for a workspace reached by a link", skipWithoutSymlinks, async () => {
+  it("keeps the caller's spelling of the path for a workspace reached by a link", { skip: POSIX_ONLY }, async (context) => {
+    const { base, workspace } = makeFixture(context);
     const linkedRoot = path.join(base, "ws-link");
     symlinkSync(workspace, linkedRoot);
     assert.deepEqual(await readWikiPage(linkedRoot, "inside"), {
@@ -70,7 +78,8 @@ describe("wiki read engine confinement", () => {
     });
   });
 
-  it("reads a wiki folder linked to a folder inside the workspace", skipWithoutSymlinks, async () => {
+  it("reads a wiki folder linked to a folder inside the workspace", { skip: POSIX_ONLY }, async (context) => {
+    const { workspace, wiki } = makeFixture(context);
     const elsewhere = path.join(workspace, "wiki-elsewhere");
     renameSync(wiki, elsewhere);
     symlinkSync(elsewhere, wiki);
@@ -78,31 +87,72 @@ describe("wiki read engine confinement", () => {
     assert.equal(readWikiLog(workspace), "inside log\n");
   });
 
+  it("reads an index and log linked to files inside the workspace", { skip: POSIX_ONLY }, async (context) => {
+    const { workspace, wiki } = makeFixture(context);
+    renameSync(path.join(wiki, "index.md"), path.join(workspace, "index-elsewhere.md"));
+    renameSync(path.join(wiki, "log.md"), path.join(workspace, "log-elsewhere.md"));
+    symlinkSync(path.join(workspace, "index-elsewhere.md"), path.join(wiki, "index.md"));
+    symlinkSync(path.join(workspace, "log-elsewhere.md"), path.join(wiki, "log.md"));
+    assert.deepEqual(
+      readWikiIndex(workspace).entries.map((entry) => entry.slug),
+      ["inside"],
+    );
+    assert.equal(readWikiLog(workspace), "inside log\n");
+  });
+
   it("reads a link inside the workspace whose spelling differs only in letter case", async (context) => {
+    const { base, workspace, pages } = makeFixture(context);
     if (process.platform === "win32" || !existsSync(workspace.toUpperCase())) {
       context.skip("needs POSIX symlinks on a case-insensitive disk");
       return;
     }
-    renameSync(path.join(wiki, "pages"), path.join(workspace, "elsewhere"));
-    symlinkSync(path.join(base, "WS", "elsewhere"), path.join(wiki, "pages"));
+    renameSync(pages, path.join(workspace, "elsewhere"));
+    symlinkSync(path.join(base, "WS", "elsewhere"), pages);
     assert.equal((await readWikiPage(workspace, "inside")).content, "inside\n");
   });
 
-  it("shows nothing from a wiki folder linked out", skipWithoutSymlinks, async () => {
-    linkOut(wiki, outside);
-    await assertNothingOutsideIsShown();
+  it("shows nothing from a wiki folder linked out", { skip: POSIX_ONLY }, async (context) => {
+    const { workspace, wiki, outside } = makeFixture(context);
+    linkTo(wiki, outside);
+    await assertNothingOutsideIsShown(workspace);
     assert.equal(readWikiLog(workspace), "");
     assert.deepEqual(readWikiIndex(workspace), { content: "", entries: [] });
   });
 
-  it("shows nothing from a pages folder linked out", skipWithoutSymlinks, async () => {
-    linkOut(path.join(wiki, "pages"), path.join(outside, "pages"));
-    await assertNothingOutsideIsShown();
+  it("shows nothing from a pages folder linked out", { skip: POSIX_ONLY }, async (context) => {
+    const { workspace, pages, outside } = makeFixture(context);
+    linkTo(pages, path.join(outside, "pages"));
+    await assertNothingOutsideIsShown(workspace);
   });
 
-  it("reads an index or log that links out as empty", skipWithoutSymlinks, async () => {
-    linkOut(path.join(wiki, "index.md"), path.join(outside, "index.md"));
-    linkOut(path.join(wiki, "log.md"), path.join(outside, "log.md"));
+  it("reads an index or log that links out as empty", { skip: POSIX_ONLY }, async (context) => {
+    const { workspace, wiki, outside } = makeFixture(context);
+    linkTo(path.join(wiki, "index.md"), path.join(outside, "index.md"));
+    linkTo(path.join(wiki, "log.md"), path.join(outside, "log.md"));
+    assert.deepEqual(readWikiIndex(workspace), { content: "", entries: [] });
+    assert.equal(readWikiLog(workspace), "");
+  });
+
+  it("does not follow a page swapped for a link out while the page index is cached", { skip: POSIX_ONLY }, async (context) => {
+    const { workspace, pages, outside } = makeFixture(context);
+    utimesSync(pages, PINNED_MTIME, PINNED_MTIME);
+    assert.equal((await readWikiPage(workspace, "inside")).content, "inside\n");
+    rmSync(path.join(pages, "inside.md"));
+    symlinkSync(path.join(outside, "pages", "outside.md"), path.join(pages, "inside.md"));
+    utimesSync(pages, PINNED_MTIME, PINNED_MTIME);
+    assert.deepEqual(await readWikiPage(workspace, "inside"), {
+      filePath: path.join(pages, "inside.md"),
+      content: "",
+      exists: true,
+      resolvedTitle: "inside",
+    });
+  });
+
+  it("reads an index or log that is a FIFO as empty instead of blocking", { skip: POSIX_ONLY }, (context) => {
+    const { workspace, wiki } = makeFixture(context);
+    rmSync(path.join(wiki, "index.md"));
+    rmSync(path.join(wiki, "log.md"));
+    execFileSync("mkfifo", [path.join(wiki, "index.md"), path.join(wiki, "log.md")]);
     assert.deepEqual(readWikiIndex(workspace), { content: "", entries: [] });
     assert.equal(readWikiLog(workspace), "");
   });
