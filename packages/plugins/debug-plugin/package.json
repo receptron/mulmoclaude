@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/debug-plugin",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Dev-only debug playground plugin for MulmoClaude. Standalone /debug page used as the integration bed for experimental host features (e.g. the upcoming Notifier engine in the Encore plan).",
   "type": "module",
   "main": "./dist/index.js",

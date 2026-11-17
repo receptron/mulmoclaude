@@ -1,6 +1,6 @@
 {
   "name": "@mulmobridge/mattermost",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Mattermost bridge for MulmoBridge — connect Mattermost to MulmoClaude",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,7 +22,7 @@
   "license": "MIT",
   "author": "Receptron Team",
   "dependencies": {
-    "@mulmobridge/client": "^1.5.0",
+    "@mulmobridge/client": "^1.5.1",
     "@mulmobridge/protocol": "^1.1.0",
     "@mulmoclaude/common": "^1.6.0",
     "dotenv": "^18.0.10",

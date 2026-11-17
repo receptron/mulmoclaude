@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/bookmarks-plugin",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Sample runtime plugin for MulmoClaude — saves URLs with multi-tab live sync, demonstrates the gui-chat-protocol v0.3 runtime API (#1110).",
   "type": "module",
   "main": "./dist/index.js",
