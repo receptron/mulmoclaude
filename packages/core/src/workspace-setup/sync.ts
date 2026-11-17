@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { PRESET_SLUG_PREFIX, isPresetSlug } from "./slug.js";
 import { errorMessage } from "../utils/errors.js";
+import { isInsideRoot } from "../files/containment.js";
 
 // Recursively mirror `srcDir` into `destDir`. Used by the preset
 // sync so a preset skill that ships sibling assets (e.g.
@@ -465,7 +466,7 @@ function isRealpathInside(absPath: string, rootPath: string): boolean {
   try {
     const real = realpathSync(absPath);
     const rootReal = realpathSync(rootPath);
-    return real === rootReal || real.startsWith(rootReal + path.sep);
+    return isInsideRoot(rootReal, real);
   } catch {
     return false;
   }

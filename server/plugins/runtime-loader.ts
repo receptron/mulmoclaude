@@ -21,6 +21,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { isWithinRoot } from "@mulmoclaude/core/files";
 import { pathToFileURL } from "node:url";
 import type { PluginRuntime, ToolDefinition } from "gui-chat-protocol";
 import { isPluginFactory } from "gui-chat-protocol";
@@ -411,9 +412,7 @@ export async function loadPluginFromCacheDir(name: string, version: string, cach
  *  line of defence (defence-in-depth: realpath after extract is the
  *  symlink-escape backstop). Exported for testing. */
 export function ensureInsideBase(candidate: string, base: string): boolean {
-  const resolvedCandidate = path.resolve(candidate);
-  const resolvedBase = path.resolve(base);
-  return resolvedCandidate === resolvedBase || resolvedCandidate.startsWith(resolvedBase + path.sep);
+  return isWithinRoot(path.resolve(base), path.resolve(candidate));
 }
 
 async function loadOne(entry: LedgerEntry, deps: LoaderDeps = {}): Promise<RuntimePlugin | null> {

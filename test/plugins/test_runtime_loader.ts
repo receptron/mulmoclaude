@@ -158,6 +158,11 @@ describe("loadPluginFromCacheDir", () => {
     assert.equal(ensureInsideBase(malicious, pluginsRoot), false);
   });
 
+  it("ensureInsideBase: a base at the filesystem root holds everything under it", () => {
+    const fsRoot = path.parse(process.cwd()).root;
+    assert.equal(ensureInsideBase(path.join(fsRoot, "plugins", "x.tgz"), fsRoot), true);
+  });
+
   it("ensureInsideBase: a base-prefix without separator is not enough", () => {
     // `/cache/foo` is NOT inside `/cache/fo`. Naive startsWith would
     // accept it; the explicit `path.sep` boundary check rejects it.

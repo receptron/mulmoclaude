@@ -12,7 +12,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -121,6 +121,29 @@ describe("isContainedInRoot", () => {
     const link = path.join(rootDir, "link-data");
     symlinkSync(insideTarget, link);
     assert.equal(isContainedInRoot(link, rootDir), true);
+  });
+
+  // A link whose text spells the root's own folder in other case: the JS realpath keeps that case, so a plain prefix
+  // test against the root's realpath read the target as outside.
+  it("accepts a link inside the root whose text spells the root with different case", (context) => {
+    const rootReal = realpathSync(rootDir);
+    const otherCase = path.join(path.dirname(rootReal), path.basename(rootReal).toUpperCase());
+    if (!existsSync(otherCase)) {
+      context.skip("case-sensitive disk");
+      return;
+    }
+    mkdirSync(path.join(rootDir, "real-data"));
+    symlinkSync(path.join(otherCase, "real-data"), path.join(rootDir, "case-link"));
+    assert.equal(isContainedInRoot(path.join(rootDir, "case-link", "items"), rootDir), true);
+  });
+});
+
+describe("isUnderRealRoot", () => {
+  it("accepts anything under a filesystem root and refuses a sibling sharing the prefix", () => {
+    const fsRoot = path.parse(rootDir).root;
+    assert.equal(isUnderRealRoot(path.join(fsRoot, "x"), fsRoot), true);
+    assert.equal(isUnderRealRoot(path.join(rootDir, "x"), rootDir), true);
+    assert.equal(isUnderRealRoot(`${rootDir}x`, rootDir), false);
   });
 });
 

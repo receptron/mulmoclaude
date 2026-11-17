@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { respelledWithinRoot } from "../../src/files/containment.ts";
+import { isWithinRoot, respelledWithinRoot } from "../../src/files/containment.ts";
 import { resolveWithinRoot } from "../../src/files/safe.ts";
 import { openVerifiedWithinScope, resolveExistingWithinRoot } from "../../src/files/verified.ts";
 
@@ -89,5 +89,41 @@ describe("respelledWithinRoot", () => {
     const { root, outside } = makeFixture(context);
     assert.equal(respelledWithinRoot(root, path.join(outside, "s.md")), null);
     assert.equal(respelledWithinRoot(root, path.join(root, "missing.md")), null);
+  });
+});
+
+// Every caller hands isWithinRoot normalized paths (path.resolve / path.join / a realpath). Over those, it must agree with
+// path.relative's verdict for a candidate spelled in the root's case; path.win32.relative folds case, and this must not.
+const SEGMENTS = ["a", "b", "A", "ab", "..", ".", ""];
+
+function normalizedCandidates(flavour: typeof path.posix, anchor: string): string[] {
+  return SEGMENTS.flatMap((first) => SEGMENTS.flatMap((second) => SEGMENTS.map((third) => flavour.resolve(anchor, first, second, third))));
+}
+
+function relativeVerdict(flavour: typeof path.posix, root: string, candidate: string): boolean {
+  const rel = flavour.relative(root, candidate);
+  return rel === "" || (!rel.startsWith("..") && !flavour.isAbsolute(rel));
+}
+
+describe("isWithinRoot over normalized paths", () => {
+  const flavours: [string, typeof path.posix, string, string[]][] = [
+    ["posix", path.posix, "/", ["/", "/a", "/a/b", "/ab"]],
+    ["win32", path.win32, "C:\\", ["C:\\", "C:\\a", "C:\\a\\b", "C:\\ab"]],
+  ];
+  flavours.forEach(([name, flavour, anchor, roots]) => {
+    it(`agrees with ${name} path.relative for every pair spelled in the root's case`, () => {
+      roots.forEach((root) => {
+        normalizedCandidates(flavour, anchor).forEach((candidate) => {
+          const spelledLikeRoot = candidate.slice(0, root.length) === root;
+          const expected = spelledLikeRoot && relativeVerdict(flavour, root, candidate);
+          assert.equal(isWithinRoot(root, candidate, flavour.sep), expected, `root=${root} candidate=${candidate}`);
+        });
+      });
+    });
+  });
+
+  it("does not take a sibling sharing the root's prefix as inside", () => {
+    assert.equal(isWithinRoot("/a", "/ab"), false);
+    assert.equal(isWithinRoot("C:\\a", "C:\\ab", "\\"), false);
   });
 });

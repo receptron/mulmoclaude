@@ -9,6 +9,7 @@ import { getWorkspaceRoot } from "./host";
 // (../core/schemaZ) gates on the SAME patterns these sanitisers do.
 import { SAFE_SLUG_PATTERN, SAFE_RECORD_ID_PATTERN } from "../core/ids";
 import { isErrorWithCode } from "@mulmoclaude/common";
+import { isInsideRoot, isWithinRoot } from "../../files/containment.js";
 
 export const SCHEMA_FILE = "schema.json";
 
@@ -78,7 +79,7 @@ export function isContainedInRoot(absPath: string, rootPath: string): boolean {
   }
   const ancestorReal = realpathClosestAncestor(absPath);
   if (ancestorReal === null) return false;
-  return isUnderRealRoot(ancestorReal, rootReal);
+  return isInsideRoot(rootReal, ancestorReal);
 }
 
 /** The containment comparison itself, on two paths a caller has ALREADY
@@ -91,8 +92,7 @@ export function isContainedInRoot(absPath: string, rootPath: string): boolean {
  *  like it was outside it (#2972). Canonicalise both sides the same way, then
  *  come here. */
 export function isUnderRealRoot(realPath: string, realRoot: string): boolean {
-  if (realPath === realRoot) return true;
-  return realPath.startsWith(realRoot + path.sep);
+  return isWithinRoot(realRoot, realPath);
 }
 
 // NOTE: there is deliberately no `isContainedInWorkspace(absPath)` helper here.

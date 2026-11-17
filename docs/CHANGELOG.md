@@ -18,7 +18,8 @@ On a case-insensitive disk (macOS, Windows), a symlink inside the workspace whos
 letter case than the folder on disk — `repo/notes` for a folder named `Repo/notes` — was treated as leading outside, so
 the file explorer refused files under it. A workspace at the root of a drive was refused the same way. The shared
 containment check now compares the on-disk spelling as a second look; anything that really leads outside is still
-refused.
+refused. The same holds for collection data, preset skill sync, plugin and shape-export paths, which had their own
+copy of the check.
 
 ## [2.13.0] - 2026-11-17
 

@@ -19,7 +19,7 @@ export {
   type VerifiedFileHooks,
 } from "./verified.js";
 // The sync containment and whole-file read, for callers that cannot await.
-export { isInsideRoot, realpathSyncOrNull } from "./containment.js";
+export { isInsideRoot, isWithinRoot, realpathSyncOrNull } from "./containment.js";
 export { readTextWithinRoot, readTextWithinRootSync } from "./withinRoot.js";
 export { toPosixRelPath, joinPosixRelPath } from "./relPath.js";
 export { canonicalRoot } from "./root.js";
