@@ -42,7 +42,7 @@
     "@mulmoclaude/chart-plugin": "^6.0.1",
     "@mulmoclaude/collection-plugin": "^7.0.1",
     "@mulmoclaude/common": "^1.6.0",
-    "@mulmoclaude/core": "^7.2.0",
+    "@mulmoclaude/core": "^7.2.1",
     "@mulmoclaude/form-plugin": "^2.2.0",
     "@mulmoclaude/google-plugin": "^6.0.1",
     "@mulmoclaude/html-plugin": "^7.0.1",
