@@ -8,7 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
-Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`, `@mulmoclaude/collection-plugin@7.0.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.2.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.0`, `@mulmoclaude/html-plugin@7.0.0`, `@mulmoclaude/markdown-plugin@7.0.0`, `@mulmoclaude/markdown-utils@3.0.2`, `@mulmoclaude/mulmoscript-plugin@7.0.0`, `@mulmoclaude/spotify-plugin@2.0.3`, `@mulmoclaude/x-plugin@1.0.4`.
+Ships `@mulmoclaude/accounting-plugin@6.0.1`, `@mulmoclaude/chart-plugin@6.0.1`, `@mulmoclaude/collection-plugin@7.0.1`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.2.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.1`, `@mulmoclaude/html-plugin@7.0.1`, `@mulmoclaude/markdown-plugin@7.0.1`, `@mulmoclaude/markdown-utils@3.0.3`, `@mulmoclaude/mulmoscript-plugin@7.0.1`, `@mulmoclaude/spotify-plugin@2.0.4`, `@mulmoclaude/x-plugin@1.0.5`.
+
+### Added
+
+#### Extra flags for the local Whisper server (#3671)
+
+Voice input can insert phrases nobody said — 「ご視聴ありがとうございました」 and the like — which Whisper invents for
+silent or noisy audio. Setting `WHISPER_SERVER_EXTRA_ARGS` passes extra flags to `whisper-server`, for example
+`--vad --vad-model <path>` to turn on its own voice detection. Paths with spaces go in a JSON array. Flags MulmoClaude
+sets itself (model, host, port and the other server options) cannot be overridden: a value naming one is ignored as a
+whole, with a warning in the log. Leaving the variable unset changes nothing.
 
 ### Fixed
 
