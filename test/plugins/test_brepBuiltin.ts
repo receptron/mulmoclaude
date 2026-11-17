@@ -16,10 +16,12 @@ import path from "node:path";
 import { TOOL_DEFINITION } from "@gui-chat-plugin/brep";
 import { META } from "../../src/plugins/presentBrep/meta.js";
 import definition from "../../src/plugins/presentBrep/definition.js";
-import { brokerBuildOptions } from "../../scripts/build-mcp-broker.mjs";
 import { isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
 import { API_ROUTES } from "../../src/config/apiRoutes.js";
 
+// Read, not imported: the script builds the broker when it is loaded, and has
+// no type declarations for the test project to check against.
+const BROKER_BUILD = path.join(import.meta.dirname, "..", "..", "scripts", "build-mcp-broker.mjs");
 const ADAPTER = path.join(import.meta.dirname, "..", "..", "src", "plugins", "presentBrep", "index.ts");
 
 describe("presentBrep's host adapter", () => {
@@ -49,8 +51,8 @@ describe("presentBrep's host adapter", () => {
   });
 
   it("keeps the kernel external to the MCP broker bundle", () => {
-    const { external } = brokerBuildOptions();
-    assert.ok(external.includes("replicad"));
-    assert.ok(external.includes("replicad-opencascadejs"));
+    const source = readFileSync(BROKER_BUILD, "utf8");
+    assert.match(source, /const KERNEL_EXTERNALS = \["replicad", "replicad-opencascadejs"\];/);
+    assert.match(source, /external: \[[^\]]*\.\.\.KERNEL_EXTERNALS[^\]]*\]/);
   });
 });
