@@ -19,7 +19,8 @@ import path from "node:path";
 
 import { parseFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
-import { readDirSafeAsync, readTextSafe } from "../../utils/files/safe.js";
+import { readDirSafeAsync } from "../../utils/files/safe.js";
+import { readTextWithinWorkspace } from "../../utils/files/within-workspace.js";
 import { log } from "../../system/logger/index.js";
 import { WORKSPACE_DIRS, WORKSPACE_FILES } from "../paths.js";
 import { isMemoryType, MEMORY_TYPES, type MemoryType } from "./types.js";
@@ -47,7 +48,7 @@ export async function loadAllTopicFiles(workspaceRoot: string): Promise<TopicMem
     const filenames = candidateFilenamesSorted(dirents);
     for (const name of filenames) {
       const absPath = path.join(typeDir, name);
-      const raw = await readTextSafe(absPath);
+      const raw = await readTextWithinWorkspace(workspaceRoot, absPath);
       const file = parseTopicFile(absPath, raw, type);
       if (file) collected.push(file);
     }

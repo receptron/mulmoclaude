@@ -1,7 +1,9 @@
-import { lstatSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
+import { readTextWithinRootSync } from "@mulmoclaude/core/files";
 import { WORKSPACE_DIRS, WORKSPACE_FILES } from "../paths.js";
+import { locateWithinWorkspace } from "../../utils/files/within-workspace.js";
 import { MEMORY_TYPES } from "./types.js";
 import { shouldSeedTopicLayout, type MemoryLayoutState } from "./seed-topic-layout.js";
 import { errorMessage } from "../../utils/errors.js";
@@ -22,9 +24,19 @@ function readOrMissing<T>(read: () => T): ReadResult<T> {
   }
 }
 
+// Read as the prompt reads it: a memory.md leading outside the workspace counts as absent, and one that cannot be
+// resolved (a link loop) or is not a readable regular file stays unreadable, so boot never seeds over memory it could
+// not see.
+function readLegacyMemoryText(workspaceRoot: string): ReadResult<string> {
+  const legacyPath = path.join(workspaceRoot, WORKSPACE_FILES.memory);
+  const located = locateWithinWorkspace(workspaceRoot, legacyPath);
+  if (located === null) return readOrMissing(() => statSync(legacyPath)) === undefined ? undefined : null;
+  return readTextWithinRootSync(located.workspaceReal, located.fileReal) ?? undefined;
+}
+
 function readMemoryLayoutState(workspaceRoot: string): MemoryLayoutState {
   const entries = readOrMissing(() => readdirSync(path.join(workspaceRoot, WORKSPACE_DIRS.memoryDir)));
-  const legacyText = readOrMissing(() => readFileSync(path.join(workspaceRoot, WORKSPACE_FILES.memory), "utf-8"));
+  const legacyText = readLegacyMemoryText(workspaceRoot);
   // lstat, not existsSync: a broken symlink or a permission error must not read as "no staging".
   const staging = readOrMissing(() => lstatSync(path.join(workspaceRoot, WORKSPACE_DIRS.memoryStaging)));
   return {

@@ -22,7 +22,7 @@ import { mkdir, rename } from "node:fs/promises";
 import path from "node:path";
 
 import { writeFileAtomic } from "../../utils/files/atomic.js";
-import { readTextSafe } from "../../utils/files/safe.js";
+import { readTextWithinWorkspace } from "../../utils/files/within-workspace.js";
 import { log } from "../../system/logger/index.js";
 import { errorMessage } from "../../utils/errors.js";
 import { truncate } from "../../utils/text.js";
@@ -80,7 +80,7 @@ const PROGRESS_LOG_INTERVAL = 5;
 
 export async function migrateLegacyMemory(workspaceRoot: string, classify: MemoryClassifier): Promise<MigrationResult> {
   const sourcePath = path.join(workspaceRoot, WORKSPACE_FILES.memory);
-  const raw = await readTextSafe(sourcePath);
+  const raw = await readTextWithinWorkspace(workspaceRoot, sourcePath);
   if (raw === null) {
     return emptyResult(true);
   }

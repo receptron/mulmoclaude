@@ -1,10 +1,11 @@
 // Run at end of the journal daily pass so durable user facts are picked up even if the agent didn't memo them in-conversation.
 // LLM receives existing memory.md as context and is instructed to return ONLY new facts (we still de-dupe defensively).
 
-import { readFileSync, existsSync } from "fs";
+import { existsSync } from "fs";
 import path from "path";
 import { WORKSPACE_FILES } from "../paths.js";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
+import { readTextWithinWorkspaceSync } from "../../utils/files/within-workspace.js";
 import { log } from "../../system/logger/index.js";
 import { ClaudeCliNotFoundError } from "./archivist-cli.js";
 import { hasTopicFormat } from "../memory/topic-detect.js";
@@ -46,7 +47,11 @@ export async function extractAndAppendMemory(deps: MemoryExtractionDeps): Promis
     return 0;
   }
   const memoryPath = path.join(deps.workspaceRoot, WORKSPACE_FILES.memory);
-  const existingMemory = existsSync(memoryPath) ? readFileSync(memoryPath, "utf-8") : "";
+  const existingMemory = readExistingMemory(deps.workspaceRoot, memoryPath);
+  if (existingMemory === null) {
+    log.warn("memory-extractor", "memory.md is not a readable file inside the workspace, skipping extraction", { path: memoryPath });
+    return 0;
+  }
 
   const userPrompt = buildUserPrompt(existingMemory, deps.excerpts);
   let raw: string;
@@ -72,6 +77,13 @@ export async function extractAndAppendMemory(deps: MemoryExtractionDeps): Promis
     count: factsToAppend.length,
   });
   return factsToAppend.length;
+}
+
+// Null, never "", for a memory.md that exists but is not readable inside the workspace: extraction rewrites the file,
+// so treating it as empty would replace a link with whatever it pointed at, or wipe a file it could not read.
+function readExistingMemory(workspaceRoot: string, memoryPath: string): string | null {
+  if (!existsSync(memoryPath)) return "";
+  return readTextWithinWorkspaceSync(workspaceRoot, memoryPath);
 }
 
 export function buildUserPrompt(existingMemory: string, excerpts: string): string {

@@ -15,7 +15,8 @@ import path from "node:path";
 import { parseFrontmatter, serializeWithFrontmatter } from "@mulmoclaude/markdown-utils/markdown/frontmatter";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { WORKSPACE_DIRS, WORKSPACE_FILES } from "../paths.js";
-import { readDirSafeAsync, readTextSafe, statSafeAsync } from "../../utils/files/safe.js";
+import { readDirSafeAsync, statSafeAsync } from "../../utils/files/safe.js";
+import { readTextWithinWorkspace } from "../../utils/files/within-workspace.js";
 import { log } from "../../system/logger/index.js";
 import { isMemoryType, type MemoryEntry, type MemoryType } from "./types.js";
 
@@ -38,7 +39,7 @@ export async function loadAllMemoryEntries(workspaceRoot: string): Promise<Memor
   const filenames = await listEntryFiles(dir);
   const loaded: MemoryEntry[] = [];
   for (const filename of filenames) {
-    const parsed = await readMemoryFile(path.join(dir, filename));
+    const parsed = await readMemoryFile(workspaceRoot, path.join(dir, filename));
     if (parsed) loaded.push(parsed);
   }
   return loaded;
@@ -144,8 +145,8 @@ function isCandidateName(name: string): boolean {
   return true;
 }
 
-async function readMemoryFile(absPath: string): Promise<MemoryEntry | null> {
-  const raw = await readTextSafe(absPath);
+async function readMemoryFile(workspaceRoot: string, absPath: string): Promise<MemoryEntry | null> {
+  const raw = await readTextWithinWorkspace(workspaceRoot, absPath);
   if (raw === null) {
     log.warn("memory", "failed to read entry", { path: absPath });
     return null;
