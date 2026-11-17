@@ -14,6 +14,20 @@ describe("buildServerArgs", () => {
       "8080",
     ]);
   });
+
+  it("appends extra args after the ones it owns", () => {
+    assert.deepEqual(buildServerArgs("/m.bin", "127.0.0.1", 8080, ["--vad", "--vad-model", "/v.bin"]), [
+      "--model",
+      "/m.bin",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "8080",
+      "--vad",
+      "--vad-model",
+      "/v.bin",
+    ]);
+  });
 });
 
 describe("appendStderrTail", () => {

@@ -515,6 +515,13 @@ This is **disabled by default** and **macOS-only** (Apple Silicon recommended). 
 - **Model choice**: `large-v3-turbo` (default), `small`, and `base` are selectable in Settings → Voice; the lighter models suit lower-RAM machines.
 - **Privacy**: audio is processed on-device and temporary files are deleted immediately after transcription. (The "on-device" guarantee assumes you run the server on your own machine.)
 - Models live under `~/mulmoclaude/models/` — deliberately outside the git-managed `data/` workspace tree. Disabling the feature offers to delete the downloaded weights.
+- **Phantom phrases from silence** (e.g. "Thanks for watching" appearing when you are not speaking): set `WHISPER_SERVER_EXTRA_ARGS` to pass extra flags to `whisper-server`, such as its own voice-activity detection. Download a Silero VAD model from [ggml-org/whisper-vad](https://huggingface.co/ggml-org/whisper-vad), then start the server with
+
+  ```bash
+  export WHISPER_SERVER_EXTRA_ARGS='--vad --vad-model /path/to/ggml-silero-v6.2.0.bin'
+  ```
+
+  Use a JSON array (`'["--vad", "--vad-model", "/path with spaces/model.bin"]'`) when a path contains spaces. Any `whisper-server` flag is accepted except the model, help, and the server-level flags (`--host`, `--port`, `--request-path`, `--inference-path`, …), which MulmoClaude owns; a value containing one of those is ignored as a whole, with a warning in the server log. A `whisper-server` that does not know a flag exits on start, so voice input stops until you remove the variable — check `whisper-server --help` first.
 
 ## Configuring Additional Tools (Web Settings)
 
