@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/html-plugin",
-  "version": "7.0.0",
+  "version": "7.0.1",
   "description": "presentHtml — self-contained HTML page tool for MulmoClaude and MulmoTerminal. Server core (validation + artifacts persistence via the generic gui-chat-protocol files.artifacts capability) on `.`, Vue View/Preview on `./vue`.",
   "type": "module",
   "main": "./dist/index.js",

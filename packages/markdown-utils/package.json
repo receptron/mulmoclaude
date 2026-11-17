@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/markdown-utils",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Browser-safe markdown / image rendering utilities shared by the MulmoClaude host and the markdown plugin",
   "type": "module",
   "main": "./dist/index.js",

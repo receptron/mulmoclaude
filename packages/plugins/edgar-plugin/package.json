@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/edgar-plugin",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "SEC EDGAR runtime plugin for MulmoClaude — wraps the public EDGAR API as one tool with kind-discriminated dispatch. Server-only; no Vue View.",
   "type": "module",
   "main": "./dist/index.js",

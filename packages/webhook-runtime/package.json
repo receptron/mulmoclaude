@@ -1,6 +1,6 @@
 {
   "name": "@mulmobridge/webhook-runtime",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Shared HTTP-webhook plumbing (Express app, trust-proxy, rate limit, HMAC verify) for the MulmoClaude messaging bridges",
   "type": "module",
   "main": "./dist/index.js",

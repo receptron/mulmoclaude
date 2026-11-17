@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/email-plugin",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Generic IMAP/SMTP email runtime plugin for MulmoClaude. Gmail-default provider presets; works with any IMAP/SMTP server (Fastmail / iCloud / Outlook / …). Uses App Password auth (no OAuth in v1).",
   "type": "module",
   "main": "./dist/index.js",

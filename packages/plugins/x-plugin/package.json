@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/x-plugin",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "X (Twitter) API tools for MulmoClaude and MulmoTerminal — readXPost + searchX as MCP tools. Server-only; no Vue View.",
   "type": "module",
   "main": "./dist/index.js",

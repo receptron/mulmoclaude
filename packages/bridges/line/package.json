@@ -1,6 +1,6 @@
 {
   "name": "@mulmobridge/line",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "LINE bridge for MulmoBridge — connect a LINE bot to MulmoClaude",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,9 +22,9 @@
   "license": "MIT",
   "author": "Receptron Team",
   "dependencies": {
-    "@mulmobridge/client": "^1.5.0",
+    "@mulmobridge/client": "^1.5.1",
     "@mulmobridge/protocol": "^1.1.0",
-    "@mulmobridge/webhook-runtime": "^1.2.0",
+    "@mulmobridge/webhook-runtime": "^1.2.1",
     "dotenv": "^18.0.10",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.4"
