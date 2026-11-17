@@ -4,12 +4,15 @@
 import { describe, it, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildMemoryContext } from "../../../server/agent/prompt.js";
+import { migrateLegacyMemory } from "../../../server/workspace/memory/migrate.js";
+import { seedTopicLayoutIfFresh } from "../../../server/workspace/memory/seed-topic-layout-run.js";
 import { loadMemorySnapshot } from "../../../server/workspace/memory/snapshot.js";
-import { WORKSPACE_DIRS } from "../../../server/workspace/paths.js";
+import { countClusterInput } from "../../../server/workspace/memory/topic-migrate.js";
+import { WORKSPACE_DIRS, WORKSPACE_FILES } from "../../../server/workspace/paths.js";
 
 const POSIX_ONLY = process.platform === "win32" ? "symlinks and FIFOs need POSIX" : false;
 const OUTSIDE_TEXT = "OUTSIDE_SECRET";
@@ -96,5 +99,39 @@ describe("memory reads stay inside the workspace", () => {
     writeAt(path.join(memory, "fact", "kept.md"), topicFile("fact", "kept", "Kept heading"));
     execFileSync("mkfifo", [path.join(memory, "fact", "pipe.md")]);
     assert.match(await memoryPromptOf(workspace), /Kept heading/);
+  });
+});
+
+// The single-file memory.md is migrated into memory files at startup; one that leads outside must not be copied in.
+describe("legacy memory.md migration stays inside the workspace", () => {
+  const LEGACY_TEXT = `# Memory\n\n## Facts\n\n- ${OUTSIDE_TEXT} bullet\n`;
+  const classifyAsFact = async (): Promise<{ type: "fact" }> => ({ type: "fact" });
+
+  function linkLegacyOut({ workspace, outside }: Fixture): void {
+    writeAt(path.join(outside, "memory.md"), LEGACY_TEXT);
+    symlinkSync(path.join(outside, "memory.md"), path.join(workspace, WORKSPACE_FILES.memory));
+  }
+
+  it("migrates a plain memory.md", async (context) => {
+    const fixture = makeFixture(context);
+    writeAt(path.join(fixture.workspace, WORKSPACE_FILES.memory), LEGACY_TEXT);
+    const result = await migrateLegacyMemory(fixture.workspace, classifyAsFact);
+    assert.equal(result.written.fact, 1);
+  });
+
+  it("does not migrate, count or keep a memory.md linked outside", { skip: POSIX_ONLY }, async (context) => {
+    const fixture = makeFixture(context);
+    linkLegacyOut(fixture);
+    assert.equal(await countClusterInput(fixture.workspace), 0);
+    const result = await migrateLegacyMemory(fixture.workspace, classifyAsFact);
+    assert.equal(result.noop, true);
+    assert.deepEqual(readdirSync(fixture.memory), []);
+  });
+
+  it("seeds the topic layout when the only memory is a memory.md linked outside", { skip: POSIX_ONLY }, (context) => {
+    const fixture = makeFixture(context);
+    linkLegacyOut(fixture);
+    assert.equal(seedTopicLayoutIfFresh(fixture.workspace), true);
+    assert.equal(existsSync(path.join(fixture.memory, "fact")), true);
   });
 });

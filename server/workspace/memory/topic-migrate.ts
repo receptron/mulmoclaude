@@ -18,6 +18,7 @@ import path from "node:path";
 
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { readTextSafe } from "../../utils/files/safe.js";
+import { readTextWithinWorkspace } from "../../utils/files/within-workspace.js";
 import { log } from "../../system/logger/index.js";
 import { errorMessage } from "../../utils/errors.js";
 import { WORKSPACE_DIRS, WORKSPACE_FILES } from "../paths.js";
@@ -132,7 +133,7 @@ interface ClusterInput {
 
 async function loadClusterInput(workspaceRoot: string): Promise<ClusterInput> {
   const atomicEntries = await loadAllMemoryEntries(workspaceRoot);
-  const legacyText = await readTextSafe(path.join(workspaceRoot, WORKSPACE_FILES.memory));
+  const legacyText = await readTextWithinWorkspace(workspaceRoot, path.join(workspaceRoot, WORKSPACE_FILES.memory));
   const foldedEntries = legacyText === null ? [] : legacyFoldEntries(parseCandidates(legacyText), atomicEntries);
   return { atomicEntries, foldedEntries };
 }

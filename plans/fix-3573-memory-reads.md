@@ -15,8 +15,10 @@ but not the memory folders.
 So `conversations/memory`, a type folder, or a memory file linked to somewhere else on the host put that file's contents
 into the agent's prompt, sandboxed or not: the H2 headings in topic format, the whole body in atomic format. The same
 loaders feed `regenerateTopicIndex` (writes `MEMORY.md`) and the atomic → topic migration (copies entries into topic
-files), so the outside contents were also written into the workspace. A FIFO at a topic file never returns, so the
-turn hangs.
+files), so the outside contents were also written into the workspace. The startup migrations read the single-file
+`conversations/memory.md` by path too (`migrateLegacyMemory`, the topic cluster's `loadClusterInput`, and the seed
+check in `seed-topic-layout-run.ts`), so one linked outside was copied into memory files (Codex review). A FIFO at a
+topic file never returns, so the turn hangs.
 
 Reproduced on `main`: each link-out layout puts the outside text into `buildMemoryContext`'s output; a FIFO at
 `conversations/memory/fact/pipe.md` keeps `loadMemorySnapshot` from returning.
@@ -30,6 +32,9 @@ Reproduced on `main`: each link-out layout puts the outside text into `buildMemo
 - Both memory loaders read through `readTextWithinWorkspace`. A refused file reads as unreadable, which they already
   log and skip.
 - `server/agent/prompt.ts` uses the same helpers instead of its private copies.
+- The migrations read `memory.md` the same way. The seed check keeps telling "missing" (seed) from "unreadable" (do
+  not seed): a `memory.md` leading outside counts as missing, one inside that is not a readable regular file stays
+  unreadable.
 
 ## Behaviour changes
 
@@ -41,3 +46,5 @@ Reproduced on `main`: each link-out layout puts the outside text into `buildMemo
 - Listing a folder (`readdir`) still follows a folder linked out, so outside names are listed; their contents are
   refused.
 - Writes to memory (`writeTopicFile`, `writeMemoryEntry`) are not changed here.
+- The topic migration's staging checks (`countBulletLines`, `isStagingSwappable`) still read by path. They only count
+  bullets to decide whether a staging may be swapped in; nothing they read is copied.
