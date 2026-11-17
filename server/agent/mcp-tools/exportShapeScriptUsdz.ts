@@ -28,6 +28,7 @@ import {
 } from "@gui-chat-plugin/shapescript";
 import { mkdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { isWithinRoot } from "@mulmoclaude/core/files";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { resolveWithinRoot, resolveWriteWithinRoot } from "../../utils/files/safe.js";
 import { makeByPathFileOps } from "../../utils/files/by-path.js";
@@ -48,7 +49,7 @@ async function artifactsRootReal(workspace: string): Promise<string> {
   const artifacts = path.join(workspaceReal, "artifacts");
   await mkdir(artifacts, { recursive: true });
   const artifactsReal = await realpath(artifacts);
-  if (artifactsReal !== artifacts && !artifactsReal.startsWith(workspaceReal + path.sep)) {
+  if (artifactsReal !== artifacts && (artifactsReal === workspaceReal || !isWithinRoot(workspaceReal, artifactsReal))) {
     throw new Error("artifacts/ resolves outside the workspace; exportShapeScriptUsdz will not read or write through it");
   }
   return artifactsReal;

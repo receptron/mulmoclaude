@@ -30,6 +30,7 @@ import { claudeSkillDir, dataSkillDir, mirrorSkillWrite } from "../../../skill-b
 import { log, projectSkillsDir, skillsStagingDir } from "../../server/host.js";
 import { errorMessage } from "../../server/util.js";
 import { writeFileAtomic } from "../../../files/atomic.js";
+import { isWithinRoot } from "../../../files/containment.js";
 import { isRecord } from "../guards.js";
 import { fetchAllRegistries } from "./client.js";
 import { fetchBundle, fetchManifest, normalizedDataPath } from "./importCollection.js";
@@ -227,7 +228,7 @@ async function writeBundleFiles(targetDir: string, bundle: Map<string, string>, 
   for (const [rel, content] of bundle) {
     if (rel.startsWith(SEED_PREFIX)) continue; // seed goes to dataPath, not the skill dir
     const dest = path.join(targetDir, ...rel.split("/"));
-    if (dest !== targetDir && !dest.startsWith(targetDir + path.sep)) continue; // belt-and-suspenders (paths pre-validated)
+    if (!isWithinRoot(targetDir, dest)) continue; // belt-and-suspenders (paths pre-validated)
     await mkdir(path.dirname(dest), { recursive: true });
     await writeFile(dest, rel === SCHEMA_FILE ? `${JSON.stringify(schema, null, 2)}\n` : content, "utf-8");
   }

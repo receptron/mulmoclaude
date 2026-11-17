@@ -20,6 +20,7 @@
 import { cp, mkdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { isWithinRoot } from "../../files/containment.js";
 import { log, getWorkspaceRoot, isPresetSlug, stagingSkillDir, archiveDir as archiveRelDir } from "./host";
 import { isContainedInRoot } from "./paths";
 import { checkpointSqliteDatabase } from "./sqliteStore";
@@ -119,7 +120,7 @@ function deleteTargets(collection: LoadedCollection, workspaceRoot: string): str
 function isDataDirSafe(dataDir: string, slug: string, workspaceRoot: string): boolean {
   const acceptableRoots = [path.resolve(workspaceRoot, "data", slug), path.resolve(workspaceRoot, "data", "collections", slug)];
   const resolved = path.resolve(dataDir);
-  return acceptableRoots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
+  return acceptableRoots.some((root) => isWithinRoot(root, resolved));
 }
 
 /** Step 2 of the restore doc — how to bring the records back. A

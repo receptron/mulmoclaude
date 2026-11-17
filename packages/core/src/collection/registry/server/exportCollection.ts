@@ -11,6 +11,7 @@ import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promi
 import path from "node:path";
 
 import { log } from "../../server/host.js";
+import { isWithinRoot } from "../../../files/containment.js";
 import { toPosixRelPath } from "../../../files/relPath.js";
 
 export const EXPORT_BASE = "data/registry-export";
@@ -112,7 +113,7 @@ async function exportSeed(dataDir: string, outDir: string): Promise<{ count: num
 function resolveWithin(root: string, ...segments: string[]): string | null {
   const resolvedRoot = path.resolve(root);
   const target = path.resolve(resolvedRoot, ...segments);
-  return target === resolvedRoot || target.startsWith(resolvedRoot + path.sep) ? target : null;
+  return isWithinRoot(resolvedRoot, target) ? target : null;
 }
 
 // Required bundle files (SKILL.md, schema.json) must be present — exporting an

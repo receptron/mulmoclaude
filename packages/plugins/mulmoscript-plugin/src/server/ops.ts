@@ -49,7 +49,7 @@ import { DEFAULT_ROOT, normalizeRoot } from "../core/contract";
 import type { MulmoScriptGenerationEvent } from "../core/contract";
 import { isAbsoluteStoryPath, normalizeStoryPath, STORY_TARGET_EXTENSIONS, storyRefWithin, storiesRelativePath } from "../core/paths";
 import { errorMessage } from "@mulmoclaude/common";
-import { resolveWithinRoot } from "@mulmoclaude/core/files";
+import { isWithinRoot, resolveWithinRoot } from "@mulmoclaude/core/files";
 import { fileToDataUri, stripDataUri } from "./support";
 import { beatMovieCandidates } from "./beatMovieCandidates";
 import { beatRendersWithoutFfmpeg } from "./beatRendersWithoutFfmpeg";
@@ -458,8 +458,7 @@ export function createMulmoScriptServerOps(backend: MulmoScriptServerBackend) {
     const resolved = resolveWithinRoot(storiesReal, relFromStories);
     if (!resolved) {
       const candidate = path.resolve(storiesReal, relFromStories);
-      const inRoot = candidate === storiesReal || candidate.startsWith(storiesReal + path.sep);
-      if (inRoot && !existsSync(candidate)) {
+      if (isWithinRoot(storiesReal, candidate) && !existsSync(candidate)) {
         return opNotFound(`File not found: ${filePath}`);
       }
       return opBadRequest("Invalid filePath");
