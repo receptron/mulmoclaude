@@ -20,7 +20,8 @@ is 400 on `main`.
 
 ## Fix
 
-- `core/files/containment.ts` (a leaf both import): `isWithinRoot` (`path.relative`, handles a filesystem root),
+- `core/files/containment.ts` (a leaf both import): `isWithinRoot` (a case-preserving prefix test that takes a root
+  ending in a separator as is, so `/` and `C:\` work; not `path.relative`, which folds case on Windows — Codex review),
   `realpathSyncOrNull` (native, JS fallback), and `respelledWithinRoot` — a second look with both sides at their on-disk
   spelling, returning the target re-spelled under the caller's root.
 - `resolveWithinRoot`: unchanged result whenever the old test accepted; otherwise the second look.

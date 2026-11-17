@@ -84,6 +84,8 @@ describe("isWithinRoot", () => {
     ["a sibling sharing the prefix", "/ws", "/ws2/data", false],
     ["the parent", "/ws/a", "/ws", false],
     ["the filesystem root", "/ws", "/", false],
+    ["a folder whose name differs only in letter case", "/ws", "/WS/data", false],
+    ["a root given with a trailing separator", "/ws/", "/ws/data", true],
   ];
   cases.forEach(([label, root, candidate, expected]) => {
     it(`${expected ? "accepts" : "rejects"} ${label}`, { skip: process.platform === "win32" ? "POSIX paths" : false }, () => {

@@ -4,10 +4,12 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 
-// `path.relative` rather than a `rootReal + sep` prefix, which a root at a filesystem root (`/`, `C:\`) would fail.
+// A case-preserving prefix test: `path.win32.relative` folds case, which on a case-sensitive Windows folder would take
+// `C:\root\x` as inside `C:\Root`. A root that already ends in a separator (`/`, `C:\`) is used as the prefix as is.
 export function isWithinRoot(rootReal: string, candidateReal: string): boolean {
-  const rel = path.relative(rootReal, candidateReal);
-  return rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+  if (candidateReal === rootReal) return true;
+  const prefix = rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep;
+  return candidateReal.startsWith(prefix);
 }
 
 const isMissing = (err: unknown): boolean => typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT";
