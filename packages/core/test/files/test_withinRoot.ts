@@ -3,10 +3,11 @@
 import { describe, it, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { isWithinRoot, readTextWithinRoot, readTextWithinRootSync, realpathSyncOrNull } from "../../src/files/withinRoot.ts";
+import { isWithinRoot, realpathSyncOrNull } from "../../src/files/containment.ts";
+import { readTextWithinRoot, readTextWithinRootSync } from "../../src/files/withinRoot.ts";
 
 const POSIX_ONLY = process.platform === "win32" ? "symlinks and FIFOs need POSIX" : false;
 
@@ -67,6 +68,18 @@ describe("readTextWithinRoot / readTextWithinRootSync", () => {
   });
 });
 
+describe("readTextWithinRootSync with a root spelled in different case", () => {
+  it("reads a file inside the root", (context) => {
+    const { rootReal, folder } = makeFixture(context);
+    const rootSpelledUpper = rootReal.toUpperCase();
+    if (!existsSync(rootSpelledUpper)) {
+      context.skip("needs a case-insensitive disk");
+      return;
+    }
+    assert.equal(readTextWithinRootSync(rootSpelledUpper, path.join(folder, "note.md")), "inside\n");
+  });
+});
+
 describe("realpathSyncOrNull", () => {
   it("returns null for a missing path", (context) => {
     const { rootReal } = makeFixture(context);
@@ -83,10 +96,26 @@ describe("isWithinRoot", () => {
     ["a sibling sharing the prefix", "/ws", "/ws2/data", false],
     ["the parent", "/ws/a", "/ws", false],
     ["the filesystem root", "/ws", "/", false],
+    ["a folder whose name differs only in letter case", "/ws", "/WS/data", false],
+    ["a root given with a trailing separator", "/ws/", "/ws/data", true],
   ];
   cases.forEach(([label, root, candidate, expected]) => {
-    it(`${expected ? "accepts" : "rejects"} ${label}`, { skip: process.platform === "win32" ? "POSIX paths" : false }, () => {
-      assert.equal(isWithinRoot(root, candidate), expected);
+    it(`${expected ? "accepts" : "rejects"} ${label}`, () => {
+      assert.equal(isWithinRoot(root, candidate, path.posix.sep), expected);
+    });
+  });
+
+  const windowsCases: [string, string, string, boolean][] = [
+    ["a path below a drive folder", "C:\\Root", "C:\\Root\\x", true],
+    ["a drive root", "C:\\", "C:\\ws\\data", true],
+    ["a folder on a case-sensitive Windows directory that differs only in case", "C:\\Root", "C:\\root\\x", false],
+    ["another drive", "C:\\Root", "D:\\Root\\x", false],
+    ["a path below a UNC share", "\\\\srv\\share", "\\\\srv\\share\\x", true],
+    ["a sibling UNC share sharing the prefix", "\\\\srv\\share", "\\\\srv\\share2\\x", false],
+  ];
+  windowsCases.forEach(([label, root, candidate, expected]) => {
+    it(`${expected ? "accepts" : "rejects"} ${label} (Windows paths)`, () => {
+      assert.equal(isWithinRoot(root, candidate, path.win32.sep), expected);
     });
   });
 });
