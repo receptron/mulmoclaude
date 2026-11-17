@@ -6,6 +6,8 @@
 // - the browser adapter takes nothing from the package's core entry, which
 //   reaches the OpenCascade kernel and `node:vm`;
 // - its route is the owner's: it runs a script as code in this process;
+// - an agent inside the Docker sandbox is not offered it, because through it
+//   the agent would run code on the host, outside the sandbox;
 // - the MCP broker bundle, which inlines its dependencies, would leave the
 //   kernel out if the build were ever kept in it: the broker only lists the tool.
 
@@ -17,6 +19,8 @@ import { TOOL_DEFINITION } from "@gui-chat-plugin/brep";
 import { META } from "../../src/plugins/presentBrep/meta.js";
 import definition from "../../src/plugins/presentBrep/definition.js";
 import { isOwnerOnlyApiPath } from "../../server/api/auth/clientTokenAccess.js";
+import { isStaticPluginEnabled } from "../../server/agent/activeTools.js";
+import { runsOnHost } from "../../server/system/docker.js";
 import { API_ROUTES } from "../../src/config/apiRoutes.js";
 
 // Read, not imported: the script builds the broker when it is loaded, and has
@@ -54,5 +58,30 @@ describe("presentBrep's host adapter", () => {
     const source = readFileSync(BROKER_BUILD, "utf8");
     assert.match(source, /const KERNEL_EXTERNALS = \["replicad", "replicad-opencascadejs"\];/);
     assert.match(source, /external: \[[^\]]*\.\.\.KERNEL_EXTERNALS[^\]]*\]/);
+  });
+
+  // Sourcery and CodeRabbit on #3665: the agent's own calls carry the owner's
+  // token, so the owner-only route does not keep a sandboxed agent's script
+  // off the host. The tool is for an agent that already runs here unsandboxed.
+  describe("with the Docker sandbox", () => {
+    it("counts the agent as on the host only when that is known", () => {
+      // --disable-sandbox, whatever Docker says.
+      assert.equal(runsOnHost(true, true), true);
+      assert.equal(runsOnHost(true, null), true);
+      // No Docker to sandbox with: the agent runs natively.
+      assert.equal(runsOnHost(false, false), true);
+      // Sandboxed, or not probed yet: not on the host.
+      assert.equal(runsOnHost(false, true), false);
+      assert.equal(runsOnHost(false, null), false);
+    });
+
+    it("is offered to an agent on the host, and not to a sandboxed one", () => {
+      assert.equal(isStaticPluginEnabled("presentBrep", true), true);
+      assert.equal(isStaticPluginEnabled("presentBrep", false), false);
+    });
+
+    it("leaves the other static plugins as they were, sandboxed or not", () => {
+      for (const onHost of [true, false]) assert.equal(isStaticPluginEnabled("presentShapeScript", onHost), true);
+    });
   });
 });
