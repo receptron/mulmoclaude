@@ -30,7 +30,7 @@ function makeFixture(context: TestContext): Fixture {
   return { base, root, outside };
 }
 
-const caseInsensitiveDisk = (probe: string): boolean => process.platform !== "win32" && existsSync(probe.toLowerCase()) && existsSync(probe.toUpperCase());
+const caseInsensitiveDisk = (probe: string): boolean => existsSync(probe.toLowerCase()) && existsSync(probe.toUpperCase());
 
 describe("resolveWithinRoot", () => {
   it("resolves a link inside the root whose text spells the root with different case", { skip: POSIX_ONLY }, (context) => {

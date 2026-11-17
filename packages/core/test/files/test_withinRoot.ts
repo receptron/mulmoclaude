@@ -88,8 +88,22 @@ describe("isWithinRoot", () => {
     ["a root given with a trailing separator", "/ws/", "/ws/data", true],
   ];
   cases.forEach(([label, root, candidate, expected]) => {
-    it(`${expected ? "accepts" : "rejects"} ${label}`, { skip: process.platform === "win32" ? "POSIX paths" : false }, () => {
-      assert.equal(isWithinRoot(root, candidate), expected);
+    it(`${expected ? "accepts" : "rejects"} ${label}`, () => {
+      assert.equal(isWithinRoot(root, candidate, path.posix.sep), expected);
+    });
+  });
+
+  const windowsCases: [string, string, string, boolean][] = [
+    ["a path below a drive folder", "C:\\Root", "C:\\Root\\x", true],
+    ["a drive root", "C:\\", "C:\\ws\\data", true],
+    ["a folder on a case-sensitive Windows directory that differs only in case", "C:\\Root", "C:\\root\\x", false],
+    ["another drive", "C:\\Root", "D:\\Root\\x", false],
+    ["a path below a UNC share", "\\\\srv\\share", "\\\\srv\\share\\x", true],
+    ["a sibling UNC share sharing the prefix", "\\\\srv\\share", "\\\\srv\\share2\\x", false],
+  ];
+  windowsCases.forEach(([label, root, candidate, expected]) => {
+    it(`${expected ? "accepts" : "rejects"} ${label} (Windows paths)`, () => {
+      assert.equal(isWithinRoot(root, candidate, path.win32.sep), expected);
     });
   });
 });

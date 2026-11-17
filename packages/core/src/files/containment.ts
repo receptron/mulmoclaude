@@ -6,9 +6,9 @@ import path from "node:path";
 
 // A case-preserving prefix test: `path.win32.relative` folds case, which on a case-sensitive Windows folder would take
 // `C:\root\x` as inside `C:\Root`. A root that already ends in a separator (`/`, `C:\`) is used as the prefix as is.
-export function isWithinRoot(rootReal: string, candidateReal: string): boolean {
+export function isWithinRoot(rootReal: string, candidateReal: string, separator: string = path.sep): boolean {
   if (candidateReal === rootReal) return true;
-  const prefix = rootReal.endsWith(path.sep) ? rootReal : rootReal + path.sep;
+  const prefix = rootReal.endsWith(separator) ? rootReal : rootReal + separator;
   return candidateReal.startsWith(prefix);
 }
 
