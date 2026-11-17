@@ -13,14 +13,19 @@ fixed RMS threshold, every segment ends with the pause that closed it, and the s
 An opt-in escape hatch for the affected user, with no change for anyone who does not set it.
 
 - `extra-args.ts` (pure): `parseExtraServerArgs(raw)` → `{ ok, args }` or `{ ok: false, reason }`.
-  Whitespace-split text, or a JSON string array when a path has spaces. Rejects `-m`,
-  `--model`, `--host`, `--port`: whisper-server lets a later flag win, so an override would
-  move the sidecar off the port/model we poll.
+  Whitespace-split text, or a JSON string array when a path has spaces. Rejects the model,
+  help, and every server-level option of upstream `server.cpp` (`--host`, `--port`,
+  `--request-path`, `--inference-path`, …), including the `--flag=value` spelling:
+  whisper-server lets a later flag win, so an override would move the sidecar off the
+  host/port/endpoint/model we poll. Rejects a NUL character, on which `spawn()` throws
+  synchronously. Every other option passes through.
+- `resolveExtraServerArgs` (same file): a rejected value logs a warning and falls back to no
+  extras; an accepted one logs only the argument count, since a value is a path.
 - `buildServerArgs` appends the extra args after the ones it owns; `createSidecar` /
   `defaultSpawnServer` thread them through.
-- `createWhisper` reads `process.env.WHISPER_SERVER_EXTRA_ARGS`. A rejected value logs a warning
-  and falls back to no extras, so a typo cannot disable voice input. Reading it in core means
-  neither MulmoClaude nor MulmoTerminal needs a host change.
+- `createWhisper` passes `process.env.WHISPER_SERVER_EXTRA_ARGS` through it, so a typo cannot
+  disable voice input. Reading it in core means neither MulmoClaude nor MulmoTerminal needs a
+  host change.
 
 ## Out of scope (follow-ups)
 
@@ -30,7 +35,9 @@ An opt-in escape hatch for the affected user, with no change for anyone who does
 
 ## Verification
 
-- `packages/core/test/whisper/test_extra_args.ts`: accepted and rejected inputs.
+- `packages/core/test/whisper/test_extra_args.ts`: accepted and rejected inputs, and what is logged.
+- `packages/core/test/whisper/test_extra_args_spawn.ts`: env → `createWhisper` → spawn, against a
+  fake whisper-server that records its argv and answers the readiness probe (POSIX only).
 - `test_sidecar_helpers.ts`: extra args are appended after the owned ones.
 - `whisper-server` v1.9.1 (the `yarn build:whisper` default) accepts `--vad` and
   `--no-speech-thold` per the upstream source. Not run locally: no `whisper-server` on the

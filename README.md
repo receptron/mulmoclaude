@@ -521,7 +521,7 @@ This is **disabled by default** and **macOS-only** (Apple Silicon recommended). 
   export WHISPER_SERVER_EXTRA_ARGS='--vad --vad-model /path/to/ggml-silero-v6.2.0.bin'
   ```
 
-  Use a JSON array (`'["--vad", "--vad-model", "/path with spaces/model.bin"]'`) when a path contains spaces. Only decoding and VAD flags are accepted: the model, help, and every server-level flag (`--host`, `--port`, `--request-path`, `--inference-path`, …) are owned by MulmoClaude, and a value containing one is ignored as a whole, with a warning in the server log. A `whisper-server` that does not know a flag exits on start, so voice input stops until you remove the variable — check `whisper-server --help` first.
+  Use a JSON array (`'["--vad", "--vad-model", "/path with spaces/model.bin"]'`) when a path contains spaces. Any `whisper-server` flag is accepted except the model, help, and the server-level flags (`--host`, `--port`, `--request-path`, `--inference-path`, …), which MulmoClaude owns; a value containing one of those is ignored as a whole, with a warning in the server log. A `whisper-server` that does not know a flag exits on start, so voice input stops until you remove the variable — check `whisper-server --help` first.
 
 ## Configuring Additional Tools (Web Settings)
 

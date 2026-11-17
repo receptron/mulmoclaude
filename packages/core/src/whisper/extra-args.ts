@@ -7,8 +7,8 @@ export const WHISPER_SERVER_EXTRA_ARGS_ENV = "WHISPER_SERVER_EXTRA_ARGS";
 
 // Every whisper-server SERVER-level option (upstream `server.cpp`), plus the
 // model and help: the sidecar owns where it listens, what it serves and which
-// model it loads, and a later flag would silently override ours. Only
-// decoding / VAD options are the user's to add.
+// model it loads, and a later flag would silently override ours. Every other
+// option is passed through untouched.
 const RESERVED_FLAGS: ReadonlySet<string> = new Set([
   "-m",
   "--model",
