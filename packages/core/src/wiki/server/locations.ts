@@ -1,7 +1,7 @@
 // A wiki folder or file that leads out of the workspace counts as absent, so nothing outside is listed or read.
 
 import path from "node:path";
-import { isWithin, realpathOrNull } from "./fs.js";
+import { isWithinRoot, realpathSyncOrNull } from "../../files/withinRoot.js";
 import { wikiDirs } from "./paths.js";
 
 export interface WikiReadLocations {
@@ -16,10 +16,10 @@ export interface WikiReadLocations {
 
 export function wikiReadLocations(workspace: string): WikiReadLocations {
   const dirs = wikiDirs(workspace);
-  const workspaceReal = realpathOrNull(workspace);
+  const workspaceReal = realpathSyncOrNull(workspace);
   const insideWorkspace = (absPath: string): string | null => {
-    const candidateReal = workspaceReal === null ? null : realpathOrNull(path.resolve(workspaceReal, path.relative(workspace, absPath)));
-    return workspaceReal !== null && candidateReal !== null && isWithin(workspaceReal, candidateReal) ? candidateReal : null;
+    const candidateReal = workspaceReal === null ? null : realpathSyncOrNull(path.resolve(workspaceReal, path.relative(workspace, absPath)));
+    return workspaceReal !== null && candidateReal !== null && isWithinRoot(workspaceReal, candidateReal) ? candidateReal : null;
   };
   return {
     pagesDir: dirs.pagesDir,

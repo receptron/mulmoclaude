@@ -15,7 +15,7 @@ import { matchWikiSlug, slugByIndexTitle } from "../resolve.js";
 import { type WikiPageEntry, parseIndexEntries } from "../index-parse.js";
 import { findBrokenLinksInPage, findMissingFiles, findOrphanPages, findTagDrift } from "../lint.js";
 import { type WikiGraph, buildWikiGraph } from "../graph.js";
-import { readTextSafe, readTextSafeSync } from "./fs.js";
+import { readTextWithinRoot, readTextWithinRootSync } from "../../files/withinRoot.js";
 import { getPageIndex } from "./pageIndex.js";
 import { parseFrontmatterTags } from "./frontmatter.js";
 import { type WikiReadLocations, wikiReadLocations } from "./locations.js";
@@ -27,7 +27,7 @@ import { type WikiReadLocations, wikiReadLocations } from "./locations.js";
 const MIN_FUZZY_SLUG_LEN = 6;
 
 function readFileOrEmpty(absPath: string | null, workspaceReal: string | null): string {
-  return absPath === null || workspaceReal === null ? "" : (readTextSafeSync(absPath, workspaceReal) ?? "");
+  return absPath === null || workspaceReal === null ? "" : (readTextWithinRootSync(workspaceReal, absPath) ?? "");
 }
 
 async function pageSlugs(locations: WikiReadLocations): Promise<Map<string, string>> {
@@ -132,7 +132,7 @@ export async function readWikiPage(workspace: string, pageName: string): Promise
 /** Page body, or "" when the file vanished between indexing and reading. */
 async function readPageBody(locations: WikiReadLocations, fileName: string): Promise<string> {
   const { pagesReal, workspaceReal } = locations;
-  return pagesReal === null || workspaceReal === null ? "" : ((await readTextSafe(path.join(pagesReal, fileName), workspaceReal)) ?? "");
+  return pagesReal === null || workspaceReal === null ? "" : ((await readTextWithinRoot(workspaceReal, path.join(pagesReal, fileName))) ?? "");
 }
 
 /** Read every page + the index and build the page→page link graph.
