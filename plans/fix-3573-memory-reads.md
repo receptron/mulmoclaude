@@ -17,7 +17,9 @@ into the agent's prompt, sandboxed or not: the H2 headings in topic format, the 
 loaders feed `regenerateTopicIndex` (writes `MEMORY.md`) and the atomic → topic migration (copies entries into topic
 files), so the outside contents were also written into the workspace. The startup migrations read the single-file
 `conversations/memory.md` by path too (`migrateLegacyMemory`, the topic cluster's `loadClusterInput`, and the seed
-check in `seed-topic-layout-run.ts`), so one linked outside was copied into memory files (Codex review). A FIFO at a
+check in `seed-topic-layout-run.ts`), so one linked outside was copied into memory files, and the journal's fact
+extractor (`server/workspace/journal/memoryExtractor.ts`) sent it to the summariser and rewrote `memory.md` with it
+(Codex review). A FIFO at a
 topic file never returns, so the turn hangs.
 
 Reproduced on `main`: each link-out layout puts the outside text into `buildMemoryContext`'s output; a FIFO at
@@ -35,6 +37,9 @@ Reproduced on `main`: each link-out layout puts the outside text into `buildMemo
 - The migrations read `memory.md` the same way. The seed check keeps telling "missing" (seed) from "unreadable" (do
   not seed): a `memory.md` leading outside counts as missing, one inside that is not a readable regular file stays
   unreadable.
+- The journal's fact extractor skips with a warning when `memory.md` exists but is not a readable file inside the
+  workspace, instead of reading it as empty: it rewrites the file, so "empty" would replace a link with its target's
+  text or wipe a file it could not read. Before, a folder or unreadable file threw, which the daily pass caught.
 
 ## Behaviour changes
 
@@ -46,5 +51,6 @@ Reproduced on `main`: each link-out layout puts the outside text into `buildMemo
 - Listing a folder (`readdir`) still follows a folder linked out, so outside names are listed; their contents are
   refused.
 - Writes to memory (`writeTopicFile`, `writeMemoryEntry`) are not changed here.
+- `run.ts` / `topic-run.ts` look only at `memory.md`'s size to decide whether to migrate; nothing is read.
 - The topic migration's staging checks (`countBulletLines`, `isStagingSwappable`) still read by path. They only count
   bullets to decide whether a staging may be swapped in; nothing they read is copied.

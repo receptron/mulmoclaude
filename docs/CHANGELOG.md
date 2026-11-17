@@ -18,7 +18,7 @@ The agent's system prompt lists memory from `conversations/memory/` on every tur
 type folder or a memory file pointed to, so a symlink to something elsewhere on the computer handed its headings (or,
 in the older per-entry layout, its whole text) to the agent — including a sandboxed one. Only regular files inside the
 workspace are read now, and the startup migration of the older `conversations/memory.md` no longer copies one that
-leads outside into memory; a link to a file inside the workspace keeps working. A named pipe in the memory folder no
+leads outside into memory, nor does the journal send it to the summariser; a link to a file inside the workspace keeps working. A named pipe in the memory folder no
 longer hangs the turn.
 
 #### Links inside the workspace are no longer refused for their letter case (#3573)

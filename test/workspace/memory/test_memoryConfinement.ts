@@ -4,10 +4,11 @@
 import { describe, it, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildMemoryContext } from "../../../server/agent/prompt.js";
+import { extractAndAppendMemory } from "../../../server/workspace/journal/memoryExtractor.js";
 import { migrateLegacyMemory } from "../../../server/workspace/memory/migrate.js";
 import { seedTopicLayoutIfFresh } from "../../../server/workspace/memory/seed-topic-layout-run.js";
 import { loadMemorySnapshot } from "../../../server/workspace/memory/snapshot.js";
@@ -133,5 +134,22 @@ describe("legacy memory.md migration stays inside the workspace", () => {
     linkLegacyOut(fixture);
     assert.equal(seedTopicLayoutIfFresh(fixture.workspace), true);
     assert.equal(existsSync(path.join(fixture.memory, "fact")), true);
+  });
+});
+
+// The journal's fact extractor reads memory.md, sends it to the summariser and rewrites the file.
+describe("journal memory extraction stays inside the workspace", () => {
+  it("neither sends nor copies a memory.md linked outside", { skip: POSIX_ONLY }, async (context) => {
+    const { workspace, outside } = makeFixture(context);
+    writeAt(path.join(outside, "memory.md"), `# Memory\n\n- ${OUTSIDE_TEXT}\n`);
+    symlinkSync(path.join(outside, "memory.md"), path.join(workspace, WORKSPACE_FILES.memory));
+    const prompts: string[] = [];
+    const summarize = async (_system: string, user: string): Promise<string> => {
+      prompts.push(user);
+      return "- owns a bike";
+    };
+    assert.equal(await extractAndAppendMemory({ workspaceRoot: workspace, excerpts: "[user] I own a bike", summarize }), 0);
+    assert.deepEqual(prompts, []);
+    assert.equal(lstatSync(path.join(workspace, WORKSPACE_FILES.memory)).isSymbolicLink(), true);
   });
 });
