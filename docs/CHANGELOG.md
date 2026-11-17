@@ -16,6 +16,13 @@ Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`,
 
 ### Fixed
 
+#### The agent's system prompt reads the wiki summary and memory file only from inside the workspace (#3573)
+
+The wiki summary (`data/wiki/summary.md`) and the older single-file memory were read into the agent's system prompt
+wherever `data/wiki` or those files pointed, so a symlink to a file elsewhere on the computer handed its contents to the
+agent — including a sandboxed one. Only regular files inside the workspace are read now; a wiki that leads outside counts
+as no wiki. A summary that is a folder or unreadable no longer breaks building the prompt.
+
 #### The wiki view shows only what is inside the workspace (#3573)
 
 The wiki view, graph and lint report read `data/wiki/index.md`, `log.md` and the pages wherever `data/wiki`,

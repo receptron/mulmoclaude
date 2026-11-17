@@ -18,6 +18,8 @@ export {
   type VerifiedScope,
   type VerifiedFileHooks,
 } from "./verified.js";
+// The sync containment and whole-file read, for callers that cannot await.
+export { isWithinRoot, realpathSyncOrNull, readTextWithinRoot, readTextWithinRootSync } from "./withinRoot.js";
 export { toPosixRelPath, joinPosixRelPath } from "./relPath.js";
 export { canonicalRoot } from "./root.js";
 // presentDocument / presentHtml's `path` argument: resolving a caller-supplied
