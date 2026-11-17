@@ -3,7 +3,7 @@
 import { describe, it, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isWithinRoot, realpathSyncOrNull } from "../../src/files/containment.ts";
@@ -65,6 +65,18 @@ describe("readTextWithinRoot / readTextWithinRootSync", () => {
     execFileSync("mkfifo", [path.join(folder, "pipe.md")]);
     assert.equal(readTextWithinRootSync(rootReal, path.join(folder, "pipe.md")), null);
     assert.equal(await readTextWithinRoot(rootReal, path.join(folder, "pipe.md")), null);
+  });
+});
+
+describe("readTextWithinRootSync with a root spelled in different case", () => {
+  it("reads a file inside the root", (context) => {
+    const { rootReal, folder } = makeFixture(context);
+    const rootSpelledUpper = rootReal.toUpperCase();
+    if (!existsSync(rootSpelledUpper)) {
+      context.skip("needs a case-insensitive disk");
+      return;
+    }
+    assert.equal(readTextWithinRootSync(rootSpelledUpper, path.join(folder, "note.md")), "inside\n");
   });
 });
 

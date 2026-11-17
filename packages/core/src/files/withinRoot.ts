@@ -4,7 +4,7 @@
 import type { BigIntStats } from "node:fs";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
 import { open } from "node:fs/promises";
-import { isWithinRoot, realpathSyncOrNull } from "./containment.js";
+import { isWithinRoot, realpathSyncOrNull, respelledWithinRoot } from "./containment.js";
 
 // A FIFO must not block the server, and a link is refused at open where the OS can; both flags are undefined on
 // Windows, where the check after the open is what refuses a link out.
@@ -14,7 +14,8 @@ const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants
 // swapped back before this check, is refused: where the path leads now must be inside and be the opened file.
 function isOpenedFileInside(rootReal: string, absPath: string, opened: BigIntStats): boolean {
   const real = realpathSyncOrNull(absPath);
-  if (real === null || !isWithinRoot(rootReal, real) || !opened.isFile()) return false;
+  if (real === null || !opened.isFile()) return false;
+  if (!isWithinRoot(rootReal, real) && respelledWithinRoot(rootReal, real) === null) return false;
   const onDisk = lstatSync(real, { bigint: true });
   return onDisk.isFile() && onDisk.dev === opened.dev && onDisk.ino === opened.ino;
 }
