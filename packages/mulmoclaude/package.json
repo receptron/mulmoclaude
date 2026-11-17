@@ -22,6 +22,7 @@
   ],
   "dependencies": {
     "@google/genai": "^3.3.0",
+    "@gui-chat-plugin/brep": "^0.1.0",
     "@gui-chat-plugin/browse": "^2.1.0",
     "@gui-chat-plugin/camera": "^2.1.0",
     "@gui-chat-plugin/google-map": "^2.1.0",

@@ -39,6 +39,16 @@ const NATIVE_EXTERNALS = ["@duckdb/*", "duckdb"];
 // does not — which the tool's "Chromium is not installed" path already handles.
 const BROWSER_EXTERNALS = ["puppeteer", "puppeteer-core"];
 
+// `presentBrep`'s definition comes from `@gui-chat-plugin/brep`, whose core entry
+// also holds the build. The broker only lists the tool (a call goes to the
+// server over HTTP), and today the build is dropped from the bundle as unused:
+// no asset here names replicad or `node:vm`. These are external for the day
+// that stops being true. The package reaches the OpenCascade kernel through
+// lazy dynamic imports, so left external it stays unloaded, as puppeteer does;
+// inlined it would be megabytes of loader beside 22 MB of WebAssembly that the
+// loader finds by path, which an inlined copy would not.
+const KERNEL_EXTERNALS = ["replicad", "replicad-opencascadejs"];
+
 // express / body-parser / debug are CJS and call `require()` at runtime, which
 // an ESM bundle has no binding for — without this the broker dies at load with
 // `Dynamic require of "tty" is not supported`.
@@ -54,7 +64,7 @@ export function brokerBuildOptions() {
     platform: "node",
     format: "esm",
     target: "node22",
-    external: [...NATIVE_EXTERNALS, ...BROWSER_EXTERNALS],
+    external: [...NATIVE_EXTERNALS, ...BROWSER_EXTERNALS, ...KERNEL_EXTERNALS],
     // Dependencies are INLINED, not left external. Tried external
     // (`packages: "external"`) to keep the bundle at 505 KB instead of 12 MB —
     // it dies in the container with `Cannot find package

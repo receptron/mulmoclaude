@@ -31,6 +31,10 @@ const OWNER_ONLY_PREFIXES: readonly string[] = [
   "/shortcuts",
   "/collections-registry",
   "/chat-index",
+  // presentBrep runs the script it is sent as code in this process
+  // (@gui-chat-plugin/brep, through node:vm, unsandboxed): a client token that
+  // could post here could run anything the server can.
+  "/brep",
 ];
 
 /** A collection action or feed ingest of kind "agent" starts a hidden agent

@@ -15,6 +15,7 @@ import { loadCollection, validateCollectionRecords } from "../../workspace/colle
 import { defangForPrompt } from "@mulmoclaude/core/collection";
 import { executeOpenCanvas } from "../../../src/plugins/canvas/definition.js";
 import { executePresentShapeScript, SHAPE_EXTENSIONS } from "@gui-chat-plugin/shapescript";
+import { executePresentBrep } from "@gui-chat-plugin/brep";
 import { executeMapControl } from "@gui-chat-plugin/google-map";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, serverError } from "../../utils/httpError.js";
@@ -355,6 +356,21 @@ bindRoute(
     if (result.data?.filePath) void publishFileChange(result.data.filePath);
     return result;
   }),
+);
+
+// presentBrep — a solid model built from a replicad script (@gui-chat-plugin/brep).
+// The package owns the build, its checks, the path rules and the writes under
+// `artifacts/brep/`, through the generic `files.artifacts` capability.
+//
+// The script is JavaScript, and the package runs it through `node:vm` in THIS
+// process, unsandboxed: a call can do what the server can. It is offered only
+// to roles that list it (src/config/roles.ts), to an agent that already runs
+// code on this machine. A build blocks the event loop while the kernel works
+// (0.2 to 1.6 s for the parts in the package's tests); builds run one at a time.
+bindRoute(
+  router,
+  API_ROUTES.brep.create,
+  wrapPluginExecute<Parameters<typeof executePresentBrep>[1], unknown>((req) => executePresentBrep({ files: { artifacts: makeArtifactsFileOps() } }, req.body)),
 );
 
 // manageKenteiScript — KenteiScript quizzes (`kenteiscript` package). The
