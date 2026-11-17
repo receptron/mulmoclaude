@@ -144,7 +144,7 @@ async function handleConfigRefresh(payload) {
   await safePost(req);
 }
 
-// packages/core/dist/templatePath-k_WNbL_Q.js
+// packages/core/dist/templatePath-CB3wtVpe.js
 var TEMPLATES_PREFIX = "templates/";
 function isSafeTemplatePath(value) {
   if (value.length === 0 || value.includes("\\") || value.startsWith("/")) return false;
@@ -218,7 +218,7 @@ function mirrorSkillDelete(workspaceRoot2, slug) {
   return { dest };
 }
 
-// packages/core/dist/dist-MFUV9FYo.js
+// packages/core/dist/dist-BmO4oSQy.js
 Object.freeze({
   min: 0,
   max: 65535
@@ -290,7 +290,7 @@ async function handleSkillBridge(payload) {
 // server/workspace/hooks/handlers/wikiSnapshot.ts
 import path5 from "node:path";
 
-// packages/core/dist/slug-BpjumQfe.js
+// packages/core/dist/slug-D24AYqCZ.js
 function isSafeSlug(slug) {
   if (slug.length === 0) return false;
   if (slug === "." || slug === "..") return false;
