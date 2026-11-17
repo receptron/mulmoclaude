@@ -68,6 +68,16 @@ export async function isDockerLive(): Promise<boolean> {
   }
 }
 
+/** Pure. Does the agent run on this machine itself, with no Docker sandbox
+ *  around it? Only when that is KNOWN: before Docker has been probed the answer
+ *  is no, so nothing that depends on it is offered by default. */
+export const runsOnHost = (disableSandbox: boolean, dockerEnabled: boolean | null): boolean => disableSandbox || dockerEnabled === false;
+
+/** Whether the agent runs unsandboxed, from what the server found at startup
+ *  (`isDockerAvailable`, which `setupSandbox` awaits before the first request).
+ *  Synchronous, for the code that decides which tools a role is offered. */
+export const agentRunsOnHost = (): boolean => runsOnHost(env.disableSandbox, _dockerEnabled);
+
 export async function isDockerAvailable(): Promise<boolean> {
   if (env.disableSandbox) return false;
   if (_dockerEnabled !== null) return _dockerEnabled;

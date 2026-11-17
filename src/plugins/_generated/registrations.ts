@@ -12,6 +12,7 @@ import { REGISTRATION as manageKenteiScriptRegistration } from "../manageKenteiS
 import { REGISTRATION as manageSkillsRegistration } from "../manageSkills";
 import { REGISTRATION as markdownRegistration } from "../markdown";
 import { REGISTRATION as photoLocationsRegistration } from "../photoLocations";
+import { REGISTRATION as presentBrepRegistration } from "../presentBrep";
 import { REGISTRATION as presentCollectionRegistration } from "../presentCollection";
 import { REGISTRATION as presentFormRegistration } from "../presentForm";
 import { REGISTRATION as presentHtmlRegistration } from "../presentHtml";
@@ -38,6 +39,7 @@ export const GENERATED_PLUGIN_REGISTRATIONS: readonly PluginRegistration[] = [
   manageSkillsRegistration,
   markdownRegistration,
   photoLocationsRegistration,
+  presentBrepRegistration,
   presentCollectionRegistration,
   presentFormRegistration,
   presentHtmlRegistration,

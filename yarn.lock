@@ -1445,6 +1445,17 @@
     protobufjs "^7.5.5"
     yargs "^17.7.2"
 
+"@gui-chat-plugin/brep@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/brep/-/brep-0.1.0.tgz#aa48e15210ab4d3e8a0ad27eaa1784d188f1b146"
+  integrity sha512-aAedsis2em6eXwXpRFYZpnCGgh2ZvM+Wh4h5VhlD4I9mv1TjH5ndaBiA16gYKzhbjIJa9BQESiVBLlrZN4PSaw==
+  dependencies:
+    "@gui-chat-plugin/common" "^0.1.0"
+    "@types/three" "^0.187.0"
+    replicad "^1.2.1"
+    replicad-opencascadejs "^1.2.1"
+    three "^0.187.0"
+
 "@gui-chat-plugin/browse@^2.1.0":
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/@gui-chat-plugin/browse/-/browse-2.1.0.tgz#febcd002396e7e0e04192d9cde1ad03d9b9f17fd"
@@ -3368,6 +3379,11 @@
   integrity sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog==
   dependencies:
     undici-types "~8.9.0"
+
+"@types/opentype.js@^1.3.10":
+  version "1.3.10"
+  resolved "https://registry.yarnpkg.com/@types/opentype.js/-/opentype.js-1.3.10.tgz#9a0a22b5bc13fd279ee81aeeaced0196eab1d667"
+  integrity sha512-F67EFyk6j02okHz5JCgata3ZRAcZi9GLnzmkHw/rzJq3OCc8/ZVdoKrxMTYjcQP6IYHGBz2cav1cpzkOkPiPCQ==
 
 "@types/pako@^2.0.3":
   version "2.0.4"
@@ -6506,6 +6522,18 @@ flat-cache@^6.1.23:
     flatted "^3.4.2"
     hookified "^1.15.0"
 
+flatbush@^4.0.0:
+  version "4.7.0"
+  resolved "https://registry.yarnpkg.com/flatbush/-/flatbush-4.7.0.tgz#5555d37e126713d2762362bf708314018c51a32b"
+  integrity sha512-oFBkbYI3Rx6snZEBQOiJSaxt1MfZtbH2p862dRmIOOYRVxQWDyAn4oyKjoJv7TgmOft2yIavvooOU5itliagOw==
+  dependencies:
+    flatqueue "^3.1.0"
+
+flatqueue@^3.1.0:
+  version "3.1.0"
+  resolved "https://registry.yarnpkg.com/flatqueue/-/flatqueue-3.1.0.tgz#e957f66df148b6f77cb379412fb7f357c5a640c5"
+  integrity sha512-Ia4qIYrrsEqIRx3c3XhkT+QDLQuUV5ovsr6ah1rIgKT5wclhoGK3lAMS1bWRAWxlx7wtlTBpV7QXB5d9fOSRxA==
+
 flatted@^3.4.2:
   version "3.4.4"
   resolved "https://registry.yarnpkg.com/flatted/-/flatted-3.4.4.tgz#aeeca2a506303f0cee61c59e6c9f2a88d2f29fc6"
@@ -8793,6 +8821,11 @@ openssl-wrapper@^0.3.4:
   resolved "https://registry.yarnpkg.com/openssl-wrapper/-/openssl-wrapper-0.3.4.tgz#c01ec98e4dcd2b5dfe0b693f31827200e3b81b07"
   integrity sha512-iITsrx6Ho8V3/2OVtmZzzX8wQaKAaFXEJQdzoPUZDtyf5jWFlqo+h+OhGT4TATQ47f9ACKHua8nw7Qoy85aeKQ==
 
+opentype.js@2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/opentype.js/-/opentype.js-2.0.0.tgz#b87fcec8107075aabb6f50fe5e6bb4d8db6c8c7d"
+  integrity sha512-kCyjv6xdDY1W/jLWZ/L3QhhTlKUqDZMQ5+Jdlw12b3dXkKNpYBqqlMMj0YDQPShWFTMwgZI1hG14kN3XUDSg/A==
+
 option@~0.2.1:
   version "0.2.4"
   resolved "https://registry.yarnpkg.com/option/-/option-0.2.4.tgz#fd475cdf98dcabb3cb397a3ba5284feb45edbfe4"
@@ -9539,6 +9572,20 @@ regexp.prototype.flags@^1.5.4:
     get-proto "^1.0.1"
     gopd "^1.2.0"
     set-function-name "^2.0.2"
+
+replicad-opencascadejs@^1.2.1:
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/replicad-opencascadejs/-/replicad-opencascadejs-1.2.1.tgz#f8b65496b26b232e16023de87089ec1d3a425722"
+  integrity sha512-nFWkL5+24JiN1sv5fLGhdQr3FKCOLR3PIBkeZJcLm37p4eraEtD7Jueo8dP2BoqClJwb9hTSkf2QMli3GVqhpg==
+
+replicad@^1.2.1:
+  version "1.2.1"
+  resolved "https://registry.yarnpkg.com/replicad/-/replicad-1.2.1.tgz#4a15a783dabe6411044af6255e9d0ce206f231cf"
+  integrity sha512-M8Bk9skveCqkRG7+R8fcA5WFHTDcmK3EeGKzU0/NbuU3lAAjeqt6fqV2cx4gSCEkAy10zUKUJY68CtZ/ZMRMhw==
+  dependencies:
+    "@types/opentype.js" "^1.3.10"
+    flatbush "^4.0.0"
+    opentype.js "2.0.0"
 
 replicate@^1.4.0:
   version "1.4.0"

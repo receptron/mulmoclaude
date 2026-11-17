@@ -11,6 +11,7 @@ import manageKenteiScriptDef from "../manageKenteiScript/definition";
 import manageSkillsDef from "../manageSkills/definition";
 import markdownDef from "../markdown/definition";
 import photoLocationsDef from "../photoLocations/definition";
+import presentBrepDef from "../presentBrep/definition";
 import presentCollectionDef from "../presentCollection/definition";
 import presentFormDef from "../presentForm/definition";
 import presentHtmlDef from "../presentHtml/definition";
@@ -26,6 +27,7 @@ import { META as manageKenteiScriptMeta } from "../manageKenteiScript/meta";
 import { META as manageSkillsMeta } from "../manageSkills/meta";
 import { META as markdownMeta } from "../markdown/meta";
 import { META as photoLocationsMeta } from "../photoLocations/meta";
+import { META as presentBrepMeta } from "../presentBrep/meta";
 import { META as presentCollectionMeta } from "../presentCollection/meta";
 import { META as presentFormMeta } from "../presentForm/meta";
 import { META as presentHtmlMeta } from "../presentHtml/meta";
@@ -46,6 +48,7 @@ export const GENERATED_SERVER_BINDINGS: readonly ServerPluginBinding[] = [
   mcpBinding(manageSkillsDef, manageSkillsMeta),
   mcpBinding(markdownDef, markdownMeta),
   mcpBinding(photoLocationsDef, photoLocationsMeta),
+  mcpBinding(presentBrepDef, presentBrepMeta),
   mcpBinding(presentCollectionDef, presentCollectionMeta),
   mcpBinding(presentFormDef, presentFormMeta),
   mcpBinding(presentHtmlDef, presentHtmlMeta),

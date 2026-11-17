@@ -223,6 +223,7 @@ export const ROLES: [Role, ...Role[]] = [
       TOOL_NAMES.exportShapeScriptUsdz,
       TOOL_NAMES.exportShapeScriptStl,
       TOOL_NAMES.manageShapeScript,
+      TOOL_NAMES.presentBrep,
       TOOL_NAMES.presentHtml,
       TOOL_NAMES.presentSVG,
     ],

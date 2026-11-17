@@ -69,6 +69,7 @@ describe("WORKSPACE_DIRS expected keys", () => {
     "accountingBooks",
     "archive",
     "attachments",
+    "brep",
     "calendar",
     "charts",
     "chat",

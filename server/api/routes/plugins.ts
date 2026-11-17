@@ -15,6 +15,8 @@ import { loadCollection, validateCollectionRecords } from "../../workspace/colle
 import { defangForPrompt } from "@mulmoclaude/core/collection";
 import { executeOpenCanvas } from "../../../src/plugins/canvas/definition.js";
 import { executePresentShapeScript, SHAPE_EXTENSIONS } from "@gui-chat-plugin/shapescript";
+import { executePresentBrep } from "@gui-chat-plugin/brep";
+import { agentRunsOnHost } from "../../system/docker.js";
 import { executeMapControl } from "@gui-chat-plugin/google-map";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, serverError } from "../../utils/httpError.js";
@@ -354,6 +356,32 @@ bindRoute(
     // Fire-and-forget: any subscribed View tab refetches via cache-bust.
     if (result.data?.filePath) void publishFileChange(result.data.filePath);
     return result;
+  }),
+);
+
+// presentBrep — a solid model built from a replicad script (@gui-chat-plugin/brep).
+// The package owns the build, its checks, the path rules and the writes under
+// `artifacts/brep/`, through the generic `files.artifacts` capability.
+//
+// The script is JavaScript, and the package runs it through `node:vm` in THIS
+// process, unsandboxed: a call can do what the server can. So the route answers
+// only when the agent runs on this machine unsandboxed, where it can run code
+// here anyway. With the Docker sandbox on it refuses: the agent's calls arrive
+// with the owner's token, so nothing else on this route would stop a script
+// from leaving the sandbox. The tool is not offered then either
+// (server/agent/activeTools.ts); this is the boundary, that is the courtesy.
+//
+// A build blocks the event loop while the kernel works (0.2 to 1.6 s for the
+// parts in the package's tests); builds run one at a time.
+export const BREP_SANDBOXED_MESSAGE =
+  "presentBrep is not available while the Docker sandbox is on: it runs its script as code on the host. Start MulmoClaude with --disable-sandbox (DISABLE_SANDBOX=1) to use it.";
+
+bindRoute(
+  router,
+  API_ROUTES.brep.create,
+  wrapPluginExecute<Parameters<typeof executePresentBrep>[1], unknown>(async (req) => {
+    if (!agentRunsOnHost()) return { message: BREP_SANDBOXED_MESSAGE };
+    return executePresentBrep({ files: { artifacts: makeArtifactsFileOps() } }, req.body);
   }),
 );
 

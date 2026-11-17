@@ -12,6 +12,7 @@ import { META as manageKenteiScriptMeta } from "../manageKenteiScript/meta";
 import { META as manageSkillsMeta } from "../manageSkills/meta";
 import { META as markdownMeta } from "../markdown/meta";
 import { META as photoLocationsMeta } from "../photoLocations/meta";
+import { META as presentBrepMeta } from "../presentBrep/meta";
 import { META as presentCollectionMeta } from "../presentCollection/meta";
 import { META as presentFormMeta } from "../presentForm/meta";
 import { META as presentHtmlMeta } from "../presentHtml/meta";
@@ -34,6 +35,7 @@ export const GENERATED_PLUGIN_METAS = [
   manageSkillsMeta,
   markdownMeta,
   photoLocationsMeta,
+  presentBrepMeta,
   presentCollectionMeta,
   presentFormMeta,
   presentHtmlMeta,

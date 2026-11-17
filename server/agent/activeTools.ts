@@ -29,6 +29,7 @@
 import type { Role } from "../../src/config/roles.js";
 import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 import { PLUGIN_DEFS, PLUGIN_PACKAGE_BY_TOOL, TOOL_ENDPOINTS } from "./plugin-names.js";
+import { agentRunsOnHost } from "../system/docker.js";
 import { toolPromptFor } from "./promptFiles.js";
 import { getRuntimePlugins } from "../plugins/runtime-registry.js";
 
@@ -91,7 +92,19 @@ const STATIC_PLUGIN_REQUIRED_ENV: Readonly<Record<string, readonly string[]>> = 
   manageKenteiScript: ["TYPESAFE_API_KEY"],
 };
 
-export function isStaticPluginEnabled(name: string): boolean {
+// Static GUI plugins that run what the agent writes as CODE in this server's
+// process. They are offered only to an agent that already runs on this machine
+// unsandboxed: to one inside the Docker sandbox, such a tool is a way out of it,
+// onto the host and past the mounts the sandbox is there to enforce.
+//
+// presentBrep: its replicad script is JavaScript, run by @gui-chat-plugin/brep
+// through node:vm with no isolation. The route refuses for the same reason
+// (server/api/routes/plugins.ts), since not offering a tool is not a boundary.
+const STATIC_PLUGIN_RUNS_HOST_CODE: ReadonlySet<string> = new Set(["presentBrep"]);
+
+/** `onHost` is a parameter so the rule can be tested without a Docker daemon. */
+export function isStaticPluginEnabled(name: string, onHost: boolean = agentRunsOnHost()): boolean {
+  if (STATIC_PLUGIN_RUNS_HOST_CODE.has(name) && !onHost) return false;
   return (STATIC_PLUGIN_REQUIRED_ENV[name] ?? []).every((key) => Boolean(process.env[key]?.trim()));
 }
 
