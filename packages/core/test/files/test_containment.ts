@@ -43,9 +43,9 @@ describe("resolveWithinRoot", () => {
     assert.equal(resolveWithinRoot(root, "linked/a.md"), path.join(root, "dir", "a.md"));
   });
 
-  it("still refuses a link out spelled with different case", { skip: POSIX_ONLY }, (context) => {
-    const { base, root } = makeFixture(context);
-    symlinkSync(path.join(base, "out"), path.join(root, "linkOut"));
+  it("still refuses a link out, spelled with different case where the disk allows it", { skip: POSIX_ONLY }, (context) => {
+    const { base, root, outside } = makeFixture(context);
+    symlinkSync(caseInsensitiveDisk(root) ? path.join(base, "out") : outside, path.join(root, "linkOut"));
     assert.equal(resolveWithinRoot(root, "linkOut/s.md"), null);
   });
 

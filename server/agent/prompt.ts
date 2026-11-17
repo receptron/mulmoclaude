@@ -5,7 +5,7 @@ import type { TopicMemoryFile } from "../workspace/memory/topic-types.js";
 import type { MemorySnapshot } from "../workspace/memory/snapshot.js";
 import type { Role } from "../../src/config/roles.js";
 import { getActiveToolDescriptors, MCP_SERVER_ID } from "./activeTools.js";
-import { isWithinRoot, readTextWithinRootSync, realpathSyncOrNull } from "@mulmoclaude/core/files";
+import { isInsideRoot, readTextWithinRootSync, realpathSyncOrNull } from "@mulmoclaude/core/files";
 import { WORKSPACE_FILES } from "../workspace/paths.js";
 import { getCachedCustomDirs, buildCustomDirsPrompt } from "../workspace/custom-dirs.js";
 import { getCachedReferenceDirs, buildReferenceDirsPrompt } from "../workspace/reference-dirs.js";
@@ -167,7 +167,7 @@ function workspaceFileExists(workspacePath: string, relPath: string): boolean {
 function locateInWorkspace(workspacePath: string, relPath: string): { workspaceReal: string; fileReal: string } | null {
   const workspaceReal = realpathSyncOrNull(workspacePath);
   const fileReal = workspaceReal === null ? null : realpathSyncOrNull(join(workspaceReal, relPath));
-  return workspaceReal !== null && fileReal !== null && isWithinRoot(workspaceReal, fileReal) ? { workspaceReal, fileReal } : null;
+  return workspaceReal !== null && fileReal !== null && isInsideRoot(workspaceReal, fileReal) ? { workspaceReal, fileReal } : null;
 }
 
 export function buildWikiContext(workspacePath: string): string | null {

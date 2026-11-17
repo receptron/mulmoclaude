@@ -41,3 +41,9 @@ export function respelledWithinRoot(rootReal: string, candidateReal: string): st
   if (rootOnDisk === null || candidateOnDisk === null || !isWithinRoot(rootOnDisk, candidateOnDisk)) return null;
   return path.join(rootReal, path.relative(rootOnDisk, candidateOnDisk));
 }
+
+/** True when `candidateReal` is inside `rootReal`: the case-preserving test, then the second look at the on-disk spelling
+ *  for two realpaths taken with different letter case. The check every caller uses. */
+export function isInsideRoot(rootReal: string, candidateReal: string): boolean {
+  return isWithinRoot(rootReal, candidateReal) || respelledWithinRoot(rootReal, candidateReal) !== null;
+}

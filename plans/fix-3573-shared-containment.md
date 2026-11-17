@@ -26,7 +26,9 @@ is 400 on `main`.
   spelling, returning the target re-spelled under the caller's root.
 - `resolveWithinRoot`: unchanged result whenever the old test accepted; otherwise the second look.
 - `resolveExistingWithinRoot`: same; the returned candidate is the native realpath, as before.
-- `withinRoot.ts` and the wiki engine import the rule from `containment.ts`.
+- `isInsideRoot` (the prefix test, then the second look) is the one check every caller uses: `verified.ts`, the after-open
+  check in `withinRoot.ts`, the wiki engine's locations and `prompt.ts`. `resolveWithinRoot` uses the two steps directly
+  because it returns the re-spelled path.
 
 ## Behaviour changes
 

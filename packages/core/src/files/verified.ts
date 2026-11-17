@@ -9,7 +9,7 @@ import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { renameWithWindowsRetry } from "./atomic.js";
 import { isEnoent } from "./safe.js";
-import { isWithinRoot, respelledWithinRoot } from "./containment.js";
+import { isInsideRoot } from "./containment.js";
 
 // O_NOFOLLOW / O_NONBLOCK are undefined on Windows; a FIFO planted in the workspace must not block the read.
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
@@ -37,7 +37,7 @@ export async function realpathIfPresent(absPath: string): Promise<string | null>
 export async function resolveExistingWithinRoot(rootReal: string, relative: string): Promise<string | null> {
   const candidateReal = await realpathIfPresent(path.resolve(rootReal, relative));
   if (candidateReal === null) return null;
-  return isWithinRoot(rootReal, candidateReal) || respelledWithinRoot(rootReal, candidateReal) !== null ? candidateReal : null;
+  return isInsideRoot(rootReal, candidateReal) ? candidateReal : null;
 }
 
 const sameFile = (onDisk: BigIntStats, opened: BigIntStats): boolean => onDisk.dev === opened.dev && onDisk.ino === opened.ino;
