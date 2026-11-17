@@ -139,9 +139,14 @@ export interface StartLifecycle {
   shutdown: () => void;
 }
 
-export function defaultSpawnServer(modelsDir: string, serverBinary: string, logger: WhisperLogger): StartLifecycleDeps["spawnServer"] {
+export function defaultSpawnServer(
+  modelsDir: string,
+  serverBinary: string,
+  logger: WhisperLogger,
+  extraArgs: readonly string[] = [],
+): StartLifecycleDeps["spawnServer"] {
   return (model: WhisperModelName, port: number): ChildProcess => {
-    const args = buildServerArgs(modelFilePath(modelsDir, model), HOST, port);
+    const args = buildServerArgs(modelFilePath(modelsDir, model), HOST, port, extraArgs);
     logger.info("sidecar: spawning", { model, port });
     return spawn(serverBinary, args, { stdio: ["ignore", "ignore", "pipe"] });
   };
@@ -252,10 +257,15 @@ export function createStartLifecycle(deps: StartLifecycleDeps): StartLifecycle {
   return { ensureSidecar, shutdown };
 }
 
-export function createSidecar(modelsDir: string, serverBinary = "whisper-server", logger: WhisperLogger = NOOP_LOGGER): Sidecar {
+export function createSidecar(
+  modelsDir: string,
+  serverBinary = "whisper-server",
+  logger: WhisperLogger = NOOP_LOGGER,
+  extraArgs: readonly string[] = [],
+): Sidecar {
   const lifecycle = createStartLifecycle({
     allocatePort: findFreePort,
-    spawnServer: defaultSpawnServer(modelsDir, serverBinary, logger),
+    spawnServer: defaultSpawnServer(modelsDir, serverBinary, logger, extraArgs),
     waitReady: waitForReadyOrFailure,
     logger,
   });

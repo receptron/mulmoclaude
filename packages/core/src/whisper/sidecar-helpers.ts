@@ -4,9 +4,10 @@
 
 import { hasStringProp } from "@mulmoclaude/common";
 
-/** whisper-server CLI args to preload `modelPath` and bind to `host:port`. */
-export function buildServerArgs(modelPath: string, host: string, port: number): string[] {
-  return ["--model", modelPath, "--host", host, "--port", String(port)];
+/** whisper-server CLI args to preload `modelPath` and bind to `host:port`,
+ *  followed by any user-supplied `extraArgs`. */
+export function buildServerArgs(modelPath: string, host: string, port: number, extraArgs: readonly string[] = []): string[] {
+  return ["--model", modelPath, "--host", host, "--port", String(port), ...extraArgs];
 }
 
 /** Append `chunk` to a bounded stderr tail, keeping only the last `maxChars`. */
