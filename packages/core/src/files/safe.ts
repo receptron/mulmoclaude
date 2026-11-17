@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
+import { isWithinRoot, respelledWithinRoot } from "./containment.js";
 
 /** True for a `not found` filesystem error (ENOENT) — lets callers treat a
  *  missing file as an empty/default result instead of a thrown error. */
@@ -17,10 +18,7 @@ export function resolveWithinRoot(rootReal: string, relPath: string): string | n
   const resolved = path.resolve(rootReal, normalized);
   const resolvedReal = realpathOrNull(resolved);
   if (resolvedReal === null) return null;
-  if (resolvedReal !== rootReal && !resolvedReal.startsWith(rootReal + path.sep)) {
-    return null;
-  }
-  return resolvedReal;
+  return isWithinRoot(rootReal, resolvedReal) ? resolvedReal : respelledWithinRoot(rootReal, resolvedReal);
 }
 
 function realpathOrNull(absPath: string): string | null {
