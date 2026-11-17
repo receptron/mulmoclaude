@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, readdirSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { readTextWithinRootSync } from "@mulmoclaude/core/files";
@@ -24,11 +24,13 @@ function readOrMissing<T>(read: () => T): ReadResult<T> {
   }
 }
 
-// Read as the prompt reads it: a memory.md leading outside the workspace counts as absent, and one inside that is not a
-// readable regular file stays unreadable, so boot never seeds over memory it could not see.
+// Read as the prompt reads it: a memory.md leading outside the workspace counts as absent, and one that cannot be
+// resolved (a link loop) or is not a readable regular file stays unreadable, so boot never seeds over memory it could
+// not see.
 function readLegacyMemoryText(workspaceRoot: string): ReadResult<string> {
-  const located = locateWithinWorkspace(workspaceRoot, path.join(workspaceRoot, WORKSPACE_FILES.memory));
-  if (located === null) return null;
+  const legacyPath = path.join(workspaceRoot, WORKSPACE_FILES.memory);
+  const located = locateWithinWorkspace(workspaceRoot, legacyPath);
+  if (located === null) return readOrMissing(() => statSync(legacyPath)) === undefined ? undefined : null;
   return readTextWithinRootSync(located.workspaceReal, located.fileReal) ?? undefined;
 }
 

@@ -129,6 +129,13 @@ describe("legacy memory.md migration stays inside the workspace", () => {
     assert.deepEqual(readdirSync(fixture.memory), []);
   });
 
+  it("does not seed over a memory.md it cannot resolve", { skip: POSIX_ONLY }, (context) => {
+    const fixture = makeFixture(context);
+    const legacyPath = path.join(fixture.workspace, WORKSPACE_FILES.memory);
+    symlinkSync(legacyPath, legacyPath);
+    assert.equal(seedTopicLayoutIfFresh(fixture.workspace), false);
+  });
+
   it("seeds the topic layout when the only memory is a memory.md linked outside", { skip: POSIX_ONLY }, (context) => {
     const fixture = makeFixture(context);
     linkLegacyOut(fixture);

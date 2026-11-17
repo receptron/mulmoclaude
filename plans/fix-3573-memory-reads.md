@@ -35,8 +35,8 @@ Reproduced on `main`: each link-out layout puts the outside text into `buildMemo
   log and skip.
 - `server/agent/prompt.ts` uses the same helpers instead of its private copies.
 - The migrations read `memory.md` the same way. The seed check keeps telling "missing" (seed) from "unreadable" (do
-  not seed): a `memory.md` leading outside counts as missing, one inside that is not a readable regular file stays
-  unreadable.
+  not seed): a `memory.md` leading outside counts as missing; one that cannot be resolved (a link loop) or is inside but
+  not a readable regular file stays unreadable (CodeRabbit review).
 - The journal's fact extractor skips with a warning when `memory.md` exists but is not a readable file inside the
   workspace, instead of reading it as empty: it rewrites the file, so "empty" would replace a link with its target's
   text or wipe a file it could not read. Before, a folder or unreadable file threw, which the daily pass caught.
