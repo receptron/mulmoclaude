@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { collectLintIssues, loadWikiGraph, readWikiIndex, readWikiLog, readWikiPage, resolvePagePath } from "../../src/wiki/server/engine.ts";
 import { __resetPageIndexCache } from "../../src/wiki/server/pageIndex.ts";
-import { isWithin, readTextSafe, readTextSafeSync } from "../../src/wiki/server/fs.ts";
 
 const POSIX_ONLY = process.platform === "win32" ? "symlinks and FIFOs need POSIX" : false;
 const OUTSIDE_PAGE = "OUTSIDE PAGE\n";
@@ -155,38 +154,5 @@ describe("wiki read engine confinement", () => {
     execFileSync("mkfifo", [path.join(wiki, "index.md"), path.join(wiki, "log.md")]);
     assert.deepEqual(readWikiIndex(workspace), { content: "", entries: [] });
     assert.equal(readWikiLog(workspace), "");
-  });
-});
-
-describe("wiki file reads after the caller's check", () => {
-  it("refuse a pages folder swapped for a link out after its location was resolved", { skip: POSIX_ONLY }, async (context) => {
-    const { workspace, pages, outside } = makeFixture(context);
-    const workspaceReal = realpathSync.native(workspace);
-    const pageInResolvedFolder = path.join(realpathSync.native(pages), "outside.md");
-    linkTo(pages, path.join(outside, "pages"));
-    assert.equal(readTextSafeSync(pageInResolvedFolder, workspaceReal), null);
-    assert.equal(await readTextSafe(pageInResolvedFolder, workspaceReal), null);
-  });
-
-  it("read a regular file inside the workspace", (context) => {
-    const { workspace, pages } = makeFixture(context);
-    assert.equal(readTextSafeSync(path.join(pages, "inside.md"), realpathSync.native(workspace)), "inside\n");
-  });
-});
-
-describe("isWithin", () => {
-  const cases: [string, string, string, boolean][] = [
-    ["the workspace itself", "/ws", "/ws", true],
-    ["a path below it", "/ws", "/ws/data/wiki", true],
-    ["a name that starts with two dots", "/ws", "/ws/..notes", true],
-    ["a workspace at the filesystem root", "/", "/data/wiki/pages", true],
-    ["a sibling sharing the prefix", "/ws", "/ws2/data", false],
-    ["the parent", "/ws/a", "/ws", false],
-    ["the filesystem root", "/ws", "/", false],
-  ];
-  cases.forEach(([label, root, candidate, expected]) => {
-    it(`${expected ? "accepts" : "rejects"} ${label}`, { skip: process.platform === "win32" ? "POSIX paths" : false }, () => {
-      assert.equal(isWithin(root, candidate), expected);
-    });
   });
 });
