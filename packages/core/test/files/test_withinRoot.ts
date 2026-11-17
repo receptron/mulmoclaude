@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { isWithinRoot, readTextWithinRoot, readTextWithinRootSync, realpathSyncOrNull } from "../../src/files/withinRoot.ts";
+import { isWithinRoot, realpathSyncOrNull } from "../../src/files/containment.ts";
+import { readTextWithinRoot, readTextWithinRootSync } from "../../src/files/withinRoot.ts";
 
 const POSIX_ONLY = process.platform === "win32" ? "symlinks and FIFOs need POSIX" : false;
 

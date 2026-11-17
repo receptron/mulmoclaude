@@ -16,6 +16,14 @@ Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`,
 
 ### Fixed
 
+#### Links inside the workspace are no longer refused for their letter case (#3573)
+
+On a case-insensitive disk (macOS, Windows), a symlink inside the workspace whose target was written with different
+letter case than the folder on disk — `repo/notes` for a folder named `Repo/notes` — was treated as leading outside, so
+the file explorer refused files under it. A workspace at the root of a drive was refused the same way. The shared
+containment check now compares the on-disk spelling as a second look; anything that really leads outside is still
+refused.
+
 #### The agent's system prompt reads the wiki summary and memory file only from inside the workspace (#3573)
 
 The wiki summary (`data/wiki/summary.md`) and the older single-file memory were read into the agent's system prompt

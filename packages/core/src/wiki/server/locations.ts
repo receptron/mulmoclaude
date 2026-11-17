@@ -1,7 +1,7 @@
 // A wiki folder or file that leads out of the workspace counts as absent, so nothing outside is listed or read.
 
 import path from "node:path";
-import { isWithinRoot, realpathSyncOrNull } from "../../files/withinRoot.js";
+import { isWithinRoot, realpathSyncOrNull } from "../../files/containment.js";
 import { wikiDirs } from "./paths.js";
 
 export interface WikiReadLocations {
