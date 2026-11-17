@@ -5,7 +5,7 @@ import type { TopicMemoryFile } from "../workspace/memory/topic-types.js";
 import type { MemorySnapshot } from "../workspace/memory/snapshot.js";
 import type { Role } from "../../src/config/roles.js";
 import { getActiveToolDescriptors, MCP_SERVER_ID } from "./activeTools.js";
-import { isInsideRoot, readTextWithinRootSync, realpathSyncOrNull } from "@mulmoclaude/core/files";
+import { locateWithinWorkspace, readTextWithinWorkspaceSync } from "../utils/files/within-workspace.js";
 import { WORKSPACE_FILES } from "../workspace/paths.js";
 import { getCachedCustomDirs, buildCustomDirsPrompt } from "../workspace/custom-dirs.js";
 import { getCachedReferenceDirs, buildReferenceDirsPrompt } from "../workspace/reference-dirs.js";
@@ -152,22 +152,12 @@ function readLegacyMemoryFile(workspacePath: string): string | null {
   return content.length > 0 ? content : null;
 }
 
-// Files read into the system prompt must be regular files inside the workspace: a `data/wiki` or memory file linked
-// to somewhere else on the host would otherwise hand its contents to the agent, sandboxed or not.
 function readWorkspaceTextSync(workspacePath: string, relPath: string): string | null {
-  const located = locateInWorkspace(workspacePath, relPath);
-  return located === null ? null : readTextWithinRootSync(located.workspaceReal, located.fileReal);
+  return readTextWithinWorkspaceSync(workspacePath, join(workspacePath, relPath));
 }
 
 function workspaceFileExists(workspacePath: string, relPath: string): boolean {
-  return locateInWorkspace(workspacePath, relPath) !== null;
-}
-
-// Resolved first, so a file linked to another file inside the workspace is read at its target.
-function locateInWorkspace(workspacePath: string, relPath: string): { workspaceReal: string; fileReal: string } | null {
-  const workspaceReal = realpathSyncOrNull(workspacePath);
-  const fileReal = workspaceReal === null ? null : realpathSyncOrNull(join(workspaceReal, relPath));
-  return workspaceReal !== null && fileReal !== null && isInsideRoot(workspaceReal, fileReal) ? { workspaceReal, fileReal } : null;
+  return locateWithinWorkspace(workspacePath, join(workspacePath, relPath)) !== null;
 }
 
 export function buildWikiContext(workspacePath: string): string | null {

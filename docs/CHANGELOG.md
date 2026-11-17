@@ -12,6 +12,14 @@ Ships `@mulmoclaude/accounting-plugin@6.0.0`, `@mulmoclaude/chart-plugin@6.0.0`,
 
 ### Fixed
 
+#### Memory is read only from inside the workspace (#3573)
+
+The agent's system prompt lists memory from `conversations/memory/` on every turn, and it read whatever that folder, a
+type folder or a memory file pointed to, so a symlink to something elsewhere on the computer handed its headings (or,
+in the older per-entry layout, its whole text) to the agent — including a sandboxed one. Only regular files inside the
+workspace are read now; a link to a file inside the workspace keeps working. A named pipe in the memory folder no
+longer hangs the turn.
+
 #### Links inside the workspace are no longer refused for their letter case (#3573)
 
 On a case-insensitive disk (macOS, Windows), a symlink inside the workspace whose target was written with different
