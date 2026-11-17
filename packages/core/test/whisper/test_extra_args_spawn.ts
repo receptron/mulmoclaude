@@ -1,5 +1,7 @@
 // Drives the real path env → createWhisper → sidecar spawn with a fake
-// whisper-server that records its argv, so a dropped forward goes red.
+// whisper-server that records its argv, so a dropped forward goes red. The fake
+// answers the readiness probe: one that exits early leaves the sidecar polling
+// until its 60 s readiness timeout, which would hold the test run open.
 
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -11,6 +13,16 @@ import { createWhisper } from "../../src/whisper/whisper.ts";
 import { WHISPER_SERVER_EXTRA_ARGS_ENV } from "../../src/whisper/extra-args.ts";
 
 const POSIX_ONLY = process.platform === "win32" ? "the fake server is a shell script" : false;
+
+// Records argv, then serves any request on the --port the sidecar chose.
+const FAKE_SERVER_JS = `
+const { writeFileSync } = require("node:fs");
+const { createServer } = require("node:http");
+const args = process.argv.slice(2);
+writeFileSync(process.env.ARGV_FILE, args.join("\\n"));
+const port = Number(args[args.indexOf("--port") + 1]);
+createServer((_req, res) => res.end("ok")).listen(port, "127.0.0.1");
+`;
 const SILENT = { info: () => undefined, warn: () => undefined, error: () => undefined };
 
 let workDir = "";
@@ -43,7 +55,9 @@ describe("WHISPER_SERVER_EXTRA_ARGS reaches the spawned whisper-server", { skip:
     workDir = mkdtempSync(path.join(tmpdir(), "whisper-extra-args-"));
     argvFile = path.join(workDir, "argv.txt");
     fakeServer = path.join(workDir, "fake-whisper-server");
-    writeFileSync(fakeServer, `#!/bin/sh\nprintf '%s\\n' "$@" > '${argvFile}'\nexit 1\n`);
+    const fakeServerJs = path.join(workDir, "fake-whisper-server.cjs");
+    writeFileSync(fakeServerJs, FAKE_SERVER_JS);
+    writeFileSync(fakeServer, `#!/bin/sh\nARGV_FILE='${argvFile}' exec '${process.execPath}' '${fakeServerJs}' "$@"\n`);
     chmodSync(fakeServer, 0o755);
   });
 

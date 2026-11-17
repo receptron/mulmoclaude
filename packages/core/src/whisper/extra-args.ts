@@ -62,14 +62,14 @@ export function parseExtraServerArgs(raw: string | undefined): ExtraArgsResult {
 }
 
 /** Resolve the extra argv from the env value. A rejected value falls back to
- *  no extras so a typo cannot stop voice input; only flag names are logged. */
+ *  no extras so a typo cannot stop voice input. Only the count is logged: a
+ *  value is a path, and nothing tells a flag from a value that starts with `-`. */
 export function resolveExtraServerArgs(raw: string | undefined, logger: WhisperLogger): string[] {
   const result = parseExtraServerArgs(raw);
   if (!result.ok) {
     logger.warn(`${WHISPER_SERVER_EXTRA_ARGS_ENV} ignored`, { reason: result.reason });
     return [];
   }
-  if (result.args.length > 0)
-    logger.info(`${WHISPER_SERVER_EXTRA_ARGS_ENV} applied`, { flags: result.args.filter((arg) => arg.startsWith("-")).map(flagName) });
+  if (result.args.length > 0) logger.info(`${WHISPER_SERVER_EXTRA_ARGS_ENV} applied`, { count: result.args.length });
   return result.args;
 }

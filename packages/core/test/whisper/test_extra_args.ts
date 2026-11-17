@@ -96,10 +96,10 @@ describe("resolveExtraServerArgs", () => {
     assert.deepEqual(lines, []);
   });
 
-  it("returns the args and logs only the flag names, not their values", () => {
+  it("returns the args and logs only their count, never a value", () => {
     const { lines, logger } = recordingLogger();
-    assert.deepEqual(resolveExtraServerArgs("--vad --vad-model /secret/path.bin", logger), ["--vad", "--vad-model", "/secret/path.bin"]);
-    assert.deepEqual(lines, [{ level: "info", message: "WHISPER_SERVER_EXTRA_ARGS applied", data: { flags: ["--vad", "--vad-model"] } }]);
+    assert.deepEqual(resolveExtraServerArgs("--vad --vad-model -private/model.bin", logger), ["--vad", "--vad-model", "-private/model.bin"]);
+    assert.deepEqual(lines, [{ level: "info", message: "WHISPER_SERVER_EXTRA_ARGS applied", data: { count: 3 } }]);
   });
 
   it("falls back to no extras with a warning on a rejected value", () => {
