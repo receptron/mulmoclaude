@@ -35,6 +35,13 @@ function makeFixture(context: TestContext): Fixture {
   return { base, workspace, outside };
 }
 
+// buildWikiContext returns null for no section at all; every case here expects a section, so null fails the test.
+function wikiContextOf(workspace: string): string {
+  const wikiContext = buildWikiContext(workspace);
+  assert.ok(wikiContext !== null, "expected a wiki section");
+  return wikiContext;
+}
+
 const linkTo = (entry: string, target: string): void => {
   renameSync(entry, `${entry}.parked`);
   symlinkSync(target, entry);
@@ -43,7 +50,7 @@ const linkTo = (entry: string, target: string): void => {
 describe("system prompt reads stay inside the workspace", () => {
   it("includes the wiki summary and legacy memory of a plain workspace", (context) => {
     const { workspace } = makeFixture(context);
-    assert.match(buildWikiContext(workspace) ?? "", /inside summary\.md/);
+    assert.match(wikiContextOf(workspace), /inside summary\.md/);
     assert.match(buildMemoryContext(EMPTY_ATOMIC_SNAPSHOT, workspace), /inside memory\.md/);
   });
 
@@ -51,14 +58,14 @@ describe("system prompt reads stay inside the workspace", () => {
     const { workspace } = makeFixture(context);
     linkTo(path.join(workspace, WORKSPACE_FILES.wikiSummary), path.join(workspace, `${WORKSPACE_FILES.wikiSummary}.parked`));
     linkTo(path.join(workspace, WORKSPACE_FILES.memory), path.join(workspace, `${WORKSPACE_FILES.memory}.parked`));
-    assert.match(buildWikiContext(workspace) ?? "", /inside summary\.md/);
+    assert.match(wikiContextOf(workspace), /inside summary\.md/);
     assert.match(buildMemoryContext(EMPTY_ATOMIC_SNAPSHOT, workspace), /inside memory\.md/);
   });
 
   it("treats a wiki folder linked out as no wiki", { skip: POSIX_ONLY }, (context) => {
     const { workspace, outside } = makeFixture(context);
     linkTo(path.join(workspace, "data", "wiki"), outside);
-    const wikiContext = buildWikiContext(workspace) ?? "";
+    const wikiContext = wikiContextOf(workspace);
     assert.match(wikiContext, new RegExp(NO_WIKI_HINT));
     assert.doesNotMatch(wikiContext, new RegExp(OUTSIDE_TEXT));
   });
@@ -68,7 +75,7 @@ describe("system prompt reads stay inside the workspace", () => {
     linkTo(path.join(workspace, WORKSPACE_FILES.wikiSummary), path.join(outside, "summary.md"));
     rmSync(path.join(workspace, WORKSPACE_FILES.wikiSchema));
     symlinkSync(path.join(outside, "SCHEMA.md"), path.join(workspace, WORKSPACE_FILES.wikiSchema));
-    const wikiContext = buildWikiContext(workspace) ?? "";
+    const wikiContext = wikiContextOf(workspace);
     assert.doesNotMatch(wikiContext, new RegExp(OUTSIDE_TEXT));
     assert.doesNotMatch(wikiContext, /<reference type="wiki-summary">/);
     assert.doesNotMatch(wikiContext, /SCHEMA\.md/);
@@ -84,6 +91,6 @@ describe("system prompt reads stay inside the workspace", () => {
     const { workspace } = makeFixture(context);
     rmSync(path.join(workspace, WORKSPACE_FILES.wikiSummary));
     mkdirSync(path.join(workspace, WORKSPACE_FILES.wikiSummary));
-    assert.doesNotMatch(buildWikiContext(workspace) ?? "", /<reference type="wiki-summary">/);
+    assert.doesNotMatch(wikiContextOf(workspace), /<reference type="wiki-summary">/);
   });
 });
