@@ -11,7 +11,7 @@ import { NOOP_LOGGER, type WhisperLogger } from "./internal.ts";
 import { convertToWav16k } from "./ffmpeg.ts";
 import { createModelDownloader } from "./models.ts";
 import { createSidecar } from "./sidecar.ts";
-import { parseExtraServerArgs, WHISPER_SERVER_EXTRA_ARGS_ENV } from "./extra-args.ts";
+import { resolveExtraServerArgs, WHISPER_SERVER_EXTRA_ARGS_ENV } from "./extra-args.ts";
 import { isModelReady, type ModelStatus, type WhisperModelName } from "./models.ts";
 
 export interface WhisperOptions {
@@ -49,23 +49,17 @@ function normalizeTranscript(raw: string): string {
   return BLANK_MARKERS.has(trimmed.toLowerCase()) ? "" : trimmed;
 }
 
-// A rejected value falls back to no extras: a typo must not stop voice input.
-function resolveExtraServerArgs(logger: WhisperLogger): string[] {
-  const result = parseExtraServerArgs(process.env[WHISPER_SERVER_EXTRA_ARGS_ENV]);
-  if (!result.ok) {
-    logger.warn(`${WHISPER_SERVER_EXTRA_ARGS_ENV} ignored`, { reason: result.reason });
-    return [];
-  }
-  if (result.args.length > 0) logger.info(`${WHISPER_SERVER_EXTRA_ARGS_ENV} applied`, { args: result.args });
-  return result.args;
-}
-
 export function createWhisper(opts: WhisperOptions): Whisper {
   const { modelsDir } = opts;
   const logger = opts.logger ?? NOOP_LOGGER;
   const ffmpegBinary = opts.ffmpegBinary ?? "ffmpeg";
   const downloader = createModelDownloader(modelsDir, logger);
-  const sidecar = createSidecar(modelsDir, opts.serverBinary ?? "whisper-server", logger, resolveExtraServerArgs(logger));
+  const sidecar = createSidecar(
+    modelsDir,
+    opts.serverBinary ?? "whisper-server",
+    logger,
+    resolveExtraServerArgs(process.env[WHISPER_SERVER_EXTRA_ARGS_ENV], logger),
+  );
 
   // Scratch dir for transient audio — a hidden subdir of the models dir so it
   // shares the (non-git) models tree. Files are deleted after each transcription.

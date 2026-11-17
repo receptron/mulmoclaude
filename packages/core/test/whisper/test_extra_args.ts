@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseExtraServerArgs } from "../../src/whisper/extra-args.ts";
+import { parseExtraServerArgs, resolveExtraServerArgs } from "../../src/whisper/extra-args.ts";
 
 describe("parseExtraServerArgs — accepted", () => {
   it("returns no args when the variable is unset", () => {
@@ -40,7 +40,8 @@ describe("parseExtraServerArgs — accepted", () => {
 });
 
 describe("parseExtraServerArgs — rejected", () => {
-  for (const flag of ["-m", "--model", "--host", "--port"]) {
+  const reservedFlags = ["-m", "--model", "-h", "--help", "--host", "--port", "--public", "--request-path", "--inference-path", "--convert", "--tmp-dir"];
+  for (const flag of reservedFlags) {
     it(`rejects ${flag} in plain text`, () => {
       const result = parseExtraServerArgs(`--vad ${flag} x`);
       assert.equal(result.ok, false);
@@ -52,6 +53,19 @@ describe("parseExtraServerArgs — rejected", () => {
     });
   }
 
+  for (const attached of ["--port=1", "--host=0.0.0.0", "--model=/x.bin", "--inference-path=/x"]) {
+    it(`rejects the attached form ${attached}`, () => {
+      const result = parseExtraServerArgs(`--vad ${attached}`);
+      assert.equal(result.ok, false);
+      assert.ok(!result.ok && result.reason.includes(attached.split("=")[0] ?? ""));
+    });
+  }
+
+  it("rejects a NUL character, which spawn() would throw on", () => {
+    const result = parseExtraServerArgs(JSON.stringify(["--vad-model", "/a\u0000b"]));
+    assert.equal(result.ok, false);
+  });
+
   it("rejects malformed JSON", () => {
     assert.equal(parseExtraServerArgs('["--vad", ').ok, false);
   });
@@ -60,5 +74,38 @@ describe("parseExtraServerArgs — rejected", () => {
     assert.equal(parseExtraServerArgs('["--vad-threshold", 0.6]').ok, false);
     assert.equal(parseExtraServerArgs("[null]").ok, false);
     assert.equal(parseExtraServerArgs('[["--vad"]]').ok, false);
+  });
+});
+
+interface LoggedLine {
+  readonly level: "info" | "warn";
+  readonly message: string;
+  readonly data: unknown;
+}
+
+function recordingLogger(): { lines: LoggedLine[]; logger: Parameters<typeof resolveExtraServerArgs>[1] } {
+  const lines: LoggedLine[] = [];
+  const push = (level: LoggedLine["level"]) => (message: string, data?: unknown) => lines.push({ level, message, data });
+  return { lines, logger: { info: push("info"), warn: push("warn"), error: () => undefined } };
+}
+
+describe("resolveExtraServerArgs", () => {
+  it("is silent and adds nothing when unset", () => {
+    const { lines, logger } = recordingLogger();
+    assert.deepEqual(resolveExtraServerArgs(undefined, logger), []);
+    assert.deepEqual(lines, []);
+  });
+
+  it("returns the args and logs only the flag names, not their values", () => {
+    const { lines, logger } = recordingLogger();
+    assert.deepEqual(resolveExtraServerArgs("--vad --vad-model /secret/path.bin", logger), ["--vad", "--vad-model", "/secret/path.bin"]);
+    assert.deepEqual(lines, [{ level: "info", message: "WHISPER_SERVER_EXTRA_ARGS applied", data: { flags: ["--vad", "--vad-model"] } }]);
+  });
+
+  it("falls back to no extras with a warning on a rejected value", () => {
+    const { lines, logger } = recordingLogger();
+    assert.deepEqual(resolveExtraServerArgs("--vad --port 1", logger), []);
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0]?.level, "warn");
   });
 });
