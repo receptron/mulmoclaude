@@ -8,9 +8,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+## [2.14.0] - 2026-11-18
+
+**Solid models for parts that are made; extra flags for the local Whisper server; links and memory stay inside the
+workspace.**
+
 Ships `@mulmoclaude/accounting-plugin@6.0.1`, `@mulmoclaude/chart-plugin@6.0.1`, `@mulmoclaude/collection-plugin@7.0.1`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.2.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.1`, `@mulmoclaude/html-plugin@7.0.1`, `@mulmoclaude/markdown-plugin@7.0.1`, `@mulmoclaude/markdown-utils@3.0.3`, `@mulmoclaude/mulmoscript-plugin@7.0.1`, `@mulmoclaude/spotify-plugin@2.0.4`, `@mulmoclaude/x-plugin@1.0.5`.
 
 ### Added
+
+#### Solid models with `presentBrep` (#3665)
+
+The Artist role gains `presentBrep`, from `@gui-chat-plugin/brep`, beside `presentShapeScript`. The agent writes a
+[replicad](https://replicad.xyz) script; the server builds it with the OpenCascade kernel, checks the result, and saves
+the script, a STEP file, an STL and a sheet of line drawings under `artifacts/brep/`. The card shows the model in 3D
+with the check report and a download button for each file. Because the script runs in the server's process, the tool
+is offered only to an agent running unsandboxed on this machine, and `POST /api/brep` refuses client tokens.
 
 #### Extra flags for the local Whisper server (#3671)
 
