@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+Ships `@mulmoclaude/accounting-plugin@6.0.1`, `@mulmoclaude/chart-plugin@6.0.1`, `@mulmoclaude/collection-plugin@7.1.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.3.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.1`, `@mulmoclaude/html-plugin@7.0.1`, `@mulmoclaude/markdown-plugin@7.0.1`, `@mulmoclaude/markdown-utils@3.0.3`, `@mulmoclaude/mulmoscript-plugin@7.0.1`, `@mulmoclaude/spotify-plugin@2.0.4`, `@mulmoclaude/x-plugin@1.0.5`.
+
+### Added
+
+#### Hide the built-in Calendar / Kanban toggles (#3677)
+
+A collection's `schema.json` can set `"builtinViews": { "calendar": false, "kanban": false }` to withhold either
+built-in view toggle — for collections read mainly through custom views. The `date` / `enum` fields keep their picker,
+dropdown and validation; hiding Kanban keeps the calendar's enum colouring; a collection last opened in a hidden view
+opens as the table. Leaving the key out changes nothing, and a misspelt key is rejected rather than ignored.
+
 ## [2.14.0] - 2026-11-18
 
 **Solid models for parts that are made; extra flags for the local Whisper server; links and memory stay inside the
