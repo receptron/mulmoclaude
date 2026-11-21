@@ -182,6 +182,7 @@ skipped, never crashes the host):
 | `calendarEndField`     | Optional. A second `date`/`datetime` field marking the END of a multi-day span on the calendar (the record renders across `calendarField` → this date). Requires `calendarField`. Must name a real `date`/`datetime` field.                                                                                                                                                                                                                                                                                                                                                        |
 | `calendarTimeField`    | Optional. Name of a string field holding a free-form time or time-range (`"14:00-17:00"`, `"17:00-"`, `"16:30"`) used to place records on the calendar's **day (time-allocation) view**. Consulted only when the date fields are date-only — a `datetime` anchor/end pair carries its own clock and takes precedence. Requires `calendarField`. See "Calendar view" below.                                                                                                                                                                                                         |
 | `kanbanField`          | Optional. Name of an `enum` field that groups records into columns on the **Kanban board** (one column per declared value). When unset, the Kanban toggle still appears if the schema has any `enum` field — the first one is used, switchable in-view. Set this to pin a specific group field. Must name a real `enum` field. See "Kanban view" below.                                                                                                                                                                                                                            |
+| `builtinViews`         | Optional. `{ "calendar"?: boolean, "kanban"?: boolean }` — `false` hides that built-in view toggle (e.g. a collection read through custom views). Omitted / `true` keeps the field-derived default; it never adds a view whose `date` / `enum` field is missing. Unknown keys are rejected. |
 | `views`                | Optional. Custom (LLM-authored) HTML views: `[{ id, label, icon?, file, capabilities?, target?, allowSendChat? }]`. Each renders an HTML file under `views/*.html` in a sandboxed iframe over the records, for layouts the built-ins don't cover (year/quarter overview, Gantt, report). `capabilities` is `["read"]` (default) or `["read","write"]`. `allowSendChat: true` makes the view's `startChat` buttons RUN the prompt instead of leaving it as an editable draft. `target: "mobile"` makes it a **remote view** for the phone app (different runtime contract — **`config/helps/custom-view-remote.md`**). See "Custom views" below and **`config/helps/custom-view.md`** for the desktop authoring contract. |
 | `googleCalendar`       | Optional. `{ "calendarId": "primary", "map": { "<field>": "summary" } }` — the host mirrors one of the user's **Google calendars** into this collection on a schedule, **LLM-free**: no tool call, no tokens per sync. Reach for it whenever the user asks for a collection that syncs with Google Calendar — never an `ingest.kind: "agent"` worker or the `google` MCP tools, which spend an LLM turn per refresh doing what the host does for free. Needs `dataPath`. See "Google Calendar sync" below and **`config/helps/google-calendar-collection.md`**.                    |
 
@@ -833,6 +834,9 @@ Notes:
   anchors the grid (otherwise the first `date` field is used, and the user can
   switch in-view when there are several); `calendarEndField` makes a record span
   multiple days (`calendarField` → `calendarEndField`, inclusive).
+- **To hide the toggle**, set `"builtinViews": { "calendar": false }` — e.g. a
+  collection read through custom views. The `date` fields keep their picker and
+  validation; only the Calendar button goes away.
 - `displayField` sets the chip label (falls back to the primary key).
 - Records whose anchor date is missing or unparseable are listed in a small
   "No date" tray under the grid — never silently dropped.
@@ -914,6 +918,10 @@ Notes:
 - **No schema change is needed to get the toggle** — it appears whenever an
   `enum` field exists. `kanbanField` only _tunes_ which enum groups the board
   (otherwise the first `enum` field is used, switchable in-view).
+- **To hide the toggle**, set `"builtinViews": { "kanban": false }`. Use this
+  instead of retyping the enum to `string`, which loses the dropdown and
+  validation (and is impossible when a `toggle` or `completionField` needs it).
+  Calendar chips stay coloured by the enum.
 - **The enum is the single source of truth.** For a todo-style "done" checkbox,
   use a `toggle` field projecting the status enum (above) — do NOT add a separate
   stored boolean. Checking the box sets `status` to the done value (and moves the

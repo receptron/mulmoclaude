@@ -135,6 +135,14 @@ const COLORED = {
   items: [{ id: "review", name: "Review", on: MID, status: "doing" }],
 };
 
+// COLORED with one built-in toggle opted out via `builtinViews` (#3677).
+const withBuiltinViews = (slug: string, builtinViews: Record<string, boolean>) => ({
+  ...COLORED,
+  collection: { ...COLORED.collection, slug, schema: { ...COLORED.collection.schema, builtinViews } },
+});
+const COLORED_NO_KANBAN = withBuiltinViews("colored-no-kanban", { kanban: false });
+const COLORED_NO_CALENDAR = withBuiltinViews("colored-no-calendar", { calendar: false });
+
 // A Google Calendar mirror: its `end` is exclusive, so an all-day event on the
 // 15th is stored ending at 16T00:00 and must not spill onto the 16th (#3323).
 // PLAIN holds the same dates without a sync, where the end stays inclusive.
@@ -210,6 +218,14 @@ async function mockCollections(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname === "/api/collections/colored-events",
     (route) => route.fulfill({ json: COLORED }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/collections/colored-no-kanban",
+    (route) => route.fulfill({ json: COLORED_NO_KANBAN }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/collections/colored-no-calendar",
+    (route) => route.fulfill({ json: COLORED_NO_CALENDAR }),
   );
   await page.route(
     (url) => url.pathname === "/api/collections/mirror",
@@ -511,6 +527,20 @@ test.describe("collection calendar view", () => {
     await page.goto("/collections/contacts");
     await expect(page.getByTestId("collections-row-jane")).toBeVisible();
     await expect(page.getByTestId("collection-view-toggle-calendar")).toHaveCount(0);
+  });
+
+  test("builtinViews.calendar=false hides the calendar toggle but keeps kanban", async ({ page }) => {
+    await page.goto("/collections/colored-no-calendar");
+    await expect(page.getByTestId("collection-view-toggle-kanban")).toBeVisible();
+    await expect(page.getByTestId("collection-view-toggle-calendar")).toHaveCount(0);
+  });
+
+  test("builtinViews.kanban=false hides the kanban toggle; calendar chips keep the enum colour", async ({ page }) => {
+    await page.goto("/collections/colored-no-kanban");
+    await page.getByTestId("collection-view-toggle-calendar").click();
+    await expect(page.getByTestId("collection-view-toggle-kanban")).toHaveCount(0);
+    // "doing" → sky. The colour field must not depend on the kanban toggle being offered.
+    await expect(page.getByTestId("collection-calendar-chip-review")).toHaveClass(/bg-sky-100/);
   });
 
   // The view-mode reload-survives test lives in collection-state-persist.spec.ts

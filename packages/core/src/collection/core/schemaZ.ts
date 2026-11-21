@@ -866,6 +866,10 @@ const CollectionObjectZ = z.object({
   // refine below. Optional — the toggle auto-derives from any `enum`
   // field when this is unset.
   kanbanField: z.string().trim().min(1).optional(),
+  // Opt out of a built-in view toggle (`false` hides it) for collections read
+  // through custom views. `.strict()` so a misspelt key fails instead of
+  // silently leaving the toggle on.
+  builtinViews: z.object({ calendar: z.boolean().optional(), kanban: z.boolean().optional() }).strict().optional(),
   // Custom (LLM-authored) HTML views. Each renders in a sandboxed iframe
   // over the records. Optional, so every existing schema validates
   // unchanged. Ids validated to be valid + unique slugs by refines below.

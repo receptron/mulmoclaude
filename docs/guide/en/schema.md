@@ -103,6 +103,7 @@ Ask "add a … button" and Claude picks the right kind.
 |---|---|
 | `calendarField` | Which date the calendar uses |
 | `kanbanField` | Which choice field splits the kanban columns |
+| `builtinViews` | Hide the built-in Calendar / Kanban buttons, e.g. `{ "calendar": false, "kanban": false }` |
 | `displayField` | Which field names a record on cards and reminders |
 | `color` | The collection's color (`violet` `indigo` `sky` `teal` `emerald` `lime` `fuchsia`) |
 | `views` | Custom views (free-form looks built in HTML). Phone views use `"target": "mobile"` |

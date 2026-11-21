@@ -103,6 +103,7 @@ description: コレクションの設計図 schema.json の読み方。項目の
 |---|---|
 | `calendarField` | カレンダーでどの日付を使うか |
 | `kanbanField` | カンバンでどの選択肢で列を分けるか |
+| `builtinViews` | 組み込みのカレンダー・カンバンのボタンを隠す。例: `{ "calendar": false, "kanban": false }` |
 | `displayField` | カードや通知に出す名前にどの項目を使うか |
 | `color` | コレクションの色（`violet` `indigo` `sky` `teal` `emerald` `lime` `fuchsia`） |
 | `views` | カスタムビュー（HTML で作った自由な見た目）の一覧。スマホ用は `"target": "mobile"` |

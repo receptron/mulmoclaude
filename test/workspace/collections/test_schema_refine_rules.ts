@@ -262,6 +262,23 @@ describe("collection schema rules — field pointers", () => {
   });
 });
 
+describe("collection schema rules — builtinViews opt-out", () => {
+  it("accepts either or both built-in views switched off or on", () => {
+    assertAccepts({ builtinViews: { calendar: false } });
+    assertAccepts({ builtinViews: { kanban: false } });
+    assertAccepts({ builtinViews: { calendar: true, kanban: false } });
+    assertAccepts({ builtinViews: {} });
+  });
+
+  it("rejects a misspelt key instead of silently keeping the toggle", () => {
+    assertRejects({ builtinViews: { calender: false } }, "Unrecognized key");
+  });
+
+  it("rejects a non-boolean value", () => {
+    assertRejects({ builtinViews: { kanban: "false" } }, "expected boolean");
+  });
+});
+
 describe("collection schema rules — toggle projection", () => {
   const toggleOver = (spec: Record<string, unknown>) => ({ fields: { ...baseFields, done: { type: "toggle", label: "Done", ...spec } } });
 
