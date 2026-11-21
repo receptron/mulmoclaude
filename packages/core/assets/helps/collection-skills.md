@@ -833,6 +833,9 @@ Notes:
   anchors the grid (otherwise the first `date` field is used, and the user can
   switch in-view when there are several); `calendarEndField` makes a record span
   multiple days (`calendarField` → `calendarEndField`, inclusive).
+- **To hide the toggle**, set `"builtinViews": { "calendar": false }` — e.g. a
+  collection read through custom views. The `date` fields keep their picker and
+  validation; only the Calendar button goes away.
 - `displayField` sets the chip label (falls back to the primary key).
 - Records whose anchor date is missing or unparseable are listed in a small
   "No date" tray under the grid — never silently dropped.
@@ -914,6 +917,10 @@ Notes:
 - **No schema change is needed to get the toggle** — it appears whenever an
   `enum` field exists. `kanbanField` only _tunes_ which enum groups the board
   (otherwise the first `enum` field is used, switchable in-view).
+- **To hide the toggle**, set `"builtinViews": { "kanban": false }`. Use this
+  instead of retyping the enum to `string`, which loses the dropdown and
+  validation (and is impossible when a `toggle` or `completionField` needs it).
+  Calendar chips stay coloured by the enum.
 - **The enum is the single source of truth.** For a todo-style "done" checkbox,
   use a `toggle` field projecting the status enum (above) — do NOT add a separate
   stored boolean. Checking the box sets `status` to the done value (and moves the

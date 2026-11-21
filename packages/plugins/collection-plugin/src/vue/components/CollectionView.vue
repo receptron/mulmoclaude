@@ -103,7 +103,7 @@
           :anchor-field="calendarAnchorField"
           :end-field="calendarEndField"
           :time-field="calendarTimeField"
-          :color-field="hasKanban ? kanbanGroupField : ''"
+          :color-field="kanbanGroupField"
           :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
           @select="onCalendarSelect"
           @open-day="onOpenDay"
@@ -120,7 +120,7 @@
           :anchor-field="calendarAnchorField"
           :end-field="calendarEndField"
           :time-field="calendarTimeField"
-          :color-field="hasKanban ? kanbanGroupField : ''"
+          :color-field="kanbanGroupField"
           :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
           :can-create="canCreate"
           :show-detail="Boolean(viewing || editing)"
@@ -362,7 +362,14 @@ import CollectionCustomView from "./CollectionCustomView.vue";
 import CollectionRemoteViewPreview from "./CollectionRemoteViewPreview.vue";
 import CollectionTable from "./CollectionTable.vue";
 import { useCollectionRendering } from "../useCollectionRendering";
-import { writeCollectionViewMode, writeCollectionSort, writeCollectionFlagFilters, type CollectionViewMode } from "../collectionViewMode";
+import {
+  builtInViewAvailability,
+  writeCollectionViewMode,
+  writeCollectionSort,
+  writeCollectionFlagFilters,
+  type BuiltInViewAvailability,
+  type CollectionViewMode,
+} from "../collectionViewMode";
 import type { CollectionConfirmOptions, CollectionPushResult } from "../uiContext";
 import { useCollectionUi } from "../scopedUi";
 import { pushKeptDeletes, pushMessage, pushProblems } from "../calendarPushResult";
@@ -942,8 +949,8 @@ const isFeedRoute = computed<boolean>(() => !embedded.value && cui.isFeedRoute()
 // Local UI state only — NEVER persisted to schema. The user toggles it;
 // the host never flips it programmatically. The calendar is offered only
 // when the schema has a `date` field and the kanban only when it has an
-// `enum` field, so plain collections and the initial load are unchanged
-// (default "table").
+// `enum` field (and neither is set to `false` in `builtinViews`), so plain
+// collections and the initial load are unchanged (default "table").
 //
 // Standalone route mode persists the last-used mode per collection in
 // localStorage so reopening `/collections/:slug` restores the prior view
@@ -968,8 +975,13 @@ const dateFields = computed<string[]>(() =>
     : [],
 );
 
+/** Which built-in views the schema offers (field-derived, minus `builtinViews` opt-outs). */
+const builtInViews = computed<BuiltInViewAvailability>(() =>
+  collection.value ? builtInViewAvailability(collection.value.schema) : { calendar: false, kanban: false },
+);
+
 /** Whether the table ↔ calendar toggle is offered. */
-const hasCalendar = computed<boolean>(() => dateFields.value.length > 0);
+const hasCalendar = computed<boolean>(() => builtInViews.value.calendar);
 
 /** `enum` fields in declaration order — the kanban can group on any. */
 const enumFields = computed<string[]>(() =>
@@ -981,7 +993,7 @@ const enumFields = computed<string[]>(() =>
 );
 
 /** Whether the kanban toggle is offered (needs an `enum` field to group on). */
-const hasKanban = computed<boolean>(() => enumFields.value.length > 0);
+const hasKanban = computed<boolean>(() => builtInViews.value.kanban);
 
 /** Custom (LLM-authored) HTML views declared on the schema. Mobile-target
  *  views need the host's `fetchRemoteView` binding (the phone-frame preview's

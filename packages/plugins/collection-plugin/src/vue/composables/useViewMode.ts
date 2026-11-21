@@ -2,8 +2,8 @@
 // never persisted to schema: the user toggles it and the standalone page restores
 // the last-used mode per collection from localStorage (an embedded card seeds from
 // its own `initialView` first). The calendar is offered only when the schema has a
-// `date` field and the kanban only with an `enum` field, so `activeView` collapses
-// a stale mode whose enabling field vanished back to `table`.
+// `date` field and the kanban only with an `enum` field (unless `builtinViews` opts
+// out), so `activeView` collapses a stale mode no longer offered back to `table`.
 //
 // A thin reactive shell over `../collectionViewMode`: the pure mode-collapse
 // (`resolveActiveViewMode`) lives there. The localStorage WRITE stays in the

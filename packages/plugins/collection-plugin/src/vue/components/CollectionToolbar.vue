@@ -77,7 +77,8 @@
         </div>
       </div>
       <!-- View toggle: table ↔ calendar ↔ kanban. Calendar shows only when
-           the schema has a `date` field, kanban only with an `enum` field;
+           the schema has a `date` field, kanban only with an `enum` field
+           (either withheld by `builtinViews`);
            local UI state, never persisted. -->
       <div
         v-if="!hideViewToggle && (hasCalendar || hasKanban || hasCustomViews || canAddCustomView)"

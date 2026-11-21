@@ -25,17 +25,34 @@ export function isCustomViewMode(view: CollectionViewMode): view is CustomViewMo
   return view.startsWith(CUSTOM_VIEW_PREFIX);
 }
 
+export interface BuiltInViewAvailability {
+  calendar: boolean;
+  kanban: boolean;
+}
+
+/** Whether the schema offers each built-in view: calendar needs a
+ *  `date`/`datetime` field, kanban an `enum` field, and either is withheld
+ *  when `builtinViews` sets it to `false`. */
+export function builtInViewAvailability(schema: CollectionSchema): BuiltInViewAvailability {
+  const fields = Object.values(schema.fields);
+  const hasDateField = fields.some((field) => field.type === "date" || field.type === "datetime");
+  const hasEnumField = fields.some((field) => field.type === "enum");
+  return {
+    calendar: hasDateField && schema.builtinViews?.calendar !== false,
+    kanban: hasEnumField && schema.builtinViews?.kanban !== false,
+  };
+}
+
 /** Every view mode a schema can render, in selector order: `table`
- *  always, `calendar` when a `date`/`datetime` field exists, `kanban`
- *  when an `enum` field exists, then each declared custom view. Mirrors
- *  the field-derived gating inside `CollectionView` (hasCalendar /
- *  hasKanban / customViews) so callers outside that component — e.g. the
- *  dashboard's per-tile view picker — offer exactly the same choices. */
+ *  always, then the available built-in views, then each declared custom
+ *  view. Shares `builtInViewAvailability` with `CollectionView` so callers
+ *  outside that component — e.g. the dashboard's per-tile view picker —
+ *  offer exactly the same choices. */
 export function applicableViewModes(schema: CollectionSchema): CollectionViewMode[] {
   const modes: CollectionViewMode[] = ["table"];
-  const fields = Object.values(schema.fields);
-  if (fields.some((field) => field.type === "date" || field.type === "datetime")) modes.push("calendar");
-  if (fields.some((field) => field.type === "enum")) modes.push("kanban");
+  const available = builtInViewAvailability(schema);
+  if (available.calendar) modes.push("calendar");
+  if (available.kanban) modes.push("kanban");
   for (const view of schema.views ?? []) modes.push(customViewKey(view.id));
   return modes;
 }
