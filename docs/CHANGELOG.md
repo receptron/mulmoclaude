@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+## [2.15.0] - 2026-11-21
+
+**Collections can hide the built-in Calendar and Kanban toggles.**
+
 Ships `@mulmoclaude/accounting-plugin@6.0.1`, `@mulmoclaude/chart-plugin@6.0.1`, `@mulmoclaude/collection-plugin@7.1.0`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.3.0`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.1`, `@mulmoclaude/html-plugin@7.0.1`, `@mulmoclaude/markdown-plugin@7.0.1`, `@mulmoclaude/markdown-utils@3.0.3`, `@mulmoclaude/mulmoscript-plugin@7.0.1`, `@mulmoclaude/spotify-plugin@2.0.4`, `@mulmoclaude/x-plugin@1.0.5`.
 
 ### Added
