@@ -127,13 +127,10 @@ export function codeCopyNonce(): string {
   return nonce;
 }
 /** Marks the wrapper the listener searches for the block's `<code>`. Its
- *  VALUE is the block style, because the two are indistinguishable once
- *  rendered and they must be copied differently: marked leaves a
- *  trailing newline on an indented block, while the same newline on a
- *  FENCED block is a blank line the author actually wrote. */
+ *  VALUE is the block style; the copy no longer branches on it, because
+ *  marked 18.2.1 made both styles end their text the same way. */
 export const CODE_COPY_BLOCK_ATTR = "data-code-copy-block";
-/** Value of the above for a 4-space block — the only style that carries
- *  a renderer-added trailing newline. */
+/** Value of the above for a 4-space block. */
 export const CODE_BLOCK_STYLE_INDENTED = "indented";
 /** Value for every fenced block. */
 export const CODE_BLOCK_STYLE_FENCED = "fenced";

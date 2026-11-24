@@ -126,13 +126,12 @@ describe("codeTextOf", () => {
     assert.equal(codeTextOf(env.button), "indented();");
   });
 
-  it("keeps the same newline on a FENCED block — there it is a blank line the author wrote", () => {
-    // marked strips a fence's own terminator, so a surviving `\n` is
-    // content. The two shapes are indistinguishable from the text alone,
-    // which is why the style travels in the wrapper attribute.
+  it("keeps a FENCED block's trailing blank line, dropping only the last line's terminator", () => {
+    // marked >= 18.2.1 renders "```js\na();\n\n```" as "a();\n\n": the
+    // blank line plus its own terminator.
     const code = env.document.querySelector("code");
     assert.ok(code);
-    code.textContent = "a();\n";
+    code.textContent = "a();\n\n";
     assert.equal(codeTextOf(env.button), "a();\n");
   });
 

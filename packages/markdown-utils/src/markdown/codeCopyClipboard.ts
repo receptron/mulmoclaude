@@ -21,7 +21,6 @@ import {
   CODE_COPIED_ICON,
   CODE_COPY_IDLE_LABEL_ATTR,
   CODE_COPY_COPIED_LABEL_ATTR,
-  CODE_BLOCK_STYLE_INDENTED,
   CODE_COPY_NONCE_UNAVAILABLE,
   codeCopyNonce,
   setCodeCopyNonce,
@@ -85,13 +84,10 @@ export function codeTextOf(button: Element): string | null {
   const code = block?.querySelector("pre > code");
   const text = code?.textContent;
   if (text === undefined || text === null) return null;
-  // ONLY for an indented block. Marked leaves a trailing newline there
-  // that the author did not write, and strips it from a fenced block —
-  // so on a fence the very same `\n` IS content, the blank line before
-  // the closing ```. The two are identical once rendered, which is why
-  // the style has to travel in the markup rather than be guessed here.
-  const indented = block?.getAttribute(CODE_COPY_BLOCK_ATTR) === CODE_BLOCK_STYLE_INDENTED;
-  return indented ? stripTrailingNewline(text) : text;
+  // Since marked 18.2.1 both block styles keep the last line's terminator
+  // whenever it is there (an indented block always, a fence only when it
+  // ends in a blank line), so dropping one recovers the author's lines.
+  return stripTrailingNewline(text);
 }
 
 function stripTrailingNewline(text: string): string {

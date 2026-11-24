@@ -69,7 +69,9 @@ describe("mermaidExtension", () => {
   it("handles an empty mermaid body without crashing", () => {
     const source = "```mermaid\n\n```\n";
     const html = markedWithMermaid().parse(source) as string;
-    assert.match(html, /<pre class="mermaid" data-mermaid-pending="1"><\/pre>/);
+    // marked >= 18.2.1 keeps the blank line as "\n"; mermaid rejects ""
+    // and "\n" with the same UnknownDiagramError, so only emptiness matters.
+    assert.match(html, /<pre class="mermaid" data-mermaid-pending="1">\s*<\/pre>/);
   });
 
   it("keeps surrounding paragraphs intact", () => {
