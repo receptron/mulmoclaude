@@ -1355,7 +1355,7 @@
     protobufjs "^7.5.4"
     ws "^8.18.0"
 
-"@google/genai@^3.3.0":
+"@google/genai@^3.6.1":
   version "3.6.1"
   resolved "https://registry.yarnpkg.com/@google/genai/-/genai-3.6.1.tgz#2cd9806c6fa31a1c64c06d1af01e258289731bdb"
   integrity sha512-DQIkZkl+VoZc+RUSaJ41vRuywjQDpP0t/oUf5/ddQhNW6JsPjVULW2EgHmuJ1mrr6ACtrmUdPlqtNXF1yfKySg==
@@ -6497,7 +6497,7 @@ find-up@^5.0.0:
     locate-path "^6.0.0"
     path-exists "^4.0.0"
 
-firebase@^13.2.0:
+firebase@^13.4.0:
   version "13.4.0"
   resolved "https://registry.yarnpkg.com/firebase/-/firebase-13.4.0.tgz#22cba36759e49d718feab627352cc96c81307e99"
   integrity sha512-4B7M7U7eOF4cEaQgmooXNwCm7zAJEuPs+YJdZaGUCe9AGRuZ7Mo5OQhTzlT60Ncr/f3vQsefsxvzJCFK61GM6w==
@@ -7151,7 +7151,7 @@ ignore@^5.2.0:
   resolved "https://registry.yarnpkg.com/ignore/-/ignore-5.3.2.tgz#3cd40e729f3643fd87cb04e50bf0eb722bc596f5"
   integrity sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==
 
-ignore@^7.0.0, ignore@^7.0.14, ignore@^7.0.5:
+ignore@^7.0.0, ignore@^7.0.16, ignore@^7.0.5:
   version "7.0.16"
   resolved "https://registry.yarnpkg.com/ignore/-/ignore-7.0.16.tgz#8c593ab7a7193e663f810203690c9cba851b6d3a"
   integrity sha512-52N+Y4HRMOJmbLmr+DqO4iSRyyB7N52gm7PWCT6h0p978+oKbqHCB7gIJIwZvBUsjlSdWbrBFqUSmIFNZMpn0A==
@@ -8308,7 +8308,7 @@ marked@^16.3.0:
   resolved "https://registry.yarnpkg.com/marked/-/marked-16.4.2.tgz#4959a64be6c486f0db7467ead7ce288de54290a3"
   integrity sha512-TI3V8YYWvkVf3KJe1dRkpnjs68JUPyEa5vjKrp1XEEJUAOaQc+Qj+L1qWbPd0SJuAdQkFU0h73sXXqwDYxsiDA==
 
-marked@^18.1.2, marked@^18.2.0:
+marked@^18.1.2, marked@^18.3.0:
   version "18.3.0"
   resolved "https://registry.yarnpkg.com/marked/-/marked-18.3.0.tgz#6d5806657a56567edc9e25beb436b9053b1738ea"
   integrity sha512-ed8zmPXlBb3UfGXN5iHMQyMhFpdqLgoV5umUXx/Q1R+FW3q8VpqpyoKUwlENL9appo2UMvNLURDVaT3AMOryGA==
@@ -9464,7 +9464,7 @@ puppeteer-core@25.18.1:
     webdriver-bidi-protocol "1.0.2"
     ws "^8.22.1"
 
-puppeteer@^25.16.0, puppeteer@^25.17.0, puppeteer@^25.3.0:
+puppeteer@^25.16.0, puppeteer@^25.18.1, puppeteer@^25.3.0:
   version "25.18.1"
   resolved "https://registry.yarnpkg.com/puppeteer/-/puppeteer-25.18.1.tgz#a0e702e2a063bf96c6558029d7c53f590ea68d49"
   integrity sha512-fCsfwERKluvC84jsVyhDoBZMNuI8t5FFnWXcTdH1vn3NhMk6clZcrF0Da2se6/Hj6CBJ+2PRPpqeV0qPIETeJA==
