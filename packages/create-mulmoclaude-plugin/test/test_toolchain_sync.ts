@@ -40,20 +40,19 @@ async function loadBoth(): Promise<{ template: RangeMap; canonical: RangeMap }> 
 }
 
 describe("template devDependencies — synced with bookmarks-plugin", () => {
-  it("declares every documented toolchain dep on both sides", async () => {
-    const { template, canonical } = await loadBoth();
-    DOCUMENTED_TOOLCHAIN.forEach((name) => {
-      assert.ok(Object.hasOwn(template, name), `template is missing ${name}`);
-      assert.ok(Object.hasOwn(canonical, name), `bookmarks-plugin is missing ${name}`);
-    });
+  it("bookmarks-plugin still declares every documented toolchain dep", async () => {
+    const { canonical } = await loadBoth();
+    const missing = DOCUMENTED_TOOLCHAIN.filter((name) => !Object.hasOwn(canonical, name));
+    assert.deepEqual(missing, []);
   });
 
-  it("uses the canonical range for every dep both declare", async () => {
+  // Template-only extras are allowed: a scaffolded plugin lives outside the
+  // monorepo, so it carries the ESLint deps the in-tree plugin gets from the root.
+  it("carries every bookmarks-plugin devDependency at the same range", async () => {
     const { template, canonical } = await loadBoth();
-    const shared = Object.keys(template).filter((name) => Object.hasOwn(canonical, name) && !NOT_SYNCED.has(name));
-    const drifted = shared
-      .filter((name) => template[name] !== canonical[name])
-      .map((name) => `${name}: template ${template[name]} vs bookmarks-plugin ${canonical[name]}`);
+    const drifted = Object.keys(canonical)
+      .filter((name) => !NOT_SYNCED.has(name) && template[name] !== canonical[name])
+      .map((name) => `${name}: template ${template[name] ?? "(missing)"} vs bookmarks-plugin ${canonical[name]}`);
     assert.deepEqual(drifted, []);
   });
 });
