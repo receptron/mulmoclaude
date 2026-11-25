@@ -62,17 +62,17 @@ const PACKAGE_JSON = `{
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.6",
+    "@vitejs/plugin-vue": "^6.0.11",
     "eslint": "^9.0.0",
     "gui-chat-protocol": "^1.2.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.0.0",
-    "vite": "^8.0.10",
-    "vite-plugin-dts": "^5.0.0",
-    "vue": "^3.5.34",
+    "vite": "^8.3.7",
+    "vite-plugin-dts": "^5.1.2",
+    "vue": "^3.5.45",
     "vue-eslint-parser": "^10.0.0",
-    "vue-tsc": "^3.3.9",
-    "zod": "^4.4.3"
+    "vue-tsc": "^3.3.14",
+    "zod": "^4.6.7"
   },
   "license": "MIT"
 }
