@@ -88,7 +88,9 @@ The scaffold CLI embeds `package.json` + `vite.config.ts` + `tsconfig.json` + ES
 3. Run `yarn workspace create-mulmoclaude-plugin run build` to regenerate the CLI's own dist.
 4. Optionally bump the CLI's own `version` and re-publish if external users will fetch via `npx`.
 
-If you forget step 1 / 2, generated plugins ship with stale toolchains and may hit the same issue you just fixed in the in-tree plugin (e.g. empty `.d.ts` from api-extractor + TS 6).
+Step 1 is asserted by `packages/create-mulmoclaude-plugin/test/test_toolchain_sync.ts`: every devDependency the template and `bookmarks-plugin` both declare must carry the same range (`gui-chat-protocol` is exempt while the template stays on the 1.x protocol), so a bump made on one side only turns `yarn test` red.
+
+If you forget step 2, generated plugins ship with stale toolchains and may hit the same issue you just fixed in the in-tree plugin (e.g. empty `.d.ts` from api-extractor + TS 6).
 
 **The same applies to how strictly a plugin is checked**, and that half is easier to miss because nothing about a generated plugin looks broken:
 
