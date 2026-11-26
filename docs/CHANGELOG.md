@@ -21,7 +21,8 @@ Ships `@mulmoclaude/accounting-plugin@6.0.2`, `@mulmoclaude/chart-plugin@6.0.2`,
 The launcher's start-up check passed, but every chat then failed with `claude CLI binary not found`, because the
 server only looked for `claude.exe` inside an npm / Yarn / pnpm global install. It now asks `where claude` and uses a
 `claude.exe` found on PATH as-is, in the same PATH order the start-up check resolves, and falls back to the native
-installer's `%USERPROFILE%\.local\bin\claude.exe`. Hosts that resolved before resolve the same binary.
+installer's `%USERPROFILE%\.local\bin\claude.exe`. With both a native and an npm install, whichever comes first on
+PATH is used — the one `claude --version` runs — so such a host can switch to the native binary.
 
 #### Code-block copy keeps the author's lines (#3682)
 
