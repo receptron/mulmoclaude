@@ -114,20 +114,30 @@ function* windowsCandidates(options: ResolveOptions): Generator<string> {
   yield* candidatesFromEnvDefaults(options);
 }
 
-// 1. `where claude.cmd` — the canonical PATH probe. Each output line
-//    is a path to a .cmd wrapper; walk up to PARENT_WALK_DEPTH levels
+// 1. `where claude` — the canonical PATH probe, in the same PATH order
+//    the launcher's `claude --version` check resolves. A `claude.exe`
+//    line (native installer, WinGet) is spawnable as-is; any other line
+//    is a package-manager shim, so walk up PARENT_WALK_DEPTH levels
 //    looking for `node_modules/@anthropic-ai/claude-code/bin/claude.exe`.
 //    Covers npm-global, yarn-global, pnpm-global, nvm-windows, Volta,
 //    and any custom `npm prefix -g` because we are starting from a
 //    real PATH entry.
 function* candidatesFromWhereProbe(options: ResolveOptions): Generator<string> {
-  const out = runSpawnSync(options, "where", ["claude.cmd"]);
+  const out = runSpawnSync(options, "where", ["claude"]);
   if (!out) return;
   for (const line of out.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    if (isExePath(trimmed)) {
+      yield trimmed;
+      continue;
+    }
     yield* walkUpForPackage(options, winPath.dirname(trimmed));
   }
+}
+
+function isExePath(candidate: string): boolean {
+  return winPath.extname(candidate).toLowerCase() === ".exe";
 }
 
 // 2. `npm config get prefix` — covers the case where the npm prefix
@@ -157,6 +167,8 @@ function* candidatesFromEnvDefaults(options: ResolveOptions): Generator<string> 
     // (5, 6, 7, 8, …) is picked up automatically.
     yield* pnpmGlobalCandidates(options, winPath.join(localAppData, "pnpm"));
   }
+  // Native installer (`install.ps1`) default, for when its bin dir is not on PATH yet.
+  if (env.USERPROFILE) yield winPath.join(env.USERPROFILE, ".local", "bin", "claude.exe");
 }
 
 // Walk up from `startDir` looking for the @anthropic-ai/claude-code
