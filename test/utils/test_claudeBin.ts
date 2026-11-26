@@ -30,13 +30,20 @@ const YARN_CLAUDE_EXE = winPath.join(
 
 interface FakeSpawnCase {
   readonly command: string;
+  /** When set, the case only answers a call with exactly these arguments. */
+  readonly args?: readonly string[];
   readonly stdout: string;
   readonly status?: number;
 }
 
+function argsMatch(expected: readonly string[] | undefined, actual: readonly string[]): boolean {
+  if (!expected) return true;
+  return expected.length === actual.length && expected.every((arg, idx) => arg === actual[idx]);
+}
+
 function makeSpawnSync(cases: readonly FakeSpawnCase[]): typeof import("node:child_process").spawnSync {
-  return ((cmd: string): SpawnSyncReturns<string> => {
-    const hit = cases.find((entry) => entry.command === cmd);
+  return ((cmd: string, args: readonly string[] = []): SpawnSyncReturns<string> => {
+    const hit = cases.find((entry) => entry.command === cmd && argsMatch(entry.args, args));
     if (!hit) return { pid: 0, output: [], stdout: "", stderr: "", status: 1, signal: null };
     return { pid: 0, output: [], stdout: hit.stdout, stderr: "", status: hit.status ?? 0, signal: null };
   }) as never;
@@ -162,6 +169,74 @@ describe("claudeBinPath — Windows resolution", () => {
         return true;
       },
     );
+  });
+});
+
+describe("claudeBinPath — native installer (claude.exe directly on PATH)", () => {
+  const FAKE_PROFILE = "C:\\Users\\test";
+  const NATIVE_CLAUDE_EXE = winPath.join(FAKE_PROFILE, ".local", "bin", "claude.exe");
+  const NPM_CLAUDE_CMD = winPath.join(FAKE_NPM_PREFIX, "claude.cmd");
+  const WHERE_ARGS = ["claude"];
+
+  it("returns a claude.exe that `where claude` lists, without walking up for node_modules", () => {
+    const opts = commonOpts({
+      spawnSync: makeSpawnSync([{ command: "where", args: WHERE_ARGS, stdout: `${NATIVE_CLAUDE_EXE}\r\n` }]),
+      existsSync: makeExistsSync([NATIVE_CLAUDE_EXE]),
+    });
+    assert.equal(claudeBinPath(opts), NATIVE_CLAUDE_EXE);
+  });
+
+  it("accepts an upper-case .EXE extension", () => {
+    const upper = winPath.join(FAKE_PROFILE, ".local", "bin", "CLAUDE.EXE");
+    const opts = commonOpts({
+      spawnSync: makeSpawnSync([{ command: "where", args: WHERE_ARGS, stdout: upper }]),
+      existsSync: makeExistsSync([upper]),
+    });
+    assert.equal(claudeBinPath(opts), upper);
+  });
+
+  it("follows PATH order: native exe listed first wins over an npm install", () => {
+    const opts = commonOpts({
+      spawnSync: makeSpawnSync([{ command: "where", args: WHERE_ARGS, stdout: `${NATIVE_CLAUDE_EXE}\r\n${NPM_CLAUDE_CMD}\r\n` }]),
+      existsSync: makeExistsSync([NATIVE_CLAUDE_EXE, NPM_CLAUDE_EXE]),
+    });
+    assert.equal(claudeBinPath(opts), NATIVE_CLAUDE_EXE);
+  });
+
+  it("follows PATH order: npm shim listed first wins over a native exe", () => {
+    const opts = commonOpts({
+      spawnSync: makeSpawnSync([{ command: "where", args: WHERE_ARGS, stdout: `${NPM_CLAUDE_CMD}\r\n${NATIVE_CLAUDE_EXE}\r\n` }]),
+      existsSync: makeExistsSync([NATIVE_CLAUDE_EXE, NPM_CLAUDE_EXE]),
+    });
+    assert.equal(claudeBinPath(opts), NPM_CLAUDE_EXE);
+  });
+
+  it("skips a listed claude.exe that no longer exists and keeps probing", () => {
+    const opts = commonOpts({
+      spawnSync: makeSpawnSync([{ command: "where", args: WHERE_ARGS, stdout: `${NATIVE_CLAUDE_EXE}\r\n${NPM_CLAUDE_CMD}\r\n` }]),
+      existsSync: makeExistsSync([NPM_CLAUDE_EXE]),
+    });
+    assert.equal(claudeBinPath(opts), NPM_CLAUDE_EXE);
+  });
+
+  it("ignores blank / whitespace-only `where` output lines", () => {
+    const opts = commonOpts({
+      spawnSync: makeSpawnSync([{ command: "where", stdout: "\r\n   \r\n" }]),
+    });
+    assert.throws(() => claudeBinPath(opts), ClaudeCliNotFoundError);
+  });
+
+  it("falls back to %USERPROFILE%\\.local\\bin\\claude.exe when PATH has no claude", () => {
+    const opts = commonOpts({
+      env: { USERPROFILE: FAKE_PROFILE },
+      existsSync: makeExistsSync([NATIVE_CLAUDE_EXE]),
+    });
+    assert.equal(claudeBinPath(opts), NATIVE_CLAUDE_EXE);
+  });
+
+  it("lists the native installer path in the not-found error", () => {
+    const opts = commonOpts({ env: { USERPROFILE: FAKE_PROFILE } });
+    assert.throws(() => claudeBinPath(opts), /\.local\\bin\\claude\.exe/);
   });
 });
 
