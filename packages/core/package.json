@@ -233,7 +233,7 @@
     "@duckdb/node-api": "^2.0.0-r.1",
     "@gui-chat-plugin/common": "^0.1.0",
     "@mulmoclaude/common": "^1.6.0",
-    "@mulmoclaude/markdown-utils": "^3.0.3",
+    "@mulmoclaude/markdown-utils": "^3.0.4",
     "dompurify": "^3.4.18",
     "fast-xml-parser": "^5.12.1",
     "google-auth-library": "^11.3.4",
