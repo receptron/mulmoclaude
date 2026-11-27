@@ -8,6 +8,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+## [2.15.1] - 2026-11-27
+
+**Windows finds a natively installed Claude Code; copying a code block no longer adds a blank line.**
+
+Ships `@mulmoclaude/accounting-plugin@6.0.2`, `@mulmoclaude/chart-plugin@6.0.2`, `@mulmoclaude/collection-plugin@7.1.1`, `@mulmoclaude/common@1.6.0`, `@mulmoclaude/core@7.3.1`, `@mulmoclaude/form-plugin@2.2.0`, `@mulmoclaude/google-plugin@6.0.2`, `@mulmoclaude/html-plugin@7.0.2`, `@mulmoclaude/markdown-plugin@7.0.2`, `@mulmoclaude/markdown-utils@3.0.4`, `@mulmoclaude/mulmoscript-plugin@7.0.2`, `@mulmoclaude/spotify-plugin@2.0.4`, `@mulmoclaude/x-plugin@1.0.5`.
+
+### Fixed
+
+#### Windows: `claude.exe` from the native installer or WinGet (#3681, #3686)
+
+The launcher's start-up check passed, but every chat then failed with `claude CLI binary not found`, because the
+server only looked for `claude.exe` inside an npm / Yarn / pnpm global install. It now asks `where claude` and uses a
+`claude.exe` found on PATH as-is, in the same PATH order the start-up check resolves, and falls back to the native
+installer's `%USERPROFILE%\.local\bin\claude.exe`. With both a native and an npm install, whichever comes first on
+PATH is used — the one `claude --version` runs — so such a host can switch to the native binary.
+
+#### Code-block copy keeps the author's lines (#3682)
+
+With `marked` 18.2.1 and later, a fenced block that ends in a blank line keeps that line's terminator, so the copy
+button pasted a trailing newline nobody wrote. Both block styles now drop exactly one terminator.
+
 ## [2.15.0] - 2026-11-21
 
 **Collections can hide the built-in Calendar and Kanban toggles.**
