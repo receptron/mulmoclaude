@@ -11,7 +11,7 @@
 import { inject, provide, type InjectionKey } from "vue";
 
 import { hostApiCall, hostProjectScope, type AccountingApiCall, type ApiResult } from "./hostContext";
-import { providedAccountingHost, useAccountingHost } from "./treeHost";
+import { providedAccountingHost, useAccountingHost, useProjectScope } from "./treeHost";
 import {
   ACCOUNTING_ACTIONS,
   ACCOUNTING_API,
@@ -328,5 +328,5 @@ export function useAccountingApi(): AccountingApi {
   const bound = inject(API_KEY, null);
   if (bound !== null) return bound;
   const host = providedAccountingHost();
-  return host === null ? hostScopedApi : makeApi(hostProjectScope, host.apiCall);
+  return host === null ? hostScopedApi : makeApi(useProjectScope(), host.apiCall);
 }

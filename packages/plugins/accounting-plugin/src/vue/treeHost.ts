@@ -7,11 +7,14 @@
 // provided, everything below resolves to the global pair, exactly as before.
 
 import { inject, provide, type InjectionKey } from "vue";
-import { hostApiCall, hostSubscribe, type AccountingApiCall, type AccountingSubscribe } from "./hostContext";
+import { hostApiCall, hostProjectScope, hostSubscribe, type AccountingApiCall, type AccountingProjectScope, type AccountingSubscribe } from "./hostContext";
 
 export interface AccountingTreeHost {
   apiCall: AccountingApiCall;
   subscribe: AccountingSubscribe;
+  /** The project a request or channel names when the card names none, on THIS host's server.
+   *  Omitted, it names none: the global host's active project is an id on another server. */
+  projectScope?: AccountingProjectScope;
 }
 
 const TREE_HOST: InjectionKey<AccountingTreeHost> = Symbol("accounting-tree-host");
@@ -27,6 +30,15 @@ export function provideAccountingHost(host: AccountingTreeHost): void {
 /** The pair a host provided around this component, or null when none did. */
 export function providedAccountingHost(): AccountingTreeHost | null {
   return inject(TREE_HOST, null);
+}
+
+const NO_PROJECT: AccountingProjectScope = () => null;
+
+/** The project this subtree follows when nothing names one: the provided host's, or the global
+ *  host's active project when no host was provided. Call from setup. */
+export function useProjectScope(): AccountingProjectScope {
+  const host = providedAccountingHost();
+  return host === null ? hostProjectScope : (host.projectScope ?? NO_PROJECT);
 }
 
 /** The pair this component's requests and subscriptions go through. */

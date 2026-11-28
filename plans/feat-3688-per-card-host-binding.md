@@ -20,6 +20,12 @@ only narrow it to a PROJECT, not to another server.
   - `provideAccountingHost({ apiCall, subscribe })` puts a network client and a pub/sub transport
     around a subtree (`src/vue/treeHost.ts`).
   - The View's `provideAccountingApi`, every `useAccountingApi` and both book channels go through it.
+  - A card that names no project falls back to the provided host's optional `projectScope`, or to
+    none: the global host's active project is an id on another server (`useProjectScope`, used by
+    the View, the loose `useAccountingApi` and both channels).
+- The collection display language and starter-card translation stay on the global binding: they
+  belong to the person looking, not to the server a card reads.
+- The scoped-binding cache is weak on its base, so a binding for a server nobody shows is released.
 
 Nothing provided, every request and subscription goes exactly where it went before, so MulmoClaude
 and a MulmoTerminal local cell are unchanged.
@@ -36,5 +42,6 @@ and a MulmoTerminal local cell are unchanged.
 - `test/plugins/collection/test_cardScope.ts`: the base a scope is resolved on, the cache per base,
   and a mounted tree with and without a host binding.
 - `packages/plugins/accounting-plugin/test/test_treeHost.ts`: a mounted tree's requests and both
-  channels through a provided pair, a component outside the View's own binding, and the global pair
-  when nothing is provided.
+  channels through a provided pair, the project a component outside the View's own binding names
+  (none, or the provided host's, while the global host has an active one), and the global pair and
+  project when nothing is provided.

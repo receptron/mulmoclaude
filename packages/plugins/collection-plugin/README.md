@@ -33,7 +33,8 @@ provideCollectionUi(() => bindingFor(server));
 
 The card's own project scope is then applied to that binding (its `withScope`) rather than to the
 global one. Return the same binding object for the same server, so the scoped bindings built from
-it are reused.
+it are reused. The display language (`localeTag`) and the starter-card translation (`translate`)
+stay on the global binding: they belong to the person looking, not to the server a card reads.
 
 ## About MulmoClaude and MulmoTerminal
 

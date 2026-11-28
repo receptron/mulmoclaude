@@ -136,7 +136,7 @@ import BalanceSheet from "./components/BalanceSheet.vue";
 import ProfitLoss from "./components/ProfitLoss.vue";
 import BookSettings from "./components/BookSettings.vue";
 import { provideAccountingApi, type Account, type BookSummary } from "./api";
-import { hostProjectScope } from "./hostContext";
+import { useProjectScope } from "./treeHost";
 import { ACCOUNTING_ACTIONS } from "../shared";
 import { useAccountingChannel, useAccountingBooksChannel } from "./useAccountingChannel";
 import { errorMessage } from "../shared/errors";
@@ -205,9 +205,11 @@ const initialPayload = computed<AccountingAppPayload>(() => props.selectedResult
 // host that declared no scoping, or a card made before the server
 // stamped it — falls back to what the host considers active, which on a
 // single-root host is always `null` anyway.
+// The fallback is the provided host's project when a host bound this card to another server.
+const fallbackScope = useProjectScope();
 const cardScope = computed<string | null>(() => {
   const payload = initialPayload.value;
-  return "scope" in payload ? (payload.scope ?? null) : hostProjectScope();
+  return "scope" in payload ? (payload.scope ?? null) : fallbackScope();
 });
 // Binds every child component's api client to that project too, and
 // follows the card this View is showing: `selectedResult` can be

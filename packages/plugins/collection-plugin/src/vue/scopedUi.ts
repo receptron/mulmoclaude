@@ -27,11 +27,13 @@ const SCOPED_UI: InjectionKey<ScopedUiGetter> = Symbol("collectionScopedUi");
  *  doesn't hand out a fresh object each time (a host builds its scoped binding
  *  eagerly). Keyed by the base too: two subtrees bound to different servers can
  *  hold the same project id. */
-const bindings = new Map<CollectionUi, Map<string, CollectionUi>>();
+// Weak on the base, so a host's binding for a server nobody shows any more is released with
+// everything built from it. Reassigned only by the test reset, since a WeakMap cannot be cleared.
+let bindings = new WeakMap<CollectionUi, Map<string, CollectionUi>>();
 
 /** Test-only: drop the memoised scoped bindings (a test reconfigures the host). */
 export function resetScopedCollectionUi(): void {
-  bindings.clear();
+  bindings = new WeakMap();
 }
 
 /** Resolve the binding for one scope, built from `base` — the binding a host put
@@ -55,6 +57,8 @@ export function resolveScopedCollectionUi(scope: string | undefined, base: Colle
  *  card's own `provideCollectionScope` then scopes this binding rather than the
  *  global one. The getter should return the same object for the same target, so
  *  the scoped bindings built from it are reused. */
+// The plugin's display language (`localeTag`) and its starter-card translation (`translate`)
+// stay on the global binding: they belong to the person looking, not to the server a card reads.
 export function provideCollectionUi(binding: () => CollectionUi): void {
   provide(SCOPED_UI, binding);
 }

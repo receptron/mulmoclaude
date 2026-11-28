@@ -19,8 +19,7 @@
 
 import { computed, ref, watch, onUnmounted, type Ref } from "vue";
 import { bookChannel, booksChannel, BOOK_EVENT_KINDS, type BookChannelPayload } from "../shared";
-import { hostProjectScope } from "./hostContext";
-import { useAccountingHost } from "./treeHost";
+import { useAccountingHost, useProjectScope } from "./treeHost";
 
 const BOOK_EVENT_KIND_VALUES = Object.values(BOOK_EVENT_KINDS);
 
@@ -50,7 +49,8 @@ export type AccountingChannelScope = string | null | (() => string | null);
  *  `projectScope` getter reads reactive state gets that for free on the
  *  host-following path too; one that does not simply never changes. */
 function resolveScope(scope: AccountingChannelScope | undefined): Ref<string | null> {
-  return computed(() => (scope === undefined ? hostProjectScope() : typeof scope === "function" ? scope() : scope));
+  const fallback = useProjectScope();
+  return computed(() => (scope === undefined ? fallback() : typeof scope === "function" ? scope() : scope));
 }
 
 /** `scope` binds the subscription to one project — pass the scope the
