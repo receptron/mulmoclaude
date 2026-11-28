@@ -8,6 +8,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+Ships `@mulmoclaude/accounting-plugin@6.1.0`, `@mulmoclaude/collection-plugin@7.2.0`.
+
+### Added
+
+#### A host can bind one card's collection or accounting requests to another server (#3688, #3689)
+
+`provideCollectionUi(() => binding)` and `provideAccountingHost({ apiCall, subscribe, projectScope })` put a host's
+own binding around one card's component tree, so its requests and subscriptions go to another server while every
+other surface keeps the global ones. A card's own project scope is applied on top of that binding, and a card that
+names no project never borrows the global host's. Nothing provided, nothing changes — MulmoClaude does not use them;
+MulmoTerminal does, to show a remote machine's cards.
+
 ## [2.15.1] - 2026-11-27
 
 **Windows finds a natively installed Claude Code; copying a code block no longer adds a blank line.**
