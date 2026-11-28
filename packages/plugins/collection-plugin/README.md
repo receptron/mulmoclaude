@@ -21,6 +21,20 @@ calendars. The host syncs on creation, hourly in the background, and on demand
 from the Sync button in the collection header — with no tool call and no tokens
 spent per refresh.
 
+## A card from another server
+
+A host binds the UI once with `configureCollectionUi(binding)`, and a card scopes that binding to
+the project it was made in. A host that shows a card from ANOTHER server (MulmoTerminal's remote
+cells) provides that server's binding around the card, in setup above the card's View:
+
+```ts
+provideCollectionUi(() => bindingFor(server));
+```
+
+The card's own project scope is then applied to that binding (its `withScope`) rather than to the
+global one. Return the same binding object for the same server, so the scoped bindings built from
+it are reused.
+
 ## About MulmoClaude and MulmoTerminal
 
 - **[MulmoClaude](https://github.com/receptron/mulmoclaude)** — an AI-native

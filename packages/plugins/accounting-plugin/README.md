@@ -41,6 +41,16 @@ Both are opt-in and default to today's behaviour. The invariants behind them:
    parameter (pinned by a test), and this package never resolves one off a request body —
    only the host's own `resolveWorkspaceRoot` does.
 
+A host that shows a card from ANOTHER server (MulmoTerminal's remote cells) sends that card's
+requests and subscriptions there by providing a pair around the card, in setup above the View:
+
+```ts
+provideAccountingHost({ apiCall: apiCallTo(server), subscribe: subscribeTo(server) });
+```
+
+Everything below it — the View's own `provideAccountingApi`, every `useAccountingApi`, and the
+book channels — goes through that pair. Nothing provided, everything uses `configureAccountingHost`'s.
+
 ## Dev loop
 
 ```bash

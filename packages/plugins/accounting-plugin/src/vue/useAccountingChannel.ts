@@ -13,13 +13,14 @@
 // inspect the event kind (e.g. show a "rebuilding…" indicator on
 // `kind: "snapshots-rebuilding"`).
 //
-// The raw pub/sub transport is host-injected via `hostSubscribe`
+// The raw pub/sub transport is host-injected via `hostSubscribe`, or per tree via `provideAccountingHost`
 // (see hostContext.ts) — the channel NAMES come from this package's
 // own `./shared` so publisher and subscriber stay in lockstep.
 
 import { computed, ref, watch, onUnmounted, type Ref } from "vue";
 import { bookChannel, booksChannel, BOOK_EVENT_KINDS, type BookChannelPayload } from "../shared";
-import { hostProjectScope, hostSubscribe } from "./hostContext";
+import { hostProjectScope } from "./hostContext";
+import { useAccountingHost } from "./treeHost";
 
 const BOOK_EVENT_KIND_VALUES = Object.values(BOOK_EVENT_KINDS);
 
@@ -63,6 +64,7 @@ export function useAccountingChannel(
   scope?: AccountingChannelScope,
 ): UseAccountingChannelReturn {
   const channelScope = resolveScope(scope);
+  const { subscribe } = useAccountingHost();
   const version = ref(0);
   let unsubscribe: (() => void) | null = null;
 
@@ -75,7 +77,7 @@ export function useAccountingChannel(
     // host, which keeps the name `accounting:<bookId>`): a bookId is
     // unique within a root, so without it a write in one project would
     // refresh an open view of the same-named book in another.
-    unsubscribe = hostSubscribe(bookChannel(nextBookId, channelScope.value), (data) => {
+    unsubscribe = subscribe(bookChannel(nextBookId, channelScope.value), (data) => {
       version.value += 1;
       const event = toBookChannelPayload(data);
       if (event) onPayload?.(event);
@@ -99,12 +101,13 @@ export function useAccountingChannel(
  *  `useAccountingChannel`. */
 export function useAccountingBooksChannel(onChange: () => void, scope?: AccountingChannelScope): void {
   const channelScope = resolveScope(scope);
+  const { subscribe } = useAccountingHost();
   let unsubscribe: (() => void) | null = null;
   watch(
     channelScope,
     (nextScope) => {
       unsubscribe?.();
-      unsubscribe = hostSubscribe(booksChannel(nextScope), onChange);
+      unsubscribe = subscribe(booksChannel(nextScope), onChange);
     },
     { immediate: true },
   );
