@@ -17,4 +17,5 @@ import AccountingPreview from "./Preview.vue";
 export { AccountingView, AccountingPreview };
 
 export { configureAccountingHost } from "./hostContext";
+export { provideAccountingHost, type AccountingTreeHost } from "./treeHost";
 export type { AccountingHostContext, AccountingApiCall, AccountingSubscribe, AccountingLocaleTag, ApiResult } from "./hostContext";

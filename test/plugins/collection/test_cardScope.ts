@@ -11,7 +11,15 @@ import assert from "node:assert/strict";
 import { collectionCardKey, type PresentCollectionData } from "@mulmoclaude/core/collection";
 import { toPresentCollectionData } from "../../../packages/plugins/collection-plugin/src/vue/chat/presentCollectionData";
 import { configureCollectionUi, type CollectionUi } from "../../../packages/plugins/collection-plugin/src/vue/uiContext";
-import { resolveScopedCollectionUi, resetScopedCollectionUi } from "../../../packages/plugins/collection-plugin/src/vue/scopedUi";
+import { createSSRApp, defineComponent, h } from "vue";
+import { renderToString } from "vue/server-renderer";
+import {
+  provideCollectionScope,
+  provideCollectionUi,
+  resolveScopedCollectionUi,
+  resetScopedCollectionUi,
+  useCollectionUiGetter,
+} from "../../../packages/plugins/collection-plugin/src/vue/scopedUi";
 
 // The contract is ~40 capabilities; a resolution test only needs identity, so
 // each binding is a tagged stub cast to the full shape.
@@ -99,5 +107,84 @@ describe("the mounted view's identity", () => {
 
   it("is the bare slug with no scope, so a single-workspace card remounts exactly when it used to", () => {
     assert.equal(collectionCardKey(parsed({ collectionSlug: "tasks", itemId: "t1" })), "tasks");
+  });
+});
+
+describe("a binding the host put around a card", () => {
+  it("is what the card's scope is resolved on", () => {
+    configureCollectionUi(binding("global", (scope) => binding(`global:${scope}`)));
+    const remote = binding("remote", (scope) => binding(`remote:${scope}`));
+    assert.equal(tagOf(resolveScopedCollectionUi("proj-a", remote)), "remote:proj-a");
+    assert.equal(tagOf(resolveScopedCollectionUi("proj-a")), "global:proj-a");
+  });
+
+  it("is used as it is for a card with no scope", () => {
+    configureCollectionUi(binding("global", (scope) => binding(`global:${scope}`)));
+    assert.equal(tagOf(resolveScopedCollectionUi(undefined, binding("remote"))), "remote");
+  });
+
+  it("keeps one built binding per base and scope", () => {
+    let built = 0;
+    const remote = binding("remote", (scope) => {
+      built += 1;
+      return binding(`remote:${scope}`);
+    });
+    configureCollectionUi(binding("global", (scope) => binding(`global:${scope}`)));
+    const first = resolveScopedCollectionUi("proj-a", remote);
+    assert.equal(resolveScopedCollectionUi("proj-a", remote), first);
+    assert.equal(built, 1);
+    assert.notEqual(resolveScopedCollectionUi("proj-a"), first);
+  });
+});
+
+describe("provideCollectionUi under a scoped card", () => {
+  const cardTree = (scope: string | undefined, seen: { tag?: string }) =>
+    defineComponent({
+      setup() {
+        provideCollectionScope(() => scope);
+        const Child = defineComponent({
+          setup() {
+            seen.tag = tagOf(useCollectionUiGetter()());
+            return () => h("i");
+          },
+        });
+        return () => h(Child);
+      },
+    });
+
+  const withBinding = (inner: ReturnType<typeof defineComponent>, hostUi: CollectionUi) =>
+    defineComponent({
+      setup() {
+        provideCollectionUi(() => hostUi);
+        return () => h(inner);
+      },
+    });
+
+  it("scopes the host's binding, not the global one", async () => {
+    configureCollectionUi(binding("global", (scope) => binding(`global:${scope}`)));
+    const seen: { tag?: string } = {};
+    await renderToString(
+      createSSRApp(
+        withBinding(
+          cardTree("proj-a", seen),
+          binding("remote", (scope) => binding(`remote:${scope}`)),
+        ),
+      ),
+    );
+    assert.equal(seen.tag, "remote:proj-a");
+  });
+
+  it("hands an unscoped card the host's binding itself", async () => {
+    configureCollectionUi(binding("global", (scope) => binding(`global:${scope}`)));
+    const seen: { tag?: string } = {};
+    await renderToString(createSSRApp(withBinding(cardTree(undefined, seen), binding("remote"))));
+    assert.equal(seen.tag, "remote");
+  });
+
+  it("leaves a card with no host binding on the global one", async () => {
+    configureCollectionUi(binding("global", (scope) => binding(`global:${scope}`)));
+    const seen: { tag?: string } = {};
+    await renderToString(createSSRApp(cardTree("proj-a", seen)));
+    assert.equal(seen.tag, "global:proj-a");
   });
 });

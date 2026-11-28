@@ -10,7 +10,8 @@
 
 import { inject, provide, type InjectionKey } from "vue";
 
-import { hostApiCall as apiCall, hostProjectScope, type ApiResult } from "./hostContext";
+import { hostApiCall, hostProjectScope, type AccountingApiCall, type ApiResult } from "./hostContext";
+import { providedAccountingHost, useAccountingHost, useProjectScope } from "./treeHost";
 import {
   ACCOUNTING_ACTIONS,
   ACCOUNTING_API,
@@ -125,7 +126,7 @@ type Call = <T>(action: string, args?: Record<string, unknown>) => Promise<ApiRe
  *  that changes its active project while a pinned one does not. Absent
  *  (single-root host) every request body is byte-identical to what it
  *  was before scopes existed. */
-function makeCall(getScope: () => string | null): Call {
+function makeCall(getScope: () => string | null, apiCall: AccountingApiCall): Call {
   return function call<T>(action: string, args: Record<string, unknown> = {}): Promise<ApiResult<T>> {
     // The project rides every request, last so a caller cannot shadow it.
     const project = getScope();
@@ -280,8 +281,8 @@ function reportsApi(call: Call) {
 }
 
 /** Build an api client bound to ONE project scope. */
-function makeApi(getScope: () => string | null) {
-  const call = makeCall(getScope);
+function makeApi(getScope: () => string | null, apiCall: AccountingApiCall = hostApiCall) {
+  const call = makeCall(getScope, apiCall);
   return { ...booksApi(call), ...accountsApi(call), ...journalApi(call), ...reportsApi(call) };
 }
 
@@ -314,7 +315,8 @@ const API_KEY: InjectionKey<AccountingApi> = Symbol("accounting-api");
  *  is retargeted at another card, and the tree must follow the card it
  *  is showing rather than the one it first showed. */
 export function provideAccountingApi(getScope: () => string | null): AccountingApi {
-  const api = makeApi(getScope);
+  // Through the network client a host provided around this tree, if it did.
+  const api = makeApi(getScope, useAccountingHost().apiCall);
   provide(API_KEY, api);
   return api;
 }
@@ -323,5 +325,8 @@ export function provideAccountingApi(getScope: () => string | null): AccountingA
  *  host-scoped one for a surface nobody bound (a single-root host's
  *  every surface). */
 export function useAccountingApi(): AccountingApi {
-  return inject(API_KEY, hostScopedApi);
+  const bound = inject(API_KEY, null);
+  if (bound !== null) return bound;
+  const host = providedAccountingHost();
+  return host === null ? hostScopedApi : makeApi(useProjectScope(), host.apiCall);
 }

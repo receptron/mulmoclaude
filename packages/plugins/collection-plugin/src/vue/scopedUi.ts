@@ -23,33 +23,53 @@ type ScopedUiGetter = () => CollectionUi;
 
 const SCOPED_UI: InjectionKey<ScopedUiGetter> = Symbol("collectionScopedUi");
 
-/** One binding per scope, so re-resolving on every property read doesn't hand
- *  out a fresh object each time (a host builds its scoped binding eagerly). */
-const bindings = new Map<string, CollectionUi>();
+/** One binding per base binding and scope, so re-resolving on every property read
+ *  doesn't hand out a fresh object each time (a host builds its scoped binding
+ *  eagerly). Keyed by the base too: two subtrees bound to different servers can
+ *  hold the same project id. */
+// Weak on the base, so a host's binding for a server nobody shows any more is released with
+// everything built from it. Reassigned only by the test reset, since a WeakMap cannot be cleared.
+let bindings = new WeakMap<CollectionUi, Map<string, CollectionUi>>();
 
 /** Test-only: drop the memoised scoped bindings (a test reconfigures the host). */
 export function resetScopedCollectionUi(): void {
-  bindings.clear();
+  bindings = new WeakMap();
 }
 
-/** Resolve the binding for one scope. Exported for tests: this is the whole
- *  decision — a scope plus a host that does projects yields a scoped binding,
- *  anything else yields the global one. */
-export function resolveScopedCollectionUi(scope: string | undefined): CollectionUi {
-  const base = collectionUi();
-  // No scope, or a host that doesn't do projects: the global binding, unchanged.
+/** Resolve the binding for one scope, built from `base` — the binding a host put
+ *  around this subtree, or the global one. Exported for tests: this is the whole
+ *  decision — a scope plus a base that does projects yields a scoped binding,
+ *  anything else yields the base itself. */
+export function resolveScopedCollectionUi(scope: string | undefined, base: CollectionUi = collectionUi()): CollectionUi {
+  // No scope, or a base that doesn't do projects: the base, unchanged.
   if (scope === undefined || base.withScope === undefined) return base;
-  const cached = bindings.get(scope);
+  const perBase = bindings.get(base) ?? new Map<string, CollectionUi>();
+  bindings.set(base, perBase);
+  const cached = perBase.get(scope);
   if (cached !== undefined) return cached;
   const built = base.withScope(scope);
-  bindings.set(scope, built);
+  perBase.set(scope, built);
   return built;
 }
 
+/** Bind a subtree to a binding of the host's own — a card whose requests go to
+ *  another server than the global binding's. Call from setup, ABOVE the card: the
+ *  card's own `provideCollectionScope` then scopes this binding rather than the
+ *  global one. The getter should return the same object for the same target, so
+ *  the scoped bindings built from it are reused. */
+// The plugin's display language (`localeTag`) and its starter-card translation (`translate`)
+// stay on the global binding: they belong to the person looking, not to the server a card reads.
+export function provideCollectionUi(binding: () => CollectionUi): void {
+  provide(SCOPED_UI, binding);
+}
+
 /** Bind this component's subtree to the project a card was made in. Call from
- *  setup; `scope` is read lazily so a reactive source stays live. */
+ *  setup; `scope` is read lazily so a reactive source stays live. The project is
+ *  scoped on the binding around this component — the host's, when it provided
+ *  one with `provideCollectionUi`, or the global one. */
 export function provideCollectionScope(scope: () => string | undefined): void {
-  provide(SCOPED_UI, () => resolveScopedCollectionUi(scope()));
+  const outer = inject(SCOPED_UI, null) ?? collectionUi;
+  provide(SCOPED_UI, () => resolveScopedCollectionUi(scope(), outer()));
 }
 
 /** The host binding for this component — the card's scoped one inside a scoped
